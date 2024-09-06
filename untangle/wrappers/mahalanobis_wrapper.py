@@ -375,7 +375,9 @@ class MahalanobisWrapper(SpecialWrapper):
         return torch.cat(scores, dim=1)  # [B, C]
 
     @staticmethod
-    def _compute_gradients(inputs, features, num_classes, class_means, precision_matrix):
+    def _compute_gradients(
+        inputs, features, num_classes, class_means, precision_matrix
+    ):
         gaussian_scores = MahalanobisWrapper._compute_gaussian_scores(
             features, num_classes, class_means, precision_matrix
         )

@@ -35,7 +35,9 @@ ZOOM_BLUR_C = [
 FOG_C = [(1.5, 2), (2, 2), (2.5, 1.7), (2.5, 1.5), (3, 1.4)]
 FROST_IMAGES = [
     np.array(
-        PILImage.open(f"untangle/transforms/assets/frost{i}.{'png' if i <= 3 else 'jpg'}")
+        PILImage.open(
+            f"untangle/transforms/assets/frost{i}.{'png' if i <= 3 else 'jpg'}"
+        )
     )
     for i in range(1, 7)
 ]

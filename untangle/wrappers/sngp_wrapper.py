@@ -88,14 +88,15 @@ class GPOutputLayer(nn.Module):
         )
 
         self._gp_output_bias = nn.Parameter(
-            torch.tensor([self._gp_output_bias] * self._num_classes), requires_grad=False
+            torch.tensor([self._gp_output_bias] * self._num_classes),
+            requires_grad=False,
         )
 
     def reset_covariance_matrix(self):
         """Resets covariance matrix of the GP layer.
 
-        This function is useful for reseting the model's covariance matrix at the
-        begining of a new epoch.
+        This function is useful for resetting the model's covariance matrix at the
+        beginning of a new epoch.
         """
         self._gp_cov_layer.reset_precision_matrix()
 
@@ -228,8 +229,8 @@ class LaplaceRandomFeatureCovariance(nn.Module):
     def reset_precision_matrix(self):
         """Resets precision matrix to its initial value.
 
-        This function is useful for reseting the model's covariance matrix at the
-        begining of a new epoch.
+        This function is useful for resetting the model's covariance matrix at the
+        beginning of a new epoch.
         """
         self._precision_matrix.zero_()
 
@@ -711,7 +712,7 @@ class Conv2dSpectralNormalizer(nn.Module):
     def _infer_attributes(module, args, kwargs=None):
         r"""Infers the size and initializes the parameters according to the input batch.
 
-        Given a module that contains parameters that were declared inferrable
+        Given a module that contains parameters that were declared inferable
         using :class:`torch.nn.parameter.ParameterMode.Infer`, runs a forward pass
         in the complete module using the provided input to initialize all the parameters
         as needed.
@@ -871,7 +872,7 @@ class _SpectralNormalizedBatchNorm(_NormBase):
         # training mode when they are tracked), or when buffer stats are used for
         # normalization (i.e. in eval mode when buffers are not None)
 
-        # Before the foward pass, estimate the Lipschitz constant of the layer and
+        # Before the forward pass, estimate the Lipschitz constant of the layer and
         # divide through by it so that the Lipschitz constant of the batch norm operator
         # is at most self.coeff
         weight = (

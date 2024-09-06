@@ -37,7 +37,6 @@ from untangle.wrappers import (
     DUQWrapper,
     HetClassNNWrapper,
     MahalanobisWrapper,
-    SWAGWrapper,
 )
 
 logger = logging.getLogger(__name__)

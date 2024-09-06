@@ -106,7 +106,6 @@ class DUQHead(nn.Module):
         return rbf_values
 
 
-
 class DUQWrapper(SpecialWrapper):
     """This module takes a model as input and creates a DUQ model from it."""
 
@@ -206,4 +205,3 @@ class DUQWrapper(SpecialWrapper):
         gradients = gradients.flatten(start_dim=1)
 
         return gradients
-

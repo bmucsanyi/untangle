@@ -35,9 +35,9 @@ class NormalizingFlowDensity(nn.Module):
             sum_log_jacobians += transform.log_abs_det_jacobian(z, z_next)
             z = z_next
 
-        log_prob_z = MultivariateNormal(self._standard_mean, self._standard_cov).log_prob(
-            z
-        )
+        log_prob_z = MultivariateNormal(
+            self._standard_mean, self._standard_cov
+        ).log_prob(z)
         log_prob_x = log_prob_z + sum_log_jacobians
 
         return log_prob_x

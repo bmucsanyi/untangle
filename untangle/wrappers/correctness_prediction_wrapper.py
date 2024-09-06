@@ -95,7 +95,9 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
         def get_features(name):
             def hook(model, input, output):
                 del model, input
-                self._feature_buffer[name] = output.detach() if self._stopgrad else output
+                self._feature_buffer[name] = (
+                    output.detach() if self._stopgrad else output
+                )
 
             return hook
 
