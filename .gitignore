@@ -1,0 +1,13 @@
+# Extensions
+*.ipynb
+*.txt
+*.egg-info
+*.pyc
+
+# Files
+.envrc
+.DS_Store
+
+# Folders
+.ruff_cache
+.venv
