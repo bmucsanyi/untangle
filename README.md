@@ -4,7 +4,7 @@
 
 This repository contains code for the arXiv preprint ["Benchmarking Uncertainty Disentanglement: Specialized Uncertainties for Specialized Tasks"](https://arxiv.org/abs/2402.19460) and also serves as a standalone benchmark suite for future methods.
 
-The `untangle` repository is a comprehensive uncertainty quantification and uncertainty disentanglement benchmark suite that comes with 
+The `untangle` repository is a comprehensive uncertainty quantification and uncertainty disentanglement benchmark suite that comes with
 - implementations of various uncertainty quantification methods as convenient wrapper classes ... (`untangle.wrappers`)
 - ... and corresponding loss functions (`untangle.losses`)
 - a training script that supports these methods (`train.py`)
@@ -42,7 +42,7 @@ The ImageNet-ReaL labels are available in [this GitHub repository](https://githu
 
 ### Packages
 
-The ImageNet-C and CIFAR-10C perturbations use [Wand](https://docs.wand-py.org/en/0.6.10/index.html), a Python binding of [ImageMagick](https://imagemagick.org/index.php). Follow [these instructions](https://docs.wand-py.org/en/0.6.10/guide/install.html) to install ImageMagick. Wand is installed below.
+The ImageNet-C and CIFAR-10C perturbations use [Wand](https://docs.wand-py.org/en/latest/index.html), a Python binding of [ImageMagick](https://imagemagick.org/index.php). Follow [these instructions](https://docs.wand-py.org/en/latest/guide/install.html) to install ImageMagick. Wand is installed below.
 
 Create a virtual environment for `untangle` by running `python -m venv` (or `uv venv`) in the root folder.
 Activate the virtual environment with `source .venv/bin/activate` and run one of the following commands based on your use case:
