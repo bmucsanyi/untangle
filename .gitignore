@@ -1,6 +1,5 @@
 # Extensions
 *.ipynb
-*.txt
 *.egg-info
 *.pyc
 
