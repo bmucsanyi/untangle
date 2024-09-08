@@ -32,7 +32,8 @@ dependencies = [
     "scikit-learn",
     "huggingface-hub",
     "laplace-torch",
-    "pyro-ppl"
+    "pyro-ppl",
+    "pytorch-minimize",
 ]
 description = "A benchmark of uncertainty disentanglement."
 dynamic = ["version"]

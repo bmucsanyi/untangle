@@ -13,3 +13,4 @@ scikit-learn
 huggingface-hub
 laplace-torch
 pyro-ppl
+pytorch-minimize
