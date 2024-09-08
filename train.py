@@ -260,11 +260,13 @@ def train(
         else:
             # Add placeholder value for SWAGWrapper: this method does not support
             # plateau-based LR scheduling
-            eval_metrics = {"hard_bma_accuracy_original": 1.0}
+            eval_metrics = {"id_eval_hard_bma_accuracy_original": 1.0}
 
         if lr_scheduler is not None:
             # Step LR for next epoch
-            lr_scheduler.step(epoch + 1, eval_metrics["hard_bma_accuracy_original"])
+            lr_scheduler.step(
+                epoch + 1, eval_metrics["id_eval_hard_bma_accuracy_original"]
+            )
 
         time_end_epoch = time.perf_counter()
         logger.info(
