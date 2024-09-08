@@ -330,7 +330,7 @@ def g_rand(params: dict, *, conv_as_dense: bool) -> tuple[dict, float]:
 
     # Draw random action
     indices = get_indices(params_tree)
-    rand_action = torch.distributions.log_normal.LogNormal(0, 1).sample(
+    rand_action = torch.distributions.log_normal.LogNormal(-1 / 2, 1).sample(
         torch.concat(get_one_action(params_tree)).shape
     )
     rand_action = list(rand_action.split_with_sizes(indices))
