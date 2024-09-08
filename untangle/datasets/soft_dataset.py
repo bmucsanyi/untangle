@@ -132,12 +132,12 @@ class SoftDataset(data.Dataset):
                         labels.append(label)
 
             # Summarize the annotations
-            unique_img_file_path = list(dict.fromkeys(img_filepath))
+            unique_img_file_path = sorted(set(img_filepath))
             file_path_to_img_id = {
                 filepath: i for i, filepath in enumerate(unique_img_file_path)
             }
 
-            unique_labels = list(dict.fromkeys(labels))
+            unique_labels = sorted(set(labels))
             class_name_to_label_id = {label: i for i, label in enumerate(unique_labels)}
 
             soft_labels = np.zeros(
