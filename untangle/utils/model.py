@@ -42,7 +42,7 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
     "wide_resnet_c_28_10": wide_resnet_c_28_10,
     "wide_resnet_c_preact_28_10": wide_resnet_c_preact_28_10,
     "resnet_c_preact_28": resnet_c_preact_28,
-    "simple_convnet": simple_convnet_3_256,
+    "simple_convnet_3_256": simple_convnet_3_256,
 }
 
 
