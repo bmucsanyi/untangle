@@ -61,11 +61,9 @@ class SoftDataset(data.Dataset):
         root /= dataset_path
 
         # Load the soft labels
-        (
-            self.soft_labels,
-            self.class_to_idx,
-            self.filepath_to_imgid,
-        ) = self.load_raw_annotations(root / "annotations.json")
+        self.soft_labels, self.filepath_to_imgid = self.load_raw_annotations(
+            root / "annotations.json"
+        )
         self.soft_labels = np.concatenate(
             [self.soft_labels, self.soft_labels.argmax(axis=-1, keepdims=True)], axis=-1
         )
@@ -95,10 +93,9 @@ class SoftDataset(data.Dataset):
         self.is_ood = False
 
     def __getitem__(self, index):
-        path = self.samples[index]
-        full_path_str = str(self.root / path)
-
-        target = self.soft_labels[self.filepath_to_imgid[full_path_str], :]
+        path_str = self.samples[index]
+        full_path_str = str(self.root / path_str)
+        target = self.soft_labels[self.filepath_to_imgid[path_str], :]
         img = pil_loader(full_path_str)
 
         if self.transform is not None and self.is_ood:
@@ -135,24 +132,20 @@ class SoftDataset(data.Dataset):
                         labels.append(label)
 
             # Summarize the annotations
-            unique_img_filepath = list(np.unique(np.array(img_filepath)))
-            filepath_to_imgid = dict(
-                zip(
-                    unique_img_filepath,
-                    list(np.arange(0, len(unique_img_filepath))),
-                    strict=False,
-                )
-            )
-            unique_labels = list(np.unique(np.array(labels)))
-            classname_to_labelid = dict(
-                zip(unique_labels, list(np.arange(0, len(unique_labels))), strict=False)
-            )
+            unique_img_file_path = list(dict.fromkeys(img_filepath))
+            file_path_to_img_id = {
+                filepath: i for i, filepath in enumerate(unique_img_file_path)
+            }
+
+            unique_labels = list(dict.fromkeys(labels))
+            class_name_to_label_id = {label: i for i, label in enumerate(unique_labels)}
+
             soft_labels = np.zeros(
-                (len(unique_img_filepath), len(unique_labels)), dtype=np.int64
+                (len(unique_img_file_path), len(unique_labels)), dtype=np.int64
             )
-            for filepath, classname in zip(img_filepath, labels, strict=False):
+            for filepath, classname in zip(img_filepath, labels, strict=True):
                 soft_labels[
-                    filepath_to_imgid[filepath], classname_to_labelid[classname]
+                    file_path_to_img_id[filepath], class_name_to_label_id[classname]
                 ] += 1
 
-            return soft_labels, classname_to_labelid, filepath_to_imgid
+            return soft_labels, file_path_to_img_id
