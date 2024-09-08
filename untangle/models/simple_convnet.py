@@ -39,6 +39,9 @@ class SimpleConvNet(nn.Sequential):
     ) -> None:
         super().__init__()
 
+        self.num_classes = num_classes
+        self.num_features = hidden_dim
+
         self._make_conv_block(
             in_channels=in_chans,
             out_channels=hidden_dim,
