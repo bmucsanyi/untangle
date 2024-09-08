@@ -9,6 +9,7 @@ from timm.models import create_model as create_timm_model
 from untangle.models import (
     resnet50,
     resnet_c_preact_28,
+    simple_convnet,
     wide_resnet_c_28_10,
     wide_resnet_c_preact_28_10,
 )
@@ -41,6 +42,7 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
     "wide_resnet_c_28_10": wide_resnet_c_28_10,
     "wide_resnet_c_preact_28_10": wide_resnet_c_preact_28_10,
     "resnet_c_preact_28": resnet_c_preact_28,
+    "simple_convnet": simple_convnet,
 }
 
 
