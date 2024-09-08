@@ -10,3 +10,5 @@
 # Folders
 .ruff_cache
 .venv
+CIFAR10H
+cifar-10-batches-py
