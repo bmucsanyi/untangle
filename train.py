@@ -228,6 +228,7 @@ def train(
                 output_dir=output_dir,
                 is_upstream=True,
                 is_test=False,
+                is_soft="soft" in args.dataset_id,
                 args=args,
             )
 
