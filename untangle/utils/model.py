@@ -10,6 +10,7 @@ from untangle.models import (
     resnet_50,
     resnet_c_preact_26,
     resnet_fixup_50,
+    simple_convnet,
     wide_resnet_c_26_10,
     wide_resnet_c_fixup_26_10,
     wide_resnet_c_preact_26_10,
@@ -45,6 +46,7 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
     "wide_resnet_c_fixup_26_10": wide_resnet_c_fixup_26_10,
     "wide_resnet_c_preact_26_10": wide_resnet_c_preact_26_10,
     "resnet_c_preact_26": resnet_c_preact_26,
+    "simple_convnet": simple_convnet,
 }
 
 
