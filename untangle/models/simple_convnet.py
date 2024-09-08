@@ -3,6 +3,18 @@
 from torch import nn
 
 
+def simple_convnet_3_256(num_classes=10, in_chans=3):
+    """Constructs a SimpleConvnet-3-256 model."""
+    model = SimpleConvNet(
+        num_classes=num_classes,
+        in_chans=in_chans,
+        hidden_dim=256,
+        num_blocks=3,
+    )
+
+    return model
+
+
 class Lambda(nn.Module):
     """Lambda module wrapper that executes `fn` on input `x`."""
 
@@ -44,7 +56,11 @@ class SimpleConvNet(nn.Sequential):
                 index=i,
             )
         self.add_module("global_pool", Lambda(lambda x: x.mean(dim=(-2, -1))))
-        self.add_module("fc", nn.Linear(hidden_dim, num_classes))
+        self.add_module(
+            "fc", nn.Linear(in_features=hidden_dim, out_features=num_classes)
+        )
+
+        self.num_feature_modules = len(self) - 2  # Exclude global_pool and fc
 
     def _make_conv_block(
         self, in_channels, out_channels, kernel_size, padding, index, *, add_pool=True
@@ -57,3 +73,23 @@ class SimpleConvNet(nn.Sequential):
 
         if add_pool:
             self.add_module(f"pool_{index}", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
+
+    def get_classifier(self):
+        return self.fc
+
+    def forward_features(self, x):
+        for i, module in enumerate(self):
+            if i == self.num_feature_modules:
+                break
+            x = module(x)
+        return x
+
+    def forward_head(self, x, *, pre_logits: bool = False):
+        x = self.global_pool(x)
+        if pre_logits:
+            return x
+        return self.fc(x)
+
+    def forward(self, x):
+        x = self.forward_features(x)
+        return self.forward_head(x)
