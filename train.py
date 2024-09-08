@@ -231,7 +231,8 @@ def train(
                 is_soft="soft" in args.dataset_id,
                 args=args,
             )
-
+            accuracy_key = "id_eval_hard_bma_accuracy_original"
+            logger.info(f"{accuracy_key}: {eval_metrics[accuracy_key]}")
             logger.info(f"{eval_metric}: {eval_metrics[eval_metric]}")
 
             is_new_best = epoch >= args.best_save_start_epoch and (
