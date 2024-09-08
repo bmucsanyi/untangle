@@ -33,8 +33,6 @@ class CheckpointSaver:
         self.checkpoint_files = []
         self.best_epoch = None
         self.best_metric = None
-        self.curr_recovery_file = ""
-        self.last_recovery_file = ""
 
         # Config
         self.checkpoint_dir = checkpoint_dir
@@ -45,19 +43,24 @@ class CheckpointSaver:
         self.max_history = max_history
 
     def save_checkpoint(self, epoch, metric):
+        # Save as last checkpoint
+        last_filename = f"{self.checkpoint_prefix}-last.{self.extension}"
+        last_save_path = self.checkpoint_dir / last_filename
+        self._save(last_save_path, epoch, metric)
+
         worst_file = self.checkpoint_files[-1] if self.checkpoint_files else None
 
         if len(self.checkpoint_files) < self.max_history or self.cmp(
             metric, worst_file[1]
         ):
+            # Save as among-the-best checkpoint
             if len(self.checkpoint_files) >= self.max_history:
                 self._cleanup_checkpoints(1)
 
-            filename = f"{self.checkpoint_prefix}-{epoch}.{self.extension}"
-            save_path = self.checkpoint_dir / filename
-
-            self._save(save_path, epoch, metric)
-            self.checkpoint_files.append((save_path, metric))
+            top_filename = f"{self.checkpoint_prefix}-{epoch}.{self.extension}"
+            top_save_path = self.checkpoint_dir / top_filename
+            top_save_path.hardlink_to(last_save_path)
+            self.checkpoint_files.append((top_save_path, metric))
             self.checkpoint_files.sort(
                 key=operator.itemgetter(1), reverse=not self.decreasing
             )
@@ -67,23 +70,25 @@ class CheckpointSaver:
                 checkpoints_str += f"\t{checkpoint_file}\n"
             logger.info(checkpoints_str)
 
-            if metric is not None and (
-                self.best_metric is None or self.cmp(metric, self.best_metric)
-            ):
+            if self.best_metric is None or self.cmp(metric, self.best_metric):
                 self.best_epoch = epoch
                 self.best_metric = metric
-                best_save_path = self.checkpoint_dir / f"model_best.{self.extension}"
+                best_filename = f"{self.checkpoint_prefix}-last.{self.extension}"
+                best_save_path = self.checkpoint_dir / best_filename
                 best_save_path.unlink(missing_ok=True)
-                best_save_path.hardlink_to(save_path)
+                best_save_path.hardlink_to(top_save_path)
 
     def _save(self, save_path, epoch, metric):
         save_state = {
             "epoch": epoch,
             "state_dict": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
-            "amp_scaler": self.amp_scaler.state_dict(),
             "metric": metric,
         }
+
+        if self.amp_scaler is not None:
+            save_state["amp_scaler"] = self.amp_scaler.state_dict()
+
         torch.save(save_state, save_path)
 
     def _cleanup_checkpoints(self, num_checkpoints_to_delete):
