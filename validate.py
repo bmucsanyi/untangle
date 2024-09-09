@@ -50,9 +50,9 @@ def evaluate_bulk(
     amp_autocast,
     key_prefix,
     output_dir,
-    is_upstream,
-    is_test,
-    is_soft,
+    is_upstream_dataset,
+    is_test_dataset,
+    is_soft_dataset,
     args,
 ):
     metrics = {}
@@ -72,9 +72,9 @@ def evaluate_bulk(
                 amp_autocast=amp_autocast,
                 key_prefix="",
                 output_dir=output_dir,
-                is_upstream=is_upstream,
-                is_test=is_test,
-                is_soft=is_soft,
+                is_upstream_dataset=is_upstream_dataset,
+                is_test_dataset=is_test_dataset,
+                is_soft_dataset=is_soft_dataset,
                 args=args,
             )
 
@@ -132,9 +132,9 @@ def evaluate(
     amp_autocast,
     key_prefix,
     output_dir,
-    is_upstream,
-    is_test,
-    is_soft,
+    is_upstream_dataset,
+    is_test_dataset,
+    is_soft_dataset,
     args,
 ):
     model.eval()
@@ -146,14 +146,14 @@ def evaluate(
         device=device,
         storage_device=storage_device,
         amp_autocast=amp_autocast,
-        is_soft=is_soft,
+        is_soft_dataset=is_soft_dataset,
         args=args,
     )
 
     metrics = times
 
-    if is_test:
-        ood_prefix = "id" if is_upstream else "ood"
+    if is_test_dataset:
+        ood_prefix = "id" if is_upstream_dataset else "ood"
         save_prefix = f"{ood_prefix}_test_{loader_name.replace('/', '_')}_"
 
         metrics = evaluate_on_tasks(
@@ -162,7 +162,7 @@ def evaluate(
             log_probs=log_probs,
             targets=targets,
             metrics=metrics,
-            is_soft=is_soft,
+            is_soft_dataset=is_soft_dataset,
             save_prefix=save_prefix,
             output_dir=output_dir,
             args=args,
@@ -177,7 +177,7 @@ def evaluate(
 
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
-    if is_upstream and is_test and output_dir is not None:
+    if is_upstream_dataset and is_test_dataset and output_dir is not None:
         # Save ingredients to disk
         max_num_indices = len(targets["gt_hard_labels"])
         num_indices = min(max_num_indices, args.max_num_id_ood_eval_samples // 2)
@@ -194,19 +194,19 @@ def evaluate(
         upstream_dict = {
             "upstream_estimates": filter_entries(estimates, indices),
             "upstream_targets": filter_entries(targets, indices),
-            "upstream_is_soft": is_soft,
+            "is_soft_upstream_dataset": is_soft_dataset,
         }
 
         upstream_dict["upstream_log_probs"] = filter_entries(log_probs, indices)
 
         torch.save(upstream_dict, data_dir / "upstream_dict.pt")
-    elif is_test and output_dir is not None:
+    elif is_test_dataset and output_dir is not None:
         # Load ingredients from disk
         upstream_dict = torch.load(data_dir / "upstream_dict.pt", weights_only=True)
         upstream_estimates = upstream_dict["upstream_estimates"]
         upstream_log_probs = upstream_dict["upstream_log_probs"]
         upstream_targets = upstream_dict["upstream_targets"]
-        upstream_is_soft = upstream_dict["upstream_is_soft"]
+        is_soft_upstream_dataset = upstream_dict["is_soft_upstream_dataset"]
 
         # Make both upstream and downstream tensors the same size to get a 50/50 split
         num_upstream_indices = len(upstream_targets["gt_hard_labels"])
@@ -252,7 +252,7 @@ def evaluate(
             torch.ones((num_indices_to_keep,), device=storage_device),
         ]).int()
 
-        if upstream_is_soft and not is_soft:
+        if is_soft_upstream_dataset and not is_soft_dataset:
             num_classes = upstream_targets["gt_soft_labels"].shape[1]
             mixed_targets["gt_soft_labels"] = torch.cat([
                 upstream_targets["gt_soft_labels"],
@@ -279,7 +279,7 @@ def evaluate(
                 upstream_targets["gt_soft_bma_correctnesses_top5"],
                 downstream_targets["gt_hard_bma_correctnesses_top5"],
             ])
-        elif not upstream_is_soft and is_soft:
+        elif not is_soft_upstream_dataset and is_soft_dataset:
             num_classes = downstream_targets["gt_soft_labels"].shape[1]
             mixed_targets["gt_soft_labels"] = torch.cat([
                 F.one_hot(
@@ -306,13 +306,13 @@ def evaluate(
                 upstream_targets["gt_hard_bma_correctnesses_top5"],
                 downstream_targets["gt_soft_bma_correctnesses_top5"],
             ])
-        elif upstream_is_soft and is_soft:
+        elif is_soft_upstream_dataset and is_soft_dataset:
             mixed_targets["gt_soft_labels"] = torch.cat([
                 upstream_targets["gt_soft_labels"],
                 downstream_targets["gt_soft_labels"],
             ])
 
-        ood_prefix = "id" if is_upstream else "ood"
+        ood_prefix = "id" if is_upstream_dataset else "ood"
         save_prefix = (
             f"{ood_prefix}_test_{loader_name.replace('/', '_')}_mixed_"
             f"{args.dataset_id.replace('/', '_')}_"
@@ -324,11 +324,11 @@ def evaluate(
             log_probs=mixed_log_probs,
             targets=mixed_targets,
             metrics=metrics,
-            is_soft=is_soft,
+            is_soft_dataset=is_soft_dataset,
             save_prefix=save_prefix,
             output_dir=output_dir,
             args=args,
-            upstream_is_soft=upstream_is_soft,
+            is_soft_upstream_dataset=is_soft_upstream_dataset,
         )
 
     if key_prefix:
@@ -402,29 +402,29 @@ def evaluate_on_tasks(
     log_probs,
     targets,
     metrics,
-    is_soft,
+    is_soft_dataset,
     save_prefix,
     output_dir,
     args,
-    upstream_is_soft=None,
+    is_soft_upstream_dataset=None,
 ):
     metrics |= evaluate_on_correctness_prediction(
         estimates=estimates,
         targets=targets,
-        is_soft=is_soft,
+        is_soft_dataset=is_soft_dataset,
         args=args,
-        upstream_is_soft=upstream_is_soft,
+        is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
     metrics |= evaluate_on_abstained_prediction(
         estimates=estimates,
         targets=targets,
-        is_soft=is_soft,
+        is_soft_dataset=is_soft_dataset,
         args=args,
-        upstream_is_soft=upstream_is_soft,
+        is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
 
-    is_mixed = upstream_is_soft is not None
-    if is_mixed:
+    is_mixed_eval = is_soft_upstream_dataset is not None
+    if is_mixed_eval:
         metrics |= evaluate_on_ood_detection(
             estimates=estimates,
             targets=targets,
@@ -436,16 +436,16 @@ def evaluate_on_tasks(
         estimates=estimates,
         log_probs=log_probs,
         targets=targets,
-        is_soft=is_soft,
+        is_soft_dataset=is_soft_dataset,
         args=args,
-        upstream_is_soft=upstream_is_soft,
+        is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
     metrics |= evaluate_on_bregman(
         estimates=estimates,
         targets=targets,
-        is_soft=is_soft,
+        is_soft_dataset=is_soft_dataset,
         args=args,
-        upstream_is_soft=upstream_is_soft,
+        is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
     metrics |= evaluate_on_correlation_of_estimators(
         model=model,
@@ -453,16 +453,16 @@ def evaluate_on_tasks(
         output_dir=output_dir,
         save_prefix=save_prefix,
         args=args,
-        upstream_is_soft=upstream_is_soft,
+        is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
     metrics |= evaluate_on_correlation_of_decompositions(
         estimates=estimates,
         targets=targets,
-        is_soft=is_soft,
+        is_soft_dataset=is_soft_dataset,
         output_dir=output_dir,
         save_prefix=save_prefix,
         args=args,
-        upstream_is_soft=upstream_is_soft,
+        is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
 
     return metrics
@@ -471,19 +471,19 @@ def evaluate_on_tasks(
 def evaluate_on_correctness_prediction(
     estimates,
     targets,
-    is_soft,
+    is_soft_dataset,
     args,
-    upstream_is_soft,
+    is_soft_upstream_dataset,
 ):
-    is_mixed = upstream_is_soft is not None
+    is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For correctness prediction, one of the datasets being soft is enough
-    if is_mixed:
-        is_soft = is_soft or upstream_is_soft
+    if is_mixed_eval:
+        is_soft_dataset = is_soft_dataset or is_soft_upstream_dataset
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed else ""
+    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
     gt_hard_bma_correctnesses_original = targets["gt_hard_bma_correctnesses_original"]
@@ -560,7 +560,7 @@ def evaluate_on_correctness_prediction(
         targets["gt_hard_bma_correctnesses_top5"].float().mean().item()
     )
 
-    if is_soft:
+    if is_soft_dataset:
         metrics[f"{key_prefix}soft_fbar_accuracy"] = (
             targets["gt_soft_fbar_correctnesses"].mean().item()
         )
@@ -585,19 +585,19 @@ def evaluate_on_correctness_prediction(
 def evaluate_on_abstained_prediction(
     estimates,
     targets,
-    is_soft,
+    is_soft_dataset,
     args,
-    upstream_is_soft,
+    is_soft_upstream_dataset,
 ):
-    is_mixed = upstream_is_soft is not None
+    is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For correctness of prediction, one of the datasets being soft is enough
-    if is_mixed:
-        is_soft = is_soft or upstream_is_soft
+    if is_mixed_eval:
+        is_soft_dataset = is_soft_dataset or is_soft_upstream_dataset
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed else ""
+    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
     gt_hard_fbar_correctnesses = targets["gt_hard_fbar_correctnesses"]
@@ -613,7 +613,7 @@ def evaluate_on_abstained_prediction(
     ]
     gt_hard_bma_correctnesses_top5 = targets["gt_hard_bma_correctnesses_top5"]
 
-    if is_soft:
+    if is_soft_dataset:
         gt_soft_fbar_correctnesses = targets["gt_soft_fbar_correctnesses"]
         gt_soft_bma_correctnesses = targets["gt_soft_bma_correctnesses"]
 
@@ -871,7 +871,7 @@ def evaluate_on_abstained_prediction(
             estimate, gt_hard_bma_correctnesses_top5, accuracy=0.99
         ).item()
 
-        if is_soft:
+        if is_soft_dataset:
             metrics[f"{key_prefix}{estimator_name}_soft_fbar_aurc"] = (
                 area_under_risk_coverage_curve(
                     estimate, gt_soft_fbar_correctnesses
@@ -1018,19 +1018,19 @@ def evaluate_on_proper_scoring_and_calibration(
     estimates,
     log_probs,
     targets,
-    is_soft,
+    is_soft_dataset,
     args,
-    upstream_is_soft,
+    is_soft_upstream_dataset,
 ):
-    is_mixed = upstream_is_soft is not None
+    is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For proper scoring and calibration, one of the datasets being soft is enough
-    if is_mixed:
-        is_soft = is_soft or upstream_is_soft
+    if is_mixed_eval:
+        is_soft_dataset = is_soft_dataset or is_soft_upstream_dataset
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed else ""
+    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     # Proper scoring and calibration for correctness of prediction
     correctness_estimator_names = [
@@ -1059,7 +1059,7 @@ def evaluate_on_proper_scoring_and_calibration(
     ]
     gt_hard_bma_correctnesses_top5 = targets["gt_hard_bma_correctnesses_top5"]
 
-    if is_soft:
+    if is_soft_dataset:
         gt_soft_fbar_correctnesses = targets["gt_soft_fbar_correctnesses"]
         gt_soft_bma_correctnesses = targets["gt_soft_bma_correctnesses"]
 
@@ -1256,7 +1256,7 @@ def evaluate_on_proper_scoring_and_calibration(
             ).item()
         )
 
-        if is_soft:
+        if is_soft_dataset:
             metrics[
                 f"{key_prefix}{estimator_name}_log_prob_score_soft_fbar_correctness"
             ] = binary_log_probability(estimate, gt_soft_fbar_correctnesses).item()
@@ -1383,7 +1383,7 @@ def evaluate_on_proper_scoring_and_calibration(
         log_probs["log_bmas"], gt_hard_labels, is_soft_targets=False
     ).item()
 
-    if is_soft:
+    if is_soft_dataset:
         gt_soft_labels = targets["gt_soft_labels"]
 
         metrics[f"{key_prefix}log_prob_score_soft_fbar_aleatoric"] = (
@@ -1406,19 +1406,19 @@ def evaluate_on_proper_scoring_and_calibration(
 def evaluate_on_bregman(
     estimates,
     targets,
-    is_soft,
+    is_soft_dataset,
     args,
-    upstream_is_soft,
+    is_soft_upstream_dataset,
 ):
-    is_mixed = upstream_is_soft is not None
+    is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For Bregman, both datasets need to be soft
-    if is_mixed:
-        is_soft = is_soft and upstream_is_soft
+    if is_mixed_eval:
+        is_soft_dataset = is_soft_dataset and is_soft_upstream_dataset
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed else ""
+    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     gt_predictives_bregman_fbar = targets["gt_predictives_bregman_fbar"]
     gt_predictives_bregman_bma = targets["gt_predictives_bregman_bma"]
@@ -1426,11 +1426,11 @@ def evaluate_on_bregman(
     gt_total_predictives_bregman_fbar = targets["gt_total_predictives_bregman_fbar"]
     gt_total_predictives_bregman_bma = targets["gt_total_predictives_bregman_bma"]
 
-    if is_soft:
+    if is_soft_dataset:
         gt_biases_bregman_fbar = targets["gt_biases_bregman_fbar"]
         gt_biases_bregman_bma = targets["gt_biases_bregman_bma"]
 
-    if is_soft:
+    if is_soft_dataset:
         gt_aleatorics_bregman = targets["gt_aleatorics_bregman"]
         multi_label_indices = (gt_aleatorics_bregman > 0).int()
 
@@ -1449,7 +1449,7 @@ def evaluate_on_bregman(
             (estimate - gt_epistemics_bregman).abs().mean().item()
         )
 
-        if is_soft:
+        if is_soft_dataset:
             metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_au"] = (
                 spearmanr(estimate, gt_aleatorics_bregman).item()
             )
@@ -1504,7 +1504,7 @@ def evaluate_on_bregman(
             (estimate - gt_total_predictives_bregman_bma).abs().mean().item()
         )
 
-        if is_soft:
+        if is_soft_dataset:
             metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_b_fbar"] = (
                 spearmanr(estimate, gt_biases_bregman_fbar).item()
             )
@@ -1534,12 +1534,12 @@ def evaluate_on_correlation_of_estimators(
     output_dir,
     save_prefix,
     args,
-    upstream_is_soft,
+    is_soft_upstream_dataset,
 ):
     metrics = {}
 
-    is_mixed = upstream_is_soft is not None
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed else ""
+    is_mixed_eval = is_soft_upstream_dataset is not None
+    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     if isinstance(model, DDUWrapper):
         ddu_aleatoric = estimates["expected_entropies"]
@@ -1642,21 +1642,21 @@ def evaluate_on_correlation_of_estimators(
 def evaluate_on_correlation_of_decompositions(
     estimates,
     targets,
-    is_soft,
+    is_soft_dataset,
     output_dir,
     save_prefix,
     args,
-    upstream_is_soft,
+    is_soft_upstream_dataset,
 ):
-    is_mixed = upstream_is_soft is not None
+    is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For Bregman, both datasets need to be soft
-    if is_mixed:
-        is_soft = is_soft and upstream_is_soft
+    if is_mixed_eval:
+        is_soft_dataset = is_soft_dataset and is_soft_upstream_dataset
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed else ""
+    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     # Information-theoretical decomposition
     entropies_of_bma = estimates["entropies_of_bma"]
@@ -1727,17 +1727,17 @@ def evaluate_on_correlation_of_decompositions(
     gt_total_predictives_bregman_fbar = targets["gt_total_predictives_bregman_fbar"]
     gt_total_predictives_bregman_bma = targets["gt_total_predictives_bregman_bma"]
 
-    if is_soft:
+    if is_soft_dataset:
         gt_biases_bregman_fbar = targets["gt_biases_bregman_fbar"]
         gt_biases_bregman_bma = targets["gt_biases_bregman_bma"]
 
-    if is_soft:
+    if is_soft_dataset:
         gt_aleatorics_bregman = targets["gt_aleatorics_bregman"]
 
     gt_epistemics_bregman = targets["gt_epistemics_bregman"]
 
-    can_evaluate_au_eu = is_soft
-    can_evaluate_au_b = can_evaluate_au_pu = can_evaluate_b_pu = is_soft
+    can_evaluate_au_eu = is_soft_dataset
+    can_evaluate_au_b = can_evaluate_au_pu = can_evaluate_b_pu = is_soft_dataset
     can_evaluate_eu_b = can_evaluate_au_b
 
     if can_evaluate_au_eu:
@@ -1875,7 +1875,7 @@ def evaluate_on_correlation_of_decompositions(
 def forward_general_model_on_loader(
     model,
     loader,
-    is_soft,
+    is_soft_dataset,
     amp_autocast,
     device,
     storage_device,
@@ -1922,7 +1922,7 @@ def forward_general_model_on_loader(
             input = input.to(device)
             label = label.to(device)
 
-        if is_soft:
+        if is_soft_dataset:
             hard_label = label[:, -1]
             label = label[:, :-1]
 
@@ -2010,14 +2010,14 @@ def forward_general_model_on_loader(
             )
 
         # GT containers
-        if is_soft:
+        if is_soft_dataset:
             prob = label.float() / label.sum(dim=1, keepdim=True)  # Normalization
             prob = prob.to(storage_device)
             gt_aleatorics_bregman[indices] = entropy(prob)
 
         log_fbar = inference_dict["log_fbar"]
         log_bma = inference_dict["log_bma"]
-        if is_soft:
+        if is_soft_dataset:
             log_prob = prob.log()
             min_real = torch.finfo(log_prob.dtype).min
             log_prob = torch.clamp(log_prob, min=min_real)
@@ -2065,7 +2065,7 @@ def forward_general_model_on_loader(
 def forward_deep_ensemble_on_loader(
     model,
     loader,
-    is_soft,
+    is_soft_dataset,
     amp_autocast,
     device,
     storage_device,
@@ -2172,7 +2172,7 @@ def forward_deep_ensemble_on_loader(
         )
 
         # GT containers
-        if is_soft:
+        if is_soft_dataset:
             hard_label = label[:, -1]
             label = label[:, :-1]
 
@@ -2182,7 +2182,7 @@ def forward_deep_ensemble_on_loader(
 
         log_fbar = inference_dict["log_fbar"]
         log_bma = inference_dict["log_bma"]
-        if is_soft:
+        if is_soft_dataset:
             log_prob = prob.log()
             min_real = torch.finfo(log_prob.dtype).min
             log_prob = torch.clamp(log_prob, min=min_real)
@@ -2321,7 +2321,7 @@ def get_bundle(
     device,
     storage_device,
     amp_autocast,
-    is_soft,
+    is_soft_dataset,
     args,
 ):
     estimates = {}
@@ -2356,7 +2356,7 @@ def get_bundle(
 
     # Theoretical tasks
 
-    if is_soft:
+    if is_soft_dataset:
         gt_soft_labels = torch.empty(
             num_samples, model.num_classes, device=storage_device
         )
@@ -2498,7 +2498,7 @@ def get_bundle(
         forward_deep_ensemble_on_loader(
             model=model,
             loader=loader,
-            is_soft=is_soft,
+            is_soft_dataset=is_soft_dataset,
             amp_autocast=amp_autocast,
             device=device,
             storage_device=storage_device,
@@ -2534,7 +2534,7 @@ def get_bundle(
         forward_general_model_on_loader(
             model=model,
             loader=loader,
-            is_soft=is_soft,
+            is_soft_dataset=is_soft_dataset,
             amp_autocast=amp_autocast,
             device=device,
             storage_device=storage_device,
@@ -2574,12 +2574,12 @@ def get_bundle(
         )
 
     # Calculate correctness indicators
-    calc_correctnesses(log_probs, targets, is_soft)
+    calc_correctnesses(log_probs, targets, is_soft_dataset)
 
     # Extract averages from the AverageMeters
     extract_averages(times)
 
-    if is_soft:
+    if is_soft_dataset:
         remove_faulty_indices(estimates, log_probs, targets)
 
     return estimates, log_probs, targets, times

@@ -171,7 +171,7 @@ group.add_argument(
     help="Dataset test split ID/OOD (train/validation/test)",
 )
 group.add_argument(
-    "--is-evaluate-on-test-sets",
+    "--evaluate-on-test-sets",
     action="store_true",
     help="Evaluate model on the provided test sets",
 )
@@ -251,7 +251,7 @@ group.add_argument(
     help="Dropout probability in the MC-Dropout method",
 )
 group.add_argument(
-    "--is-filterwise-dropout",
+    "--use-filterwise-dropout",
     action="store_true",
     help="whether to use filterwise dropout in the MC-Dropout method",
 )
@@ -303,7 +303,7 @@ group.add_argument(
     help="Rank of low-rank covariance matrix part in the HET-XL method",
 )
 group.add_argument(
-    "--is-het",
+    "--use-het",
     action="store_true",
     help="Whether to use HET instead of HET-XL",
 )
@@ -355,7 +355,7 @@ group.add_argument(
     help="Number of output heads in the shallow ensemble method",
 )
 group.add_argument(
-    "--is-spectral-normalized",
+    "--use-spectral-normalization",
     action="store_true",
     help="Whether to use spectral normalization in the SNGP method",
 )
@@ -372,7 +372,7 @@ group.add_argument(
     help="Bound of the spectral norm in the SNGP method",
 )
 group.add_argument(
-    "--is-batch-norm-spectral-normalized",
+    "--use-spectral-normalized-batch-norm",
     action="store_true",
     help="Whether to use spectral normalization in batch norm",
 )
@@ -406,7 +406,7 @@ group.add_argument(
     help="Type of random feature in the SNGP method",
 )
 group.add_argument(
-    "--is-gp-input-normalized",
+    "--use-input-normalized-gp",
     action="store_true",
     help="Whether to normalize the GP's input in the SNGP method",
 )
@@ -432,29 +432,29 @@ group.add_argument(
     help="Input dimension to the GP (if > 0, use random projection)",
 )
 group.add_argument(
-    "--postnet-latent-dim",
+    "--latent-dim",
     type=int,
     default=6,
     help="Latent dimensionality in PostNet",
 )
 group.add_argument(
-    "--postnet-num-density-components",
+    "--num-density-components",
     type=int,
     default=6,
     help="Number of density components in PostNet's normalizing flow",
 )
 group.add_argument(
-    "--postnet-is-batched",
+    "--use-batched-flow",
     action="store_true",
     help="Whether the normalizing flow in PostNet is batched",
 )
 group.add_argument(
-    "--is-reset-classifier",
+    "--reset-classifier",
     action="store_true",
     help="Whether to reset the classifier layer before training",
 )
 group.add_argument(
-    "--is-temperature-scaled",
+    "--use-temperature-scaling",
     action="store_true",
     help="Whether to use temperature scaling for the Temperature and DDU methods",
 )
@@ -513,12 +513,12 @@ group.add_argument(
     ),
 )
 group.add_argument(
-    "--is-top5",
+    "--use-top5-correctness",
     action="store_true",
-    help="Whether to use top-5 accuracy to train the correctness prediction method",
+    help="Whether to use top-5 correctness to train the correctness prediction method",
 )
 group.add_argument(
-    "--is-detach",
+    "--detach-task-loss",
     action="store_true",
     help=(
         "Whether to detach the task loss before calculating the uncertainty loss in "

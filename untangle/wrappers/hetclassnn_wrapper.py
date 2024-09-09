@@ -22,7 +22,7 @@ class HetClassNNWrapper(DistributionalWrapper):
         self,
         model: nn.Module,
         dropout_probability: float,
-        is_filterwise_dropout: bool,
+        use_filterwise_dropout: bool,
         num_mc_samples: int,
         num_mc_samples_integral: int,
     ):
@@ -34,12 +34,12 @@ class HetClassNNWrapper(DistributionalWrapper):
         replace(
             model,
             "ReLU",
-            partial(ActivationDropout, dropout_probability, is_filterwise_dropout),
+            partial(ActivationDropout, dropout_probability, use_filterwise_dropout),
         )
         replace(
             model,
             "GELU",
-            partial(ActivationDropout, dropout_probability, is_filterwise_dropout),
+            partial(ActivationDropout, dropout_probability, use_filterwise_dropout),
         )
 
         self._log_var = nn.Linear(

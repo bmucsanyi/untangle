@@ -30,10 +30,10 @@ class DDUWrapper(TemperatureWrapper):
     def __init__(
         self,
         model: nn.Module,
-        is_spectral_normalized: bool,
+        use_spectral_normalization: bool,
         spectral_normalization_iteration: int,
         spectral_normalization_bound: float,
-        is_batch_norm_spectral_normalized: bool,
+        use_spectral_normalized_batch_norm: bool,
         use_tight_norm_for_pointwise_convs: bool,
     ):
         super().__init__(model, None)
@@ -42,7 +42,7 @@ class DDUWrapper(TemperatureWrapper):
         self.register_buffer("_gmm_covariance_matrix", None)
         self._gmm = None
 
-        if is_spectral_normalized:
+        if use_spectral_normalization:
             LSN = partial(
                 LinearSpectralNormalizer,
                 spectral_normalization_iteration=spectral_normalization_iteration,
@@ -84,7 +84,7 @@ class DDUWrapper(TemperatureWrapper):
                     target_parametrization=CSN,
                 )
 
-            if is_batch_norm_spectral_normalized:
+            if use_spectral_normalized_batch_norm:
                 replace(
                     model=model,
                     source_regex="BatchNorm2d",

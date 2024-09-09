@@ -14,7 +14,13 @@ class HETXLHead(nn.Module):
     """Classification head for the HET-XL method."""
 
     def __init__(
-        self, matrix_rank, num_mc_samples, num_features, temperature, classifier, is_het
+        self,
+        matrix_rank,
+        num_mc_samples,
+        num_features,
+        temperature,
+        classifier,
+        use_het,
     ):
         super().__init__()
         self._matrix_rank = matrix_rank
@@ -32,10 +38,10 @@ class HETXLHead(nn.Module):
 
         self._temperature = temperature
         self._classifier = classifier
-        self._is_het = is_het
+        self._use_het = use_het
 
     def forward(self, features):
-        if self._is_het:
+        if self._use_het:
             features = self._classifier(features)  # D = C
 
         # Shape variables
@@ -60,7 +66,7 @@ class HETXLHead(nn.Module):
 
         pre_logits = features.unsqueeze(1) + samples  # [B, S, D]
 
-        logits = self._classifier(pre_logits) if not self._is_het else pre_logits
+        logits = self._classifier(pre_logits) if not self._use_het else pre_logits
         logits_temperature = logits / self._temperature
 
         # TODO(bmucsanyi): https://github.com/google/edward2/blob/main/edward2/jax/nn/heteroscedastic_lib.py#L325
@@ -77,22 +83,22 @@ class HETXLWrapper(DistributionalWrapper):
         matrix_rank: int,
         num_mc_samples: int,
         temperature: float,
-        is_het: bool,
+        use_het: bool,
     ):
         super().__init__(model)
 
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
         self._temperature = temperature
-        self._is_het = is_het
+        self._use_het = use_het
 
         self._classifier = HETXLHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_features if not self._is_het else self.num_classes,
+            num_features=self.num_features if not self._use_het else self.num_classes,
             classifier=self.model.get_classifier(),
             temperature=self._temperature,
-            is_het=self._is_het,
+            use_het=self._use_het,
         )
 
     @torch.jit.ignore
@@ -104,7 +110,7 @@ class HETXLWrapper(DistributionalWrapper):
         matrix_rank: int | None = None,
         num_mc_samples: int | None = None,
         temperature: float | None = None,
-        is_het: bool | None = None,
+        use_het: bool | None = None,
         *args,
         **kwargs,
     ):
@@ -117,15 +123,15 @@ class HETXLWrapper(DistributionalWrapper):
         if temperature is not None:
             self._temperature = temperature
 
-        if is_het is not None:
-            self._is_het = is_het
+        if use_het is not None:
+            self._use_het = use_het
 
         self.model.reset_classifier(*args, **kwargs)
         self._classifier = HETXLHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_features if not self._is_het else self.num_classes,
+            num_features=self.num_features if not self._use_het else self.num_classes,
             classifier=self.model.get_classifier(),
             temperature=self._temperature,
-            is_het=self._is_het,
+            use_het=self._use_het,
         )

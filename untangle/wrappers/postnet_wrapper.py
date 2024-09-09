@@ -207,7 +207,7 @@ class PostNetWrapper(DirichletWrapper):
         latent_dim: int,
         hidden_dim: int,
         num_density_components: int,
-        is_batched: bool,
+        use_batched_flow: bool,
     ):
         super().__init__(model)
 
@@ -230,7 +230,7 @@ class PostNetWrapper(DirichletWrapper):
             nn.Linear(in_features=hidden_dim, out_features=self.num_classes),
         )
 
-        if is_batched:
+        if use_batched_flow:
             self._density_estimator = BatchedNormalizingFlowDensity(
                 c=self.num_classes,
                 dim=self._latent_dim,

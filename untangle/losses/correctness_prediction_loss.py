@@ -14,20 +14,20 @@ class CorrectnessPredictionLoss(nn.Module):
     Args:
         lambda_uncertainty_loss (float): The weight factor for the uncertainty loss
             component.
-        is_top5 (bool): If True, uses top-5 accuracy for correctness calculation.
+        use_top5_correctness (bool): If True, uses top-5 correctness.
             Otherwise, uses top-1.
     """
 
     def __init__(
         self,
         lambda_uncertainty_loss,
-        is_top5,
+        use_top5_correctness,
     ):
         super().__init__()
         self.task_loss = nn.CrossEntropyLoss(reduction="none")
         self.uncertainty_loss = nn.BCEWithLogitsLoss()
         self.lambda_uncertainty_loss = lambda_uncertainty_loss
-        self.is_top5 = is_top5
+        self.use_top5_correctness = use_top5_correctness
 
     def forward(
         self,
@@ -38,7 +38,7 @@ class CorrectnessPredictionLoss(nn.Module):
 
         task_loss_per_sample = self.task_loss(prediction, target)
 
-        if self.is_top5:
+        if self.use_top5_correctness:
             _, prediction_argmax_top5 = torch.topk(prediction, 5, dim=1)
             expanded_gt_hard_labels = target.unsqueeze(dim=1).expand_as(
                 prediction_argmax_top5

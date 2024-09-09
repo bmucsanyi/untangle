@@ -16,10 +16,10 @@ from untangle.wrappers.model_wrapper import DistributionalWrapper
 class ActivationDropout(nn.Module):
     """Activation function followed by Dropout."""
 
-    def __init__(self, dropout_probability, is_filterwise_dropout, activation):
+    def __init__(self, dropout_probability, use_filterwise_dropout, activation):
         super().__init__()
         self._activation = activation
-        dropout_function = F.dropout2d if is_filterwise_dropout else F.dropout
+        dropout_function = F.dropout2d if use_filterwise_dropout else F.dropout
         self._dropout = partial(dropout_function, p=dropout_probability, training=True)
 
     def forward(self, inputs):
@@ -35,7 +35,7 @@ class MCDropoutWrapper(DistributionalWrapper):
         self,
         model: nn.Module,
         dropout_probability: float,
-        is_filterwise_dropout: bool,
+        use_filterwise_dropout: bool,
         num_mc_samples: int,
     ):
         super().__init__(model)
@@ -45,12 +45,12 @@ class MCDropoutWrapper(DistributionalWrapper):
         replace(
             model,
             "ReLU",
-            partial(ActivationDropout, dropout_probability, is_filterwise_dropout),
+            partial(ActivationDropout, dropout_probability, use_filterwise_dropout),
         )
         replace(
             model,
             "GELU",
-            partial(ActivationDropout, dropout_probability, is_filterwise_dropout),
+            partial(ActivationDropout, dropout_probability, use_filterwise_dropout),
         )
 
     def forward(self, inputs):

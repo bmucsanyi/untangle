@@ -21,7 +21,7 @@ def create_transform(
     input_size,
     dataset_name,
     padding,
-    is_training,
+    is_training_dataset,
     use_prefetcher,
     scale,
     ratio,
@@ -34,13 +34,13 @@ def create_transform(
     ood_transform_type,
     severity,
 ):
-    if is_training and ood_transform_type is not None and severity > 0:
+    if is_training_dataset and ood_transform_type is not None and severity > 0:
         msg = "OOD transformations cannot be applied during training."
         raise ValueError(msg)
 
     img_size = input_size[-2:]
 
-    if is_training:
+    if is_training_dataset:
         if "imagenet" in dataset_name:
             transform = transforms_imagenet_train(
                 img_size=img_size,
