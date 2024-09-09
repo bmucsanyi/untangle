@@ -24,7 +24,7 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 
-def is_pred_correct(output, target):
+def is_correct_pred(output, target):
     """Computes whether each target label is the top-1 prediction of the output."""
     _, pred = output.topk(k=1, dim=1, largest=True, sorted=True)
     pred = pred.flatten()
@@ -318,16 +318,22 @@ def auroc(y_true, y_score):
         torch.tensor([y_true.numel() - 1], device=y_score.device),
     ])
 
-    tps = torch.cumsum(y_true, dim=0)[threshold_idxs]
-    fps = 1 + threshold_idxs - tps
+    true_positives = torch.cumsum(y_true, dim=0)[threshold_idxs]
+    false_positives = 1 + threshold_idxs - true_positives
 
-    tps = torch.cat([torch.tensor([0], device=tps.device), tps])
-    fps = torch.cat([torch.tensor([0], device=fps.device), fps])
+    true_positives = torch.cat([
+        torch.tensor([0], device=true_positives.device),
+        true_positives,
+    ])
+    false_positives = torch.cat([
+        torch.tensor([0], device=false_positives.device),
+        false_positives,
+    ])
 
-    if fps[-1] <= 0 or tps[-1] <= 0:
+    if false_positives[-1] <= 0 or true_positives[-1] <= 0:
         return torch.nan
 
-    fpr = fps / fps[-1]
-    tpr = tps / tps[-1]
+    false_positive_rate = false_positives / false_positives[-1]
+    true_positive_rate = true_positives / true_positives[-1]
 
-    return torch.trapz(tpr, fpr)
+    return torch.trapz(true_positive_rate, false_positive_rate)

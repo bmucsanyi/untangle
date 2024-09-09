@@ -30,7 +30,7 @@ class GPOutputLayer(nn.Module):
         gp_kernel_scale,
         gp_output_bias,
         gp_random_feature_type,
-        is_gp_input_normalized,
+        use_input_normalized_gp,
         gp_cov_momentum,
         gp_cov_ridge_penalty,
     ):
@@ -39,7 +39,7 @@ class GPOutputLayer(nn.Module):
         self._num_random_features = num_random_features
         self._num_mc_samples = num_mc_samples
 
-        self._is_gp_input_normalized = is_gp_input_normalized
+        self._use_input_normalized_gp = use_input_normalized_gp
         self._gp_input_scale = (
             1 / gp_kernel_scale**0.5 if gp_kernel_scale is not None else None
         )
@@ -70,7 +70,7 @@ class GPOutputLayer(nn.Module):
             nn.init.uniform_, a=0, b=2 * torch.pi
         )
 
-        if self._is_gp_input_normalized:
+        if self._use_input_normalized_gp:
             self._input_norm_layer = nn.LayerNorm(num_features)
 
         self._random_feature = self._make_random_feature_layer(num_features)
@@ -126,7 +126,7 @@ class GPOutputLayer(nn.Module):
 
     def forward(self, gp_inputs):
         # Computes random features.
-        if self._is_gp_input_normalized:
+        if self._use_input_normalized_gp:
             gp_inputs = self._input_norm_layer(gp_inputs)
         elif self._gp_input_scale is not None:
             # Supports lengthscale for custom random feature layer by directly
@@ -224,7 +224,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         # Boolean flag to indicate whether to update the covariance matrix (i.e.,
         # by inverting the newly updated precision matrix) during inference.
-        self._is_update_covariance = False
+        self._update_covariance = False
 
     def reset_precision_matrix(self):
         """Resets precision matrix to its initial value.
@@ -261,7 +261,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
             self._precision_matrix.copy_(precision_matrix_updated)
 
             # Enables covariance update in the next inference call.
-            self._is_update_covariance = True
+            self._update_covariance = True
 
             # Return null estimate during training.
             return torch.eye(batch_size, device=inputs.device)
@@ -274,7 +274,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # Disable covariance update in future inference calls (to avoid the
         # expensive torch.linalg.inv op) unless there are new update to precision
         # matrix.
-        self._is_update_covariance = False
+        self._update_covariance = False
 
         return self._compute_predictive_covariance(gp_feature=inputs)
 
@@ -302,12 +302,12 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         return precision_matrix_new
 
     def _update_feature_covariance_matrix(self):
-        """Computes the feature covariance if self.is_update_covariance=True.
+        """Computes the feature covariance if self.update_covariance=True.
 
         GP layer computes the covariance matrix of the random feature coefficient
         by inverting the precision matrix. Since this inversion op is expensive,
         we will invoke it only when there is new update to the precision matrix
-        (where self.is_update_covariance will be flipped to `True`.).
+        (where self.update_covariance will be flipped to `True`.).
 
         Returns:
         The updated covariance_matrix.
@@ -316,8 +316,8 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         covariance_matrix = self._covariance_matrix
         gp_feature_dim = precision_matrix.shape[0]
 
-        # Compute covariance matrix update only when `is_update_covariance = True`.
-        if self._is_update_covariance:
+        # Compute covariance matrix update only when `update_covariance = True`.
+        if self._update_covariance:
             covariance_matrix_updated = torch.linalg.inv(
                 self._ridge_penalty
                 * torch.eye(gp_feature_dim, device=precision_matrix.device)
@@ -934,17 +934,17 @@ class SNGPWrapper(DistributionalWrapper):
     def __init__(
         self,
         model: nn.Module,
-        is_spectral_normalized: bool,
+        use_spectral_normalization: bool,
         use_tight_norm_for_pointwise_convs: bool,
         spectral_normalization_iteration: int,
         spectral_normalization_bound: float,
-        is_batch_norm_spectral_normalized: bool,
+        use_spectral_normalized_batch_norm: bool,
         num_mc_samples: int,
         num_random_features: int,
         gp_kernel_scale: float,
         gp_output_bias: float,
         gp_random_feature_type: str,
-        is_gp_input_normalized: bool,
+        use_input_normalized_gp: bool,
         gp_cov_momentum: float,
         gp_cov_ridge_penalty: float,
         gp_input_dim: int,
@@ -956,7 +956,7 @@ class SNGPWrapper(DistributionalWrapper):
         self._gp_kernel_scale = gp_kernel_scale
         self._gp_output_bias = gp_output_bias
         self._gp_random_feature_type = gp_random_feature_type
-        self._is_gp_input_normalized = is_gp_input_normalized
+        self._use_input_normalized_gp = use_input_normalized_gp
         self._gp_cov_momentum = gp_cov_momentum
         self._gp_cov_ridge_penalty = gp_cov_ridge_penalty
         self._gp_input_dim = gp_input_dim
@@ -985,7 +985,7 @@ class SNGPWrapper(DistributionalWrapper):
             gp_kernel_scale=self._gp_kernel_scale,
             gp_output_bias=self._gp_output_bias,
             gp_random_feature_type=self._gp_random_feature_type,
-            is_gp_input_normalized=self._is_gp_input_normalized,
+            use_input_normalized_gp=self._use_input_normalized_gp,
             gp_cov_momentum=self._gp_cov_momentum,
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
         )
@@ -993,7 +993,7 @@ class SNGPWrapper(DistributionalWrapper):
 
         self._classifier = classifier
 
-        if is_spectral_normalized:
+        if use_spectral_normalization:
             LSN = partial(
                 LinearSpectralNormalizer,
                 spectral_normalization_iteration=spectral_normalization_iteration,
@@ -1035,7 +1035,7 @@ class SNGPWrapper(DistributionalWrapper):
                     target_parametrization=CSN,
                 )
 
-            if is_batch_norm_spectral_normalized:
+            if use_spectral_normalized_batch_norm:
                 replace(
                     model=model,
                     source_regex="BatchNorm2d",
@@ -1053,7 +1053,7 @@ class SNGPWrapper(DistributionalWrapper):
         gp_kernel_scale: float | None = None,
         gp_output_bias: float | None = None,
         gp_random_feature_type: str | None = None,
-        is_gp_input_normalized: bool | None = None,
+        use_input_normalized_gp: bool | None = None,
         gp_cov_momentum: float | None = None,
         gp_cov_ridge_penalty: float | None = None,
         gp_input_dim: int | None = None,
@@ -1075,8 +1075,8 @@ class SNGPWrapper(DistributionalWrapper):
         if gp_random_feature_type is not None:
             self._gp_random_feature_type = gp_random_feature_type
 
-        if is_gp_input_normalized is not None:
-            self._is_gp_input_normalized = is_gp_input_normalized
+        if use_input_normalized_gp is not None:
+            self._use_input_normalized_gp = use_input_normalized_gp
 
         if gp_cov_momentum is not None:
             self._gp_cov_momentum = gp_cov_momentum
@@ -1113,7 +1113,7 @@ class SNGPWrapper(DistributionalWrapper):
             gp_kernel_scale=self._gp_kernel_scale,
             gp_output_bias=self._gp_output_bias,
             gp_random_feature_type=self._gp_random_feature_type,
-            is_gp_input_normalized=self._is_gp_input_normalized,
+            use_input_normalized_gp=self._use_input_normalized_gp,
             gp_cov_momentum=self._gp_cov_momentum,
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
         )

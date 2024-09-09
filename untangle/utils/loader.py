@@ -29,11 +29,11 @@ class PrefetchLoader:
         self.std = torch.tensor(
             [x * 255 for x in std], device=device, dtype=torch.float32
         ).view(normalization_shape)
-        self.is_cuda = torch.cuda.is_available() and device.type == "cuda"
+        self.has_cuda = torch.cuda.is_available() and device.type == "cuda"
 
     def __iter__(self):
         first = True
-        if self.is_cuda:
+        if self.has_cuda:
             stream = torch.cuda.Stream()
             stream_context = partial(torch.cuda.stream, stream=stream)
         else:
@@ -82,7 +82,7 @@ class PrefetchLoader:
 def create_loader(
     dataset,
     batch_size,
-    is_training,
+    is_training_dataset,
     use_prefetcher,
     mean,
     std,
@@ -99,11 +99,11 @@ def create_loader(
     loader = torch.utils.data.DataLoader(
         dataset=dataset,
         batch_size=batch_size,
-        shuffle=is_training,
+        shuffle=is_training_dataset,
         num_workers=num_workers,
         collate_fn=collate_fn,
         pin_memory=pin_memory,
-        drop_last=is_training,
+        drop_last=is_training_dataset,
         persistent_workers=persistent_workers,
     )
 

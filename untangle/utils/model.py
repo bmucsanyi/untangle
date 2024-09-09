@@ -81,7 +81,7 @@ def create_model(
 def wrap_model(  # noqa: C901
     model,
     model_wrapper_name,
-    is_reset_classifier,
+    reset_classifier,
     weight_paths,
     num_hidden_features,
     mlp_depth,
@@ -90,14 +90,14 @@ def wrap_model(  # noqa: C901
     module_type,
     module_name_regex,
     dropout_probability,
-    is_filterwise_dropout,
+    use_filterwise_dropout,
     num_mc_samples,
     num_mc_samples_integral,
     num_mc_samples_cv,
     rbf_length_scale,
     ema_momentum,
     matrix_rank,
-    is_het,
+    use_het,
     temperature,
     pred_type,
     hessian_structure,
@@ -105,26 +105,26 @@ def wrap_model(  # noqa: C901
     max_rank,
     magnitude,
     num_heads,
-    is_spectral_normalized,
+    use_spectral_normalization,
     spectral_normalization_iteration,
     spectral_normalization_bound,
-    is_batch_norm_spectral_normalized,
+    use_spectral_normalized_batch_norm,
     use_tight_norm_for_pointwise_convs,
     num_random_features,
     gp_kernel_scale,
     gp_output_bias,
     gp_random_feature_type,
-    is_gp_input_normalized,
+    use_input_normalized_gp,
     gp_cov_momentum,
     gp_cov_ridge_penalty,
     gp_input_dim,
-    postnet_latent_dim,
-    postnet_num_density_components,
-    postnet_is_batched,
+    latent_dim,
+    num_density_components,
+    use_batched_flow,
     edl_activation,
     checkpoint_path,
 ):
-    if is_reset_classifier:
+    if reset_classifier:
         model.reset_classifier(model.num_classes)
 
     if model_wrapper_name == "correctness-prediction":
@@ -157,7 +157,7 @@ def wrap_model(  # noqa: C901
         wrapped_model = MCDropoutWrapper(
             model=model,
             dropout_probability=dropout_probability,
-            is_filterwise_dropout=is_filterwise_dropout,
+            use_filterwise_dropout=use_filterwise_dropout,
             num_mc_samples=num_mc_samples,
         )
     elif model_wrapper_name == "duq":
@@ -170,10 +170,10 @@ def wrap_model(  # noqa: C901
     elif model_wrapper_name == "ddu":
         wrapped_model = DDUWrapper(
             model=model,
-            is_spectral_normalized=is_spectral_normalized,
+            use_spectral_normalization=use_spectral_normalization,
             spectral_normalization_iteration=spectral_normalization_iteration,
             spectral_normalization_bound=spectral_normalization_bound,
-            is_batch_norm_spectral_normalized=is_batch_norm_spectral_normalized,
+            use_spectral_normalized_batch_norm=use_spectral_normalized_batch_norm,
             use_tight_norm_for_pointwise_convs=use_tight_norm_for_pointwise_convs,
         )
     elif model_wrapper_name == "het-xl":
@@ -182,7 +182,7 @@ def wrap_model(  # noqa: C901
             matrix_rank=matrix_rank,
             num_mc_samples=num_mc_samples,
             temperature=temperature,
-            is_het=is_het,
+            use_het=use_het,
         )
     elif model_wrapper_name == "laplace":
         wrapped_model = LaplaceWrapper(
@@ -213,7 +213,7 @@ def wrap_model(  # noqa: C901
         wrapped_model = HetClassNNWrapper(
             model=model,
             dropout_probability=dropout_probability,
-            is_filterwise_dropout=is_filterwise_dropout,
+            use_filterwise_dropout=use_filterwise_dropout,
             num_mc_samples=num_mc_samples,
             num_mc_samples_integral=num_mc_samples_integral,
         )
@@ -229,10 +229,10 @@ def wrap_model(  # noqa: C901
     elif model_wrapper_name == "postnet":
         wrapped_model = PostNetWrapper(
             model=model,
-            latent_dim=postnet_latent_dim,
+            latent_dim=latent_dim,
             hidden_dim=num_hidden_features,
-            num_density_components=postnet_num_density_components,
-            is_batched=postnet_is_batched,
+            num_density_components=num_density_components,
+            use_batched_flow=use_batched_flow,
         )
     elif model_wrapper_name == "deep-loss-prediction":
         wrapped_model = DeepLossPredictionWrapper(
@@ -249,17 +249,17 @@ def wrap_model(  # noqa: C901
     elif model_wrapper_name == "sngp":
         wrapped_model = SNGPWrapper(
             model=model,
-            is_spectral_normalized=is_spectral_normalized,
+            use_spectral_normalization=use_spectral_normalization,
             use_tight_norm_for_pointwise_convs=use_tight_norm_for_pointwise_convs,
             spectral_normalization_iteration=spectral_normalization_iteration,
             spectral_normalization_bound=spectral_normalization_bound,
-            is_batch_norm_spectral_normalized=is_batch_norm_spectral_normalized,
+            use_spectral_normalized_batch_norm=use_spectral_normalized_batch_norm,
             num_mc_samples=num_mc_samples,
             num_random_features=num_random_features,
             gp_kernel_scale=gp_kernel_scale,
             gp_output_bias=gp_output_bias,
             gp_random_feature_type=gp_random_feature_type,
-            is_gp_input_normalized=is_gp_input_normalized,
+            use_input_normalized_gp=use_input_normalized_gp,
             gp_cov_momentum=gp_cov_momentum,
             gp_cov_ridge_penalty=gp_cov_ridge_penalty,
             gp_input_dim=gp_input_dim,

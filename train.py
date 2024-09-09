@@ -226,9 +226,9 @@ def train(
                 amp_autocast=amp_autocast,
                 key_prefix="id_eval",
                 output_dir=output_dir,
-                is_upstream=True,
-                is_test=False,
-                is_soft="soft" in args.dataset_id,
+                is_upstream_dataset=True,
+                is_test_dataset=False,
+                is_soft_dataset="soft" in args.dataset_id,
                 args=args,
             )
             accuracy_key = "id_eval_hard_bma_accuracy_original"
@@ -361,7 +361,7 @@ def main():
     model = wrap_model(
         model=model,
         model_wrapper_name=args.method_name,
-        is_reset_classifier=args.is_reset_classifier,
+        reset_classifier=args.reset_classifier,
         weight_paths=args.weight_paths,
         num_hidden_features=args.num_hidden_features,
         mlp_depth=args.mlp_depth,
@@ -370,14 +370,14 @@ def main():
         module_type=args.module_type,
         module_name_regex=args.module_name_regex,
         dropout_probability=args.dropout_probability,
-        is_filterwise_dropout=args.is_filterwise_dropout,
+        use_filterwise_dropout=args.use_filterwise_dropout,
         num_mc_samples=args.num_mc_samples,
         num_mc_samples_integral=args.num_mc_samples_integral,
         num_mc_samples_cv=args.num_mc_samples_cv,
         rbf_length_scale=args.rbf_length_scale,
         ema_momentum=args.ema_momentum,
         matrix_rank=args.matrix_rank,
-        is_het=args.is_het,
+        use_het=args.use_het,
         temperature=args.temperature,
         pred_type=args.pred_type,
         hessian_structure=args.hessian_structure,
@@ -385,22 +385,22 @@ def main():
         max_rank=args.max_rank,
         magnitude=args.magnitude,
         num_heads=args.num_heads,
-        is_spectral_normalized=args.is_spectral_normalized,
+        use_spectral_normalization=args.use_spectral_normalization,
         spectral_normalization_iteration=args.spectral_normalization_iteration,
         spectral_normalization_bound=args.spectral_normalization_bound,
-        is_batch_norm_spectral_normalized=args.is_batch_norm_spectral_normalized,
+        use_spectral_normalized_batch_norm=args.use_spectral_normalized_batch_norm,
         use_tight_norm_for_pointwise_convs=args.use_tight_norm_for_pointwise_convs,
         num_random_features=args.num_random_features,
         gp_kernel_scale=args.gp_kernel_scale,
         gp_output_bias=args.gp_output_bias,
         gp_random_feature_type=args.gp_random_feature_type,
-        is_gp_input_normalized=args.is_gp_input_normalized,
+        use_input_normalized_gp=args.use_input_normalized_gp,
         gp_cov_momentum=args.gp_cov_momentum,
         gp_cov_ridge_penalty=args.gp_cov_ridge_penalty,
         gp_input_dim=args.gp_input_dim,
-        postnet_latent_dim=args.postnet_latent_dim,
-        postnet_num_density_components=args.postnet_num_density_components,
-        postnet_is_batched=args.postnet_is_batched,
+        latent_dim=args.latent_dim,
+        num_density_components=args.num_density_components,
+        use_batched_flow=args.use_batched_flow,
         edl_activation=args.edl_activation,
         checkpoint_path=args.initial_checkpoint_path,
     )
@@ -480,7 +480,7 @@ def main():
                     f"Best eval metric: {best_eval_metric} (epoch {best_epoch})."
                 )
 
-        if args.is_evaluate_on_test_sets:
+        if args.evaluate_on_test_sets:
             test(
                 num_epochs,
                 model,
@@ -521,9 +521,9 @@ def evaluate_on_test_sets(
         amp_autocast=amp_autocast,
         key_prefix="id_test",
         output_dir=output_dir,
-        is_upstream=True,
-        is_test=True,
-        is_soft="soft" in args.dataset_id,
+        is_upstream_dataset=True,
+        is_test_dataset=True,
+        is_soft_dataset="soft" in args.dataset_id,
         args=args,
     )
 
@@ -538,9 +538,9 @@ def evaluate_on_test_sets(
         amp_autocast=amp_autocast,
         key_prefix="ood_test",
         output_dir=output_dir,
-        is_upstream=False,
-        is_test=True,
-        is_soft="soft" in args.dataset_id,
+        is_upstream_dataset=False,
+        is_test_dataset=True,
+        is_soft_dataset="soft" in args.dataset_id,
         args=args,
     )
 
@@ -559,7 +559,7 @@ def create_datasets(args, data_config):
         subset=args.train_subset,
         input_size=data_config["input_size"],
         padding=args.padding,
-        is_training=True,
+        is_training_dataset=True,
         use_prefetcher=args.prefetcher,
         scale=args.scale,
         ratio=args.ratio,
@@ -592,7 +592,7 @@ def create_datasets(args, data_config):
         subset=1.0,
         input_size=data_config["input_size"],
         padding=args.padding,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         scale=args.scale,
         ratio=args.ratio,
@@ -617,7 +617,7 @@ def create_datasets(args, data_config):
         subset=1.0,
         input_size=data_config["input_size"],
         padding=args.padding,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         scale=args.scale,
         ratio=args.ratio,
@@ -642,7 +642,7 @@ def create_datasets(args, data_config):
         subset=1.0,
         input_size=data_config["input_size"],
         padding=args.padding,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         scale=args.scale,
         ratio=args.ratio,
@@ -671,7 +671,7 @@ def create_datasets(args, data_config):
         subset=1.0,
         input_size=data_config["input_size"],
         padding=args.padding,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         scale=args.scale,
         ratio=args.ratio,
@@ -701,7 +701,7 @@ def create_datasets(args, data_config):
                 subset=1.0,
                 input_size=data_config["input_size"],
                 padding=args.padding,
-                is_training=False,
+                is_training_dataset=False,
                 use_prefetcher=args.prefetcher,
                 scale=args.scale,
                 ratio=args.ratio,
@@ -739,7 +739,7 @@ def create_loaders(args, data_config, device):
     train_loader = create_loader(
         dataset=train_dataset,
         batch_size=args.batch_size,
-        is_training=True,
+        is_training_dataset=True,
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
@@ -752,7 +752,7 @@ def create_loaders(args, data_config, device):
     id_eval_loader = create_loader(
         dataset=id_eval_dataset,
         batch_size=args.validation_batch_size or args.batch_size,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
@@ -765,7 +765,7 @@ def create_loaders(args, data_config, device):
     hard_id_eval_loader = create_loader(
         dataset=hard_id_eval_dataset,
         batch_size=args.validation_batch_size or args.batch_size,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
@@ -778,7 +778,7 @@ def create_loaders(args, data_config, device):
     mixed_s2_eval_loader = create_loader(
         dataset=mixed_s2_eval_dataset,
         batch_size=args.validation_batch_size or args.batch_size,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
@@ -791,7 +791,7 @@ def create_loaders(args, data_config, device):
     id_test_loader = create_loader(
         dataset=id_test_dataset,
         batch_size=args.validation_batch_size or args.batch_size,
-        is_training=False,
+        is_training_dataset=False,
         use_prefetcher=args.prefetcher,
         mean=data_config["mean"],
         std=data_config["std"],
@@ -809,7 +809,7 @@ def create_loaders(args, data_config, device):
             ood_test_loaders[name][ood_transform_type] = create_loader(
                 dataset=dataset,
                 batch_size=args.validation_batch_size or args.batch_size,
-                is_training=False,
+                is_training_dataset=False,
                 use_prefetcher=args.prefetcher,
                 mean=data_config["mean"],
                 std=data_config["std"],
@@ -960,7 +960,7 @@ def update_post_hoc_method(
         torch.set_grad_enabled(mode=True)
     elif isinstance(model, DDUWrapper):
         model.fit_gmm(train_loader, args.max_num_id_train_samples)
-    elif isinstance(model, TemperatureWrapper) and args.is_temperature_scaled:
+    elif isinstance(model, TemperatureWrapper) and args.use_temperature_scaling:
         model.set_temperature_loader(hard_id_eval_loader)
     elif isinstance(model, SWAGWrapper):
         model.get_mc_samples(

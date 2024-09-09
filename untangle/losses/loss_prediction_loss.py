@@ -8,21 +8,21 @@ class LossPredictionLoss(nn.Module):
 
     Args:
         lambda_uncertainty_loss (float): Weight for the uncertainty loss component.
-        is_detach (bool): If True, detaches task loss when used as target for loss
-            prediction.
+        detach_task_loss (bool): If True, detaches task loss when used as target for
+            loss prediction.
     """
 
     def __init__(
         self,
         lambda_uncertainty_loss,
-        is_detach,
+        detach_task_loss,
     ):
         super().__init__()
 
         self.task_loss = nn.CrossEntropyLoss(reduction="none")
         self.uncertainty_loss = nn.MSELoss()
         self.lambda_uncertainty_loss = lambda_uncertainty_loss
-        self.is_detach = is_detach
+        self.detach_task_loss = detach_task_loss
 
     def forward(
         self,
@@ -33,7 +33,7 @@ class LossPredictionLoss(nn.Module):
 
         task_loss_per_sample = self.task_loss(prediction, target)
 
-        if self.is_detach:
+        if self.detach_task_loss:
             task_loss_target = task_loss_per_sample.detach()
         else:
             task_loss_target = task_loss_per_sample
