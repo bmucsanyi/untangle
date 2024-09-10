@@ -7,10 +7,10 @@ import torch
 from timm.models import create_model as create_timm_model
 
 from untangle.models import (
-    resnet50,
-    resnet_c_preact_28,
-    wide_resnet_c_28_10,
-    wide_resnet_c_preact_28_10,
+    resnet_50,
+    resnet_c_preact_26,
+    wide_resnet_c_26_10,
+    wide_resnet_c_preact_26_10,
 )
 from untangle.wrappers import (
     CEBaselineWrapper,
@@ -37,10 +37,10 @@ from untangle.wrappers import (
 logger = logging.getLogger(__name__)
 
 UNTANGLE_STR_TO_MODEL_CLASS = {
-    "resnet50": resnet50,
-    "wide_resnet_c_28_10": wide_resnet_c_28_10,
-    "wide_resnet_c_preact_28_10": wide_resnet_c_preact_28_10,
-    "resnet_c_preact_28": resnet_c_preact_28,
+    "resnet_50": resnet_50,
+    "wide_resnet_c_26_10": wide_resnet_c_26_10,
+    "wide_resnet_c_preact_26_10": wide_resnet_c_preact_26_10,
+    "resnet_c_preact_26": resnet_c_preact_26,
 }
 
 
@@ -64,7 +64,7 @@ def create_model(
             **model_kwargs,
         )
 
-        if model_name == "resnet50":
+        if model_name == "resnet_50":
             kwargs |= {"pretrained": pretrained, "pretrained_strict": pretrained_strict}
 
         model = UNTANGLE_STR_TO_MODEL_CLASS[model_name](**kwargs)
