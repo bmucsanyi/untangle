@@ -531,7 +531,7 @@ group = parser.add_argument_group("Model parameters")
 group.add_argument(
     "--model-name",
     type=str,
-    default="timm/resnet50",
+    default="timm/resnet_50",
     help="Name of model to train",
 )
 group.add_argument(
