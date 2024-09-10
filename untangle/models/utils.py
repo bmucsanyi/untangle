@@ -22,28 +22,34 @@ class FlattenAdaptiveAvgPool2d(nn.Module):
         return x
 
 
-class AvgPoolShortCut(nn.Module):
-    """Average pooling shortcut module used by the DDU method."""
+class PoolPad(nn.Module):
+    """Shortcut module with average/bed-of-nails pooling and padding."""
 
-    def __init__(self, stride, out_c, in_c):
+    def __init__(self, stride, in_channels, out_channels, downsample_type):
         super().__init__()
+
+        if downsample_type not in {"bed_of_nails_pad", "avg_pad"}:
+            msg = f"Invalid downsample_type '{downsample_type}' provided"
+            raise ValueError(msg)
+
         self.stride = stride
-        self.out_c = out_c
-        self.in_c = in_c
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = 1 if downsample_type == "bed_of_nails_pad" else self.stride
 
     def forward(self, x):
-        if x.shape[2] % 2 != 0:
-            x = F.avg_pool2d(x, 1, self.stride)
-        else:
-            x = F.avg_pool2d(x, self.stride, self.stride)
+        x = F.avg_pool2d(input=x, kernel_size=self.kernel_size, stride=self.stride)
         pad = torch.zeros(
-            x.shape[0],
-            self.out_c - self.in_c,
-            x.shape[2],
-            x.shape[3],
+            size=(
+                x.shape[0],
+                self.out_channels - self.in_channels,
+                x.shape[2],
+                x.shape[3],
+            ),
+            dtype=x.dtype,
             device=x.device,
         )
-        x = torch.cat((x, pad), dim=1)
+        x = torch.cat([x, pad], dim=1)
         return x
 
 
