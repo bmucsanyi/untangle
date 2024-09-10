@@ -35,8 +35,8 @@ def is_correct_pred(output, target):
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy for the specified k top predictions."""
-    maxk = min(max(topk), output.size()[1])
-    batch_size = target.size(0)
+    maxk = min(max(topk), output.shape[1])
+    batch_size = target.shape[0]
     _, pred = output.topk(maxk, 1, True, True)
     pred = pred.t()
     correct = pred.eq(target.reshape(1, -1).expand_as(pred))
