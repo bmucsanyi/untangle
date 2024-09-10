@@ -352,7 +352,6 @@ def main():
     model = create_model(
         model_name=args.model_name,
         pretrained=args.pretrained,
-        pretrained_strict=args.pretrained_strict,
         num_classes=args.num_classes,
         in_chans=data_config["input_size"][0],
         model_kwargs=args.model_kwargs,

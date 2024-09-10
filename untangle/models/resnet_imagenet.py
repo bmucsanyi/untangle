@@ -1,10 +1,14 @@
 """ImageNet ResNet implementation."""
 
+import logging
+
 import torch
 from huggingface_hub import hf_hub_download
 from torch import nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
+
+logger = logging.getLogger(__name__)
 
 
 def resnet_50(
@@ -14,7 +18,6 @@ def resnet_50(
     act_layer=nn.ReLU,
     *,
     pretrained=False,
-    pretrained_strict=True,
 ):
     """Constructs a ResNet-50 model."""
     model = ResNet(
@@ -27,6 +30,7 @@ def resnet_50(
     )
 
     if pretrained:
+        pretrained_strict = downsample_type == "conv"
         cached_file = hf_hub_download(
             "timm/resnet50.a1_in1k",
             filename="pytorch_model.bin",
@@ -35,7 +39,17 @@ def resnet_50(
             library_version="0.9.8dev0",
         )
         state_dict = torch.load(cached_file, map_location="cpu", weights_only=True)
-        model.load_state_dict(state_dict, strict=pretrained_strict)
+        mismatches = model.load_state_dict(state_dict, strict=pretrained_strict)
+
+        if mismatches.missing_keys:
+            logger.warning(
+                f"The following keys are missing: {mismatches.missing_keys}."
+            )
+
+        if mismatches.unexpected_keys:
+            logger.warning(
+                f"The following keys are unexpected: {mismatches.unexpected_keys}."
+            )
 
     return model
 

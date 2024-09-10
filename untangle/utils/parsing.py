@@ -546,14 +546,6 @@ group.add_argument(
     help="Start with pretrained version of specified network (if available)",
 )
 group.add_argument(
-    "--pretrained-strict",
-    action="store_true",
-    help=(
-        "Whether to make the loading of pretrained weights strict "
-        "for 'untangle' models"
-    ),
-)
-group.add_argument(
     "--initial-checkpoint-path",
     type=Path,
     default=None,

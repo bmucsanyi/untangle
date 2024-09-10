@@ -48,9 +48,7 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
 }
 
 
-def create_model(
-    model_name, pretrained, pretrained_strict, num_classes, in_chans, model_kwargs
-):
+def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
     prefix, model_name = model_name.split("/")
 
     if prefix == "timm":
@@ -68,8 +66,8 @@ def create_model(
             **model_kwargs,
         )
 
-        if model_name == "resnet_50":
-            kwargs |= {"pretrained": pretrained, "pretrained_strict": pretrained_strict}
+        if model_name in {"resnet_fixup_50", "resnet_50"}:
+            kwargs["pretrained"] = pretrained
 
         model = UNTANGLE_STR_TO_MODEL_CLASS[model_name](**kwargs)
     else:
