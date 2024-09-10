@@ -85,7 +85,7 @@ class ConditionedRadial(Transform):
         h_prime = -(h**2)
         beta_h = beta[:, None] * h
 
-        self._cached_logDetJ = (x0.size(-1) - 1) * torch.log1p(beta_h) + torch.log1p(
+        self._cached_logDetJ = (x0.shape[-1] - 1) * torch.log1p(beta_h) + torch.log1p(
             beta_h + beta[:, None] * h_prime * r
         )
         return x + beta_h[:, :, None] * diff
@@ -154,7 +154,7 @@ class BatchedRadial(ConditionedRadial, TransformModule):
         return self._x0, self._alpha_prime, self._beta_prime
 
     def reset_parameters(self):
-        stdv = 1.0 / math.sqrt(self._x0.size(1))
+        stdv = 1.0 / math.sqrt(self._x0.shape[1])
         self._alpha_prime.data.uniform_(-stdv, stdv)
         self._beta_prime.data.uniform_(-stdv, stdv)
         self._x0.data.uniform_(-stdv, stdv)
@@ -191,8 +191,8 @@ class BatchedNormalizingFlowDensity(nn.Module):
     def log_prob(self, x):
         z, sum_log_jacobians = self.forward(x)
         log_prob_z = tdist.MultivariateNormal(
-            self._mean.repeat(z.size(1), 1, 1).permute(1, 0, 2),
-            self._cov.repeat(z.size(1), 1, 1, 1).permute(1, 0, 2, 3),
+            self._mean.repeat(z.shape[1], 1, 1).permute(1, 0, 2),
+            self._cov.repeat(z.shape[1], 1, 1, 1).permute(1, 0, 2, 3),
         ).log_prob(z)
         log_prob_x = log_prob_z + sum_log_jacobians  # [batch_size]
         return log_prob_x
