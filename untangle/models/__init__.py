@@ -1,6 +1,8 @@
 from .resnet_cifar import wide_resnet_c_26_10
+from .resnet_cifar_fixup import wide_resnet_c_fixup_26_10
 from .resnet_cifar_preact import resnet_c_preact_26, wide_resnet_c_preact_26_10
 from .resnet_imagenet import resnet_50
+from .resnet_imagenet_fixup import resnet_fixup_50
 from .utils import (
     BinaryClassifier,
     FlattenAdaptiveAvgPool2d,
@@ -15,6 +17,8 @@ __all__ = [
     "PoolPad",
     "resnet_50",
     "resnet_c_preact_26",
+    "resnet_fixup_50",
     "wide_resnet_c_26_10",
+    "wide_resnet_c_fixup_26_10",
     "wide_resnet_c_preact_26_10",
 ]
