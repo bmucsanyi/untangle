@@ -64,7 +64,7 @@ class BasicBlockCPreAct(nn.Module):
             planes, planes, kernel_size=3, stride=1, padding=1, bias=False
         )
 
-        self.downsample = nn.Identity()
+        self.downsample = None
         out_planes = self.expansion * planes
         if stride != 1 or in_planes != out_planes:
             if downsample_type == "conv":
@@ -84,11 +84,16 @@ class BasicBlockCPreAct(nn.Module):
                 )
 
     def forward(self, x):
-        downsample = self.downsample(x)
+        shortcut = x
+
         out = self.act1(self.bn1(x))
         out = self.conv1(out)
         out = self.conv2(self.act2(self.bn2(out)))
-        out += downsample
+
+        if self.downsample is not None:
+            shortcut = self.downsample(shortcut)
+
+        out += shortcut
         return out
 
 

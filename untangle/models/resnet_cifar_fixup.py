@@ -49,7 +49,7 @@ class BasicBlockCFixup(nn.Module):
         self.bias2b = nn.Parameter(torch.zeros(1))
         self.act2 = act_layer(inplace=True)
 
-        self.downsample = nn.Identity()
+        self.downsample = None
         out_planes = self.expansion * planes
         if stride != 1 or in_planes != out_planes:
             if downsample_type == "conv":
@@ -69,11 +69,17 @@ class BasicBlockCFixup(nn.Module):
                 )
 
     def forward(self, x):
+        shortcut = x
+
         out = self.conv1(x + self.bias1a)
         out = self.act1(out + self.bias1b)
         out = self.conv2(out + self.bias2a)
         out = out * self.scale + self.bias2b
-        out += self.downsample(x + self.bias1a)
+
+        if self.downsample is not None:
+            shortcut = self.downsample(shortcut + self.bias1a)
+
+        out += shortcut
         out = self.act2(out)
         return out
 

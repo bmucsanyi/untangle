@@ -43,7 +43,7 @@ class BasicBlockC(nn.Module):
         self.bn2 = nn.BatchNorm2d(planes)
         self.act2 = act_layer(inplace=True)
 
-        self.downsample = nn.Identity()
+        self.downsample = None
         out_planes = self.expansion * planes
         if stride != 1 or in_planes != out_planes:
             if downsample_type == "conv":
@@ -66,9 +66,15 @@ class BasicBlockC(nn.Module):
                 )
 
     def forward(self, x):
+        shortcut = x
+
         out = self.act1(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        out += self.downsample(x)
+
+        if self.downsample is not None:
+            shortcut = self.downsample(shortcut)
+
+        out += shortcut
         out = self.act2(out)
         return out
 
