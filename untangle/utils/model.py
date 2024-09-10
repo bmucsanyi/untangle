@@ -9,8 +9,10 @@ from timm.models import create_model as create_timm_model
 from untangle.models import (
     resnet_50,
     resnet_c_preact_26,
+    resnet_fixup_50,
     simple_convnet_3_256,
     wide_resnet_c_26_10,
+    wide_resnet_c_fixup_26_10,
     wide_resnet_c_preact_26_10,
 )
 from untangle.wrappers import (
@@ -39,7 +41,9 @@ logger = logging.getLogger(__name__)
 
 UNTANGLE_STR_TO_MODEL_CLASS = {
     "resnet_50": resnet_50,
+    "resnet_fixup_50": resnet_fixup_50,
     "wide_resnet_c_26_10": wide_resnet_c_26_10,
+    "wide_resnet_c_fixup_26_10": wide_resnet_c_fixup_26_10,
     "wide_resnet_c_preact_26_10": wide_resnet_c_preact_26_10,
     "resnet_c_preact_26": resnet_c_preact_26,
     "simple_convnet_3_256": simple_convnet_3_256,
