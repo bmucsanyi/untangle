@@ -13,7 +13,7 @@ class FlattenAdaptiveAvgPool2d(nn.Module):
     ):
         super().__init__()
 
-        self.pool = nn.AdaptiveAvgPool2d()
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = nn.Flatten(start_dim=1)
 
     def forward(self, x):
