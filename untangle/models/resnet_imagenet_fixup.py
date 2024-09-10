@@ -207,6 +207,7 @@ class ResNetFixup(nn.Module):
             block_repeats=layers,
             in_planes=in_planes,
             downsample_type=downsample_type,
+            act_layer=act_layer,
         )
         for stage in stage_modules:
             self.add_module(*stage)  # layer1, layer2, etc
