@@ -1,19 +1,22 @@
-"""CIFAR (Wide-)ResNet implementation using the pre-activation variant."""
+"""CIFAR (Wide-)ResNet Fixup implementation."""
 
+import math
+
+import torch
 from torch import nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
 
 
-def wide_resnet_c_preact_26_10(
+def wide_resnet_c_fixup_26_10(
     num_classes=10,
     in_chans=3,
     downsample_type="conv",
     act_layer=nn.ReLU,
 ):
-    """Constructs a WideResNet-28-10 model."""
-    model = ResNetCPreAct(
-        block_fn=BasicBlockCPreAct,
+    """Constructs a WideResNet-Fixup-26-10 model."""
+    model = ResNetCFixup(
+        block_fn=BasicBlockCFixup,
         depth=26,
         width_multiplier=10,
         num_classes=num_classes,
@@ -25,44 +28,26 @@ def wide_resnet_c_preact_26_10(
     return model
 
 
-def resnet_c_preact_26(
-    num_classes=10,
-    in_chans=3,
-    downsample_type="conv",
-    act_layer=nn.ReLU,
-):
-    """Constructs a ResNet-26 model."""
-    model = ResNetCPreAct(
-        block_fn=BasicBlockCPreAct,
-        depth=28,
-        width_multiplier=1,
-        num_classes=num_classes,
-        in_chans=in_chans,
-        downsample_type=downsample_type,
-        act_layer=act_layer,
-    )
-
-    return model
-
-
-class BasicBlockCPreAct(nn.Module):
-    """Pre-activation version of the BasicBlock for CIFAR ResNets."""
+class BasicBlockCFixup(nn.Module):
+    """BasicBlock for CIFAR Fixup ResNets."""
 
     expansion = 1
 
     def __init__(self, in_planes, planes, stride, act_layer, downsample_type):
         super().__init__()
-        self.bn1 = nn.BatchNorm2d(in_planes)
-        self.act1 = act_layer(inplace=True)
+        self.bias1a = nn.Parameter(torch.zeros(1))
         self.conv1 = nn.Conv2d(
             in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
         )
-
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.act2 = act_layer(inplace=True)
+        self.bias1b = nn.Parameter(torch.zeros(1))
+        self.act1 = act_layer(inplace=True)
+        self.bias2a = nn.Parameter(torch.zeros(1))
         self.conv2 = nn.Conv2d(
             planes, planes, kernel_size=3, stride=1, padding=1, bias=False
         )
+        self.scale = nn.Parameter(torch.ones(1))
+        self.bias2b = nn.Parameter(torch.zeros(1))
+        self.act2 = act_layer(inplace=True)
 
         self.downsample = None
         out_planes = self.expansion * planes
@@ -86,19 +71,21 @@ class BasicBlockCPreAct(nn.Module):
     def forward(self, x):
         shortcut = x
 
-        out = self.act1(self.bn1(x))
-        out = self.conv1(out)
-        out = self.conv2(self.act2(self.bn2(out)))
+        out = self.conv1(x + self.bias1a)
+        out = self.act1(out + self.bias1b)
+        out = self.conv2(out + self.bias2a)
+        out = out * self.scale + self.bias2b
 
         if self.downsample is not None:
-            shortcut = self.downsample(shortcut)
+            shortcut = self.downsample(shortcut + self.bias1a)
 
         out += shortcut
+        out = self.act2(out)
         return out
 
 
-class ResNetCPreAct(nn.Module):
-    """Pre-activation version of the CIFAR ResNet."""
+class ResNetCFixup(nn.Module):
+    """CIFAR Fixup ResNet."""
 
     def __init__(
         self,
@@ -111,20 +98,29 @@ class ResNetCPreAct(nn.Module):
         act_layer,
     ):
         super().__init__()
+
         self.in_planes = 16
         self.num_classes = num_classes
         self.num_features = 64 * block_fn.expansion * width_multiplier
         self.downsample_type = downsample_type
 
-        if (depth - 4) % 6 != 0:
-            msg = "Depth should be 6n+4 (e.g., 22, 34, 46, 58, 112, 1204)"
+        if (depth - 2) % 6 != 0:
+            msg = "Depth should be 6n+2 (e.g., 20, 32, 44, 56, 110, 1202)"
             raise ValueError(msg)
 
-        n = (depth - 4) // 6
+        n = (depth - 2) // 6
+        self.num_layers = 3 * n
+
+        if downsample_type not in {"conv", "bed_of_nails_pad", "avg_pad"}:
+            msg = f"Invalid option '{downsample_type}' provided"
+            raise ValueError(msg)
+        self.downsample_type = downsample_type
 
         self.conv1 = nn.Conv2d(
             in_chans, 16, kernel_size=3, stride=1, padding=1, bias=False
         )
+        self.bias1 = nn.Parameter(torch.zeros(1))
+        self.act1 = act_layer(inplace=True)
         self.layer1 = self.make_layer(
             block_fn, 16 * width_multiplier, n, stride=1, act_layer=act_layer
         )
@@ -134,10 +130,44 @@ class ResNetCPreAct(nn.Module):
         self.layer3 = self.make_layer(
             block_fn, 64 * width_multiplier, n, stride=2, act_layer=act_layer
         )
-        self.bn = nn.BatchNorm2d(self.num_features)
-        self.act = act_layer(inplace=True)
         self.global_pool = FlattenAdaptiveAvgPool2d()
+        self.bias2 = nn.Parameter(torch.zeros(1))
         self.fc = nn.Linear(self.num_features, self.num_classes)
+
+        self.init_weights()
+
+    def init_weights(self):
+        for module in self.modules():
+            if isinstance(module, BasicBlockCFixup):
+                weight1 = module.conv1.weight
+                base_std1 = math.sqrt(
+                    2 / (weight1.shape[0] * math.prod(weight1.shape[2:]))
+                )
+                multiplier = self.num_layers ** (-0.5)
+                nn.init.normal_(
+                    weight1,
+                    mean=0,
+                    std=base_std1 * multiplier,
+                )
+                nn.init.constant_(module.conv2.weight, 0.0)
+
+                if isinstance(module.downsample, nn.Conv2d):
+                    weight_downsample = module.downsample.weight
+                    std_downsample = math.sqrt(
+                        2
+                        / (
+                            weight_downsample.shape[0]
+                            * math.prod(weight_downsample.shape[2:])
+                        )
+                    )
+                    nn.init.normal_(
+                        weight_downsample,
+                        mean=0,
+                        std=std_downsample,
+                    )
+            elif isinstance(module, nn.Linear):
+                nn.init.constant_(module.weight, 0)
+                nn.init.constant_(module.bias, 0)
 
     def make_layer(self, block, planes, num_blocks, stride, act_layer):
         blocks = nn.Sequential(
@@ -149,7 +179,6 @@ class ResNetCPreAct(nn.Module):
                 downsample_type=self.downsample_type,
             )
         )
-
         self.in_planes = planes * block.expansion
 
         for _ in range(num_blocks - 1):
@@ -166,7 +195,7 @@ class ResNetCPreAct(nn.Module):
         return blocks
 
     def get_classifier(self, *, name_only=False):
-        return "fc" if name_only else self.fc
+        return "fc" if name_only else lambda x: self.fc(x + self.bias2)
 
     def reset_classifier(self, num_classes):
         self.num_classes = num_classes
@@ -174,18 +203,18 @@ class ResNetCPreAct(nn.Module):
 
     def forward_features(self, x):
         out = self.conv1(x)
+        out = self.act1(out + self.bias1)
+
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.layer3(out)
-        out = self.bn(out)
-        out = self.act(out)
 
         return out
 
     def forward_head(self, x, *, pre_logits: bool = False):
         out = self.global_pool(x)
 
-        return out if pre_logits else self.fc(out)
+        return out if pre_logits else self.fc(out + self.bias2)
 
     def forward(self, x):
         out = self.forward_features(x)
