@@ -41,15 +41,16 @@ class LaplaceWrapper(DistributionalWrapper):
         self._load_model()
 
     def perform_laplace_approximation(self, train_loader, val_loader):
-        self._laplace_model = Laplace(
-            self.model,
-            "classification",
-            subset_of_weights="last_layer",
-            hessian_structure=self._hessian_structure,
-        )
-        logger.info("Starting Laplace approximation.")
-        self._laplace_model.fit(train_loader)
-        logger.info("Laplace approximation done.")
+        with torch.enable_grad():
+            self._laplace_model = Laplace(
+                self.model,
+                "classification",
+                subset_of_weights="last_layer",
+                hessian_structure=self._hessian_structure,
+            )
+            logger.info("Starting Laplace approximation.")
+            self._laplace_model.fit(train_loader)
+            logger.info("Laplace approximation done.")
 
         logger.info("Starting prior precision optimization.")
         self._optimize_prior_precision_cv(
