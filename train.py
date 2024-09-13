@@ -12,6 +12,7 @@ from timm.optim import create_optimizer_v2
 from timm.scheduler import create_scheduler_v2
 
 from untangle.utils import (
+    REPARAMS,
     AverageMeter,
     CheckpointSaver,
     DefaultContext,
@@ -185,6 +186,7 @@ def train(
     optimizer,
     train_loss_fn,
     lr_scheduler,
+    reparam,
     train_loader,
     saver,
     amp_autocast,
@@ -201,6 +203,9 @@ def train(
     best_eval_metrics = None
     best_epoch = None
 
+    if args.reparam_at_training_start:
+        model.load_state_dict(reparam(model.state_dict())[0])
+
     for epoch in range(num_epochs):
         time_start_epoch = time.perf_counter()
         train_metrics = train_one_epoch(
@@ -209,6 +214,7 @@ def train(
             loader=train_loader,
             optimizer=optimizer,
             loss_fn=train_loss_fn,
+            reparam=reparam,
             args=args,
             device=device,
             lr_scheduler=lr_scheduler,
@@ -450,6 +456,7 @@ def main():
     )
 
     lr_scheduler, num_epochs = setup_scheduler(optimizer, train_loader, args)
+    reparam = partial(REPARAMS[args.reparam_type], conv_as_dense=args.conv_as_dense)
 
     time_end_setup = time.perf_counter()
     logger.info(f"Setup took {time_end_setup - time_start_setup} seconds.")
@@ -462,6 +469,7 @@ def main():
                 optimizer,
                 train_loss_fn,
                 lr_scheduler,
+                reparam,
                 train_loader,
                 saver,
                 amp_autocast,
@@ -835,6 +843,7 @@ def train_one_epoch(
     loader,
     optimizer,
     loss_fn,
+    reparam,
     args,
     device,
     lr_scheduler,
@@ -881,6 +890,10 @@ def train_one_epoch(
         if isinstance(model, DUQWrapper):
             input, target = model.prepare_data(input, target)
 
+        # Per-step reparam
+        if args.reparam_at_each_step:
+            model.load_state_dict(reparam(model.state_dict())[0])
+
         loss = forward(
             model=model,
             input=input,
@@ -914,6 +927,9 @@ def train_one_epoch(
         update_start_time = time_now
 
         if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
+            # Post-hoc reparam
+            if args.reparam_before_checkpoint:
+                model.load_state_dict(reparam(model.state_dict())[0])
             model.update_stats()
 
         if update_idx % args.log_interval == 0:
@@ -976,7 +992,10 @@ def forward(
     accumulation_steps,
 ):
     with amp_autocast():
-        output = model(input)
+        if isinstance(model, SNGPWrapper):
+            output = model(input, target)
+        else:
+            output = model(input)
         loss = loss_fn(output, target)
 
         if isinstance(model, DUQWrapper):
