@@ -178,6 +178,8 @@ ignore = [
     "PLR0912",
     "PLR0914",
     "PLR0914",
+    # In-place assigments are not always possible in torch
+    "PLR6104",
     # Assignments before return can emphasize the code's semantic structure
     "RET504",
     "S403",
