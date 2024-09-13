@@ -17,7 +17,7 @@ class NativeScaler:
         optimizer,
         need_update,
     ):
-        self._scaler.scale(loss).backward(create_graph=False)
+        self._scaler.scale(loss).backward()
         if need_update:
             self._scaler.step(optimizer)
             self._scaler.update()
