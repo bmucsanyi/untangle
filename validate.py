@@ -123,6 +123,7 @@ def flatten(results, key_prefix):
     return flattened_results
 
 
+@torch.no_grad()
 def evaluate(
     model,
     loader,
@@ -138,7 +139,6 @@ def evaluate(
     args,
 ):
     model.eval()
-    torch.set_grad_enabled(mode=False)
 
     estimates, log_probs, targets, times = get_bundle(
         model=model,
@@ -334,8 +334,6 @@ def evaluate(
     if key_prefix:
         for metric_name in list(metrics.keys()):
             metrics[f"{key_prefix}_{metric_name}"] = metrics.pop(metric_name)
-
-    torch.set_grad_enabled(mode=True)
 
     return metrics
 
