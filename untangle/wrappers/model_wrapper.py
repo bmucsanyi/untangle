@@ -33,11 +33,9 @@ class ModelWrapper(nn.Module):
         if pre_logits:
             return features
 
-        out = self.get_classifier()(features)
+        out = self.model.get_classifier()(features)
 
-        if self.training:
-            return out
-        return {"logit": out, "feature": features}
+        return out
 
     @staticmethod
     def _convert_state_dict(state_dict):
