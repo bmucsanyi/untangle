@@ -964,7 +964,6 @@ def update_post_hoc_method(
                 "specified."
             )
             raise ValueError(msg)
-        torch.set_grad_enabled(mode=False)
         model.train_logistic_regressor(
             train_loader,
             hard_id_eval_loader,
@@ -972,7 +971,6 @@ def update_post_hoc_method(
             args.max_num_covariance_samples,
             args.max_num_id_ood_train_samples,
         )
-        torch.set_grad_enabled(mode=True)
     elif isinstance(model, DDUWrapper):
         model.fit_gmm(train_loader, args.max_num_id_train_samples)
     elif isinstance(model, TemperatureWrapper) and args.use_temperature_scaling:
@@ -1016,7 +1014,7 @@ def backward(model, input, target, optimizer, loss_scaler, need_update, loss):
             need_update=need_update,
         )
     else:
-        loss.backward(create_graph=False)
+        loss.backward()
 
         if need_update:
             optimizer.step()
