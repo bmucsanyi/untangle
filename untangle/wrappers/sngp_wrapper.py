@@ -14,8 +14,19 @@ from torch.nn.modules.batchnorm import _NormBase  # noqa: PLC2701
 from torch.nn.parameter import is_lazy
 
 from untangle.utils import calculate_output_padding, calculate_same_padding
+from untangle.utils.predictive import (
+    diag_hessian_normalized_normcdf,
+    diag_hessian_normalized_sigmoid,
+    diag_hessian_softmax,
+)
 from untangle.utils.replace import register, register_cond, replace
 from untangle.wrappers.model_wrapper import DistributionalWrapper
+
+LIKELIHOOD_TO_HESSIAN_DIAG = {
+    "softmax": diag_hessian_softmax,
+    "sigmoid": diag_hessian_normalized_sigmoid,
+    "normcdf": diag_hessian_normalized_normcdf,
+}
 
 
 class GPOutputLayer(nn.Module):
@@ -33,6 +44,7 @@ class GPOutputLayer(nn.Module):
         use_input_normalized_gp,
         gp_cov_momentum,
         gp_cov_ridge_penalty,
+        likelihood,
     ):
         super().__init__()
         self._num_classes = num_classes
@@ -46,6 +58,7 @@ class GPOutputLayer(nn.Module):
 
         self._gp_kernel_scale = gp_kernel_scale
         self._gp_output_bias = gp_output_bias
+        self._likelihood = likelihood
 
         if gp_random_feature_type == "orf":
             self._random_features_weight_initializer = partial(
@@ -75,10 +88,14 @@ class GPOutputLayer(nn.Module):
 
         self._random_feature = self._make_random_feature_layer(num_features)
 
-        self._gp_cov_layer = LaplaceRandomFeatureCovariance(
-            gp_feature_dim=self._num_random_features,
-            momentum=self._gp_cov_momentum,
-            ridge_penalty=self._gp_cov_ridge_penalty,
+        num_cov_layers = 1 if self._likelihood == "gaussian" else num_classes
+        self._gp_cov_layers = nn.ModuleList(
+            LaplaceRandomFeatureCovariance(
+                gp_feature_dim=self._num_random_features,
+                momentum=self._gp_cov_momentum,
+                ridge_penalty=self._gp_cov_ridge_penalty,
+            )
+            for _ in range(num_cov_layers)
         )
 
         self._gp_output_layer = nn.Linear(
@@ -124,7 +141,7 @@ class GPOutputLayer(nn.Module):
 
         return vars.sqrt() * std_normal_samples + logits.unsqueeze(dim=1)
 
-    def forward(self, gp_inputs):
+    def forward(self, gp_inputs, targets=None):
         # Computes random features.
         if self._use_input_normalized_gp:
             gp_inputs = self._input_norm_layer(gp_inputs)
@@ -133,24 +150,54 @@ class GPOutputLayer(nn.Module):
             # rescaling the input.
             gp_inputs *= self._gp_input_scale
 
-        gp_feature = self._random_feature(gp_inputs).cos()
+        gp_features = self._random_feature(gp_inputs).cos()
 
         # Computes posterior center (i.e., MAP estimate) and variance
-        gp_output = self._gp_output_layer(gp_feature) + self._gp_output_bias  # [B, C]
+        # TODO(bmucsanyi): https://github.com/google/edward2/blob/main/edward2/tensorflow/layers/random_feature.py#L260
+        gp_outputs = self._gp_output_layer(gp_features) + self._gp_output_bias  # [B, C]
 
         if self.training:
-            return gp_output  # [B, C]
+            if targets is None:
+                msg = "`targets` must be provided during training"
+                raise ValueError(msg)
 
-        with torch.no_grad():
-            gp_covmat = self._gp_cov_layer(gp_feature)
+            if self._likelihood == "gaussian":
+                self._gp_cov_layers[0].update(gp_features)
+            else:
+                multipliers = LIKELIHOOD_TO_HESSIAN_DIAG[self._likelihood](
+                    gp_outputs, targets
+                )
+                with torch.no_grad():
+                    for cov_layer, multiplier in zip(
+                        self._gp_cov_layers, multipliers, strict=True
+                    ):
+                        cov_layer.update(gp_features, multiplier)
 
-        logits = self.monte_carlo_sample_logits(
-            gp_output, gp_covmat, self._num_mc_samples
-        )
+            return gp_outputs  # [B, C]
 
-        # When one wants only the BMA, the mean-field approximation is a great choice
-        # using mean_field_logits.
-        return logits  # [B, S, C]
+        if self._likelihood == "gaussian":
+            gp_vars = (
+                torch.einsum(
+                    "ij,jk,ik->i",
+                    gp_outputs,
+                    self._gp_cov_layers[0](),
+                    gp_outputs,
+                )
+                .unsqueeze(1)
+                .repeat(1, gp_outputs.shape[-1])
+            )
+        else:
+            with torch.no_grad():
+                gp_vars = torch.zeros_like(gp_outputs)
+                for i, cov_layer in enumerate(self._gp_cov_layers):
+                    gp_vars[:, i] = torch.einsum(
+                        "ij,jk,ik->i",
+                        gp_features,
+                        cov_layer(),
+                        gp_features,
+                    )
+
+        return gp_outputs, gp_vars
 
     @staticmethod
     def _orthogonal_random_features_initializer(tensor, std):
@@ -180,7 +227,7 @@ class GPOutputLayer(nn.Module):
         feature_norms_square = torch.randn_like(ortho_mat) ** 2
         feature_norms = feature_norms_square.sum(dim=0).sqrt()
 
-        # Sets a random feature matrix with orthogonal column and Gaussian-like
+        # Sets a random feature matrix with orthogonal columns and Gaussian-like
         # column norms.
         value = ortho_mat * feature_norms
         with torch.no_grad():
@@ -234,7 +281,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         """
         self._precision_matrix.zero_()
 
-    def forward(self, inputs):
+    def forward(self):
         """Minibatch updates the GP's posterior precision matrix estimate.
 
         Args:
@@ -242,29 +289,12 @@ class LaplaceRandomFeatureCovariance(nn.Module):
             gp_hidden_size).
         logits: (torch.Tensor) Pre-activation output from the model. Needed
             for Laplace approximation under a non-Gaussian likelihood.
-        training: (torch.bool) whether or not the layer is in training mode. If in
-            training mode, the gp_weight covariance is updated using gp_feature.
+        multiplier: (torch.Tensor) Multiplier of the precision matrix update.
 
         Returns:
         gp_stddev (torch.Tensor): GP posterior predictive variance,
             shape (batch_size, batch_size).
         """
-        batch_size = inputs.shape[0]
-
-        if self.training:
-            # Computes the updated feature precision matrix.
-            precision_matrix_updated = self._update_feature_precision_matrix(
-                gp_feature=inputs
-            )
-
-            # Updates precision matrix.
-            self._precision_matrix.copy_(precision_matrix_updated)
-
-            # Enables covariance update in the next inference call.
-            self._update_covariance = True
-
-            # Return null estimate during training.
-            return torch.eye(batch_size, device=inputs.device)
         # Lazily computes feature covariance matrix during inference.
         covariance_matrix_updated = self._update_feature_covariance_matrix()
 
@@ -276,14 +306,27 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # matrix.
         self._update_covariance = False
 
-        return self._compute_predictive_covariance(gp_feature=inputs)
+        return self._covariance_matrix
 
-    def _update_feature_precision_matrix(self, gp_feature):
+    def update(self, inputs, multiplier=1):
+        # Computes the updated feature precision matrix.
+        precision_matrix_updated = self._update_feature_precision_matrix(
+            gp_features=inputs,
+            multiplier=multiplier,
+        )
+
+        # Updates precision matrix.
+        self._precision_matrix.copy_(precision_matrix_updated)
+
+        # Enables covariance update in the next inference call.
+        self._update_covariance = True
+
+    def _update_feature_precision_matrix(self, gp_features, multiplier):
         """Computes the update precision matrix of feature weights."""
-        batch_size = gp_feature.shape[0]
+        batch_size = gp_features.shape[0]
 
         # Computes batch-specific normalized precision matrix.
-        precision_matrix_minibatch = gp_feature.T @ gp_feature
+        precision_matrix_minibatch = multiplier * gp_features.T @ gp_features
 
         # Updates the population-wise precision matrix.
         if self._momentum > 0:
@@ -948,6 +991,7 @@ class SNGPWrapper(DistributionalWrapper):
         gp_cov_momentum: float,
         gp_cov_ridge_penalty: float,
         gp_input_dim: int,
+        likelihood: str,
     ):
         super().__init__(model)
 
@@ -960,6 +1004,12 @@ class SNGPWrapper(DistributionalWrapper):
         self._gp_cov_momentum = gp_cov_momentum
         self._gp_cov_ridge_penalty = gp_cov_ridge_penalty
         self._gp_input_dim = gp_input_dim
+
+        if likelihood not in {"gaussian", "softmax", "sigmoid", "normcdf"}:
+            msg = f"Invalid likelihood '{likelihood}' provided"
+            raise ValueError(msg)
+
+        self._likelihood = likelihood
 
         classifier = nn.Sequential()
 
@@ -988,6 +1038,7 @@ class SNGPWrapper(DistributionalWrapper):
             use_input_normalized_gp=self._use_input_normalized_gp,
             gp_cov_momentum=self._gp_cov_momentum,
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
+            likelihood=self._likelihood,
         )
         classifier.append(gp_output_layer)
 
@@ -1057,6 +1108,7 @@ class SNGPWrapper(DistributionalWrapper):
         gp_cov_momentum: float | None = None,
         gp_cov_ridge_penalty: float | None = None,
         gp_input_dim: int | None = None,
+        likelihood: str | None = None,
         *args,
         **kwargs,
     ):
@@ -1087,6 +1139,9 @@ class SNGPWrapper(DistributionalWrapper):
         if gp_input_dim is not None:
             self._gp_input_dim = gp_input_dim
 
+        if likelihood is not None:
+            self._likelihood = likelihood
+
         # Resets global pooling in `self.classifier`
         self.model.reset_classifier(*args, **kwargs)
         classifier = nn.Sequential()
@@ -1116,6 +1171,7 @@ class SNGPWrapper(DistributionalWrapper):
             use_input_normalized_gp=self._use_input_normalized_gp,
             gp_cov_momentum=self._gp_cov_momentum,
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
+            likelihood=self._likelihood,
         )
         classifier.append(gp_output_layer)
 
