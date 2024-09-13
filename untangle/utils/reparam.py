@@ -253,7 +253,7 @@ def multiply_g(G_action1, G_action2) -> list:
 
 
 def g_norm(
-    params: dict, *, conv_as_dense: bool, layer_scaling: str
+    params: dict, layer_scaling: str, *, conv_as_dense: bool
 ) -> tuple[dict, float]:
     # Extract weights
     params_tree = get_parameter_tree(params, conv_as_dense=conv_as_dense)
@@ -343,3 +343,14 @@ def g_rand(params: dict, *, conv_as_dense: bool) -> tuple[dict, float]:
     dist_reparam = get_reparam_distance(rand_action)
 
     return new_params, dist_reparam
+
+
+REPARAMS = {
+    "uniform": partial(g_norm, layer_scaling="uniform"),
+    "layer_in": partial(g_norm, layer_scaling="layer_in"),
+    "layer_out": partial(g_norm, layer_scaling="layer_out"),
+    "layer_size": partial(g_norm, layer_scaling="layer_size"),
+    "random": g_rand,
+    "min_norm": g_min_norm,
+    None: lambda x: (x, 0.0),
+}
