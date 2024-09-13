@@ -450,6 +450,32 @@ group.add_argument(
     help="Number of density components in PostNet's normalizing flow",
 )
 group.add_argument(
+    "--reparam-type",
+    type=str,
+    default=None,
+    help="Type of reparametrization",
+)
+group.add_argument(
+    "--reparam-at-training-start",
+    action="store_true",
+    help="Whether to reparametrize the network at the start of training",
+)
+group.add_argument(
+    "--reparam-at-each-step",
+    action="store_true",
+    help="Whether to reparametrize the network at each gradient step",
+)
+group.add_argument(
+    "--reparam-before-checkpoint",
+    action="store_true",
+    help="Whether to reparametrize the network before each checkpoint",
+)
+group.add_argument(
+    "--conv-as-dense",
+    action="store_true",
+    help="Whether to reparametrize conv layers using their dense representations",
+)
+group.add_argument(
     "--use-batched-flow",
     action="store_true",
     help="Whether the normalizing flow in PostNet is batched",
