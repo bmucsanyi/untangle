@@ -173,22 +173,21 @@ class MahalanobisWrapper(SpecialWrapper):
         )
 
         for layer_idx in range(self._num_layers):
-            torch.set_grad_enabled(mode=True)
-            inputs.requires_grad_(True)
-            self._feature_list.clear()
-            self.model(inputs)
+            with torch.enable_grad():
+                inputs.requires_grad_(True)
+                self._feature_list.clear()
+                self.model(inputs)
 
-            gradients = self._compute_gradients(
-                inputs=inputs,
-                features=self._feature_list[layer_idx],
-                num_classes=self.model.num_classes,
-                class_means=getattr(self, f"_class_means_{layer_idx}"),
-                precision_matrix=getattr(self, f"_precisions_{layer_idx}"),
-            )
+                gradients = self._compute_gradients(
+                    inputs=inputs,
+                    features=self._feature_list[layer_idx],
+                    num_classes=self.model.num_classes,
+                    class_means=getattr(self, f"_class_means_{layer_idx}"),
+                    precision_matrix=getattr(self, f"_precisions_{layer_idx}"),
+                )
 
-            inputs.grad.zero_()
-            torch.set_grad_enabled(mode=False)
-            inputs.requires_grad_(False)
+                inputs.grad.zero_()
+                inputs.requires_grad_(False)
 
             temp_inputs = inputs - self._magnitude * gradients
             # Populate feature_list
@@ -387,8 +386,9 @@ class MahalanobisWrapper(SpecialWrapper):
         difference = features - max_means  # [B, D_L]
         term = -0.5 * (difference @ precision_matrix @ difference.T).diag()  # [B]
         loss = -term.mean()  # []
-        loss.backward()
 
-        gradients = inputs.grad.clone().sign()  # [B, C, H, W]
+        gradient_signs = torch.autograd.grad(outputs=loss, inputs=inputs)[
+            0
+        ].sign()  # [B, C, H, W]
 
-        return gradients
+        return gradient_signs
