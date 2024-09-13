@@ -2,6 +2,7 @@ from .checkpoint_saver import CheckpointSaver
 from .context import DefaultContext
 from .convolution import calculate_output_padding, calculate_same_padding
 from .dataset import create_dataset
+from .derivative import jvp, vjp
 from .loader import create_loader
 from .logging import log_wandb, setup_logging
 from .loss import create_loss_fn
@@ -39,7 +40,14 @@ from .parsing import (
     resolve_data_config,
     string_tuple,
 )
+from .predictive import (
+    PREDICTIVE_DICT,
+    diag_hessian_normalized_normcdf,
+    diag_hessian_normalized_sigmoid,
+    diag_hessian_softmax,
+)
 from .random import set_random_seed
+from .reparam import REPARAMS
 from .replace import (
     ModuleData,
     deep_setattr,
@@ -53,6 +61,8 @@ from .timm import optimizer_kwargs, scheduler_kwargs
 from .transform import create_transform, hard_target_transform
 
 __all__ = [
+    "PREDICTIVE_DICT",
+    "REPARAMS",
     "AverageMeter",
     "CheckpointSaver",
     "DefaultContext",
@@ -78,6 +88,9 @@ __all__ = [
     "cross_entropy",
     "deep_setattr",
     "dempster_shafer_metric",
+    "diag_hessian_normalized_normcdf",
+    "diag_hessian_normalized_sigmoid",
+    "diag_hessian_softmax",
     "entropy",
     "excess_area_under_risk_coverage_curve",
     "float_tuple",
@@ -85,6 +98,7 @@ __all__ = [
     "hard_target_transform",
     "int_tuple",
     "is_correct_pred",
+    "jvp",
     "kl_divergence",
     "kwargs",
     "kwargs",
@@ -105,5 +119,6 @@ __all__ = [
     "setup_logging",
     "spearmanr",
     "string_tuple",
+    "vjp",
     "wrap_model",
 ]
