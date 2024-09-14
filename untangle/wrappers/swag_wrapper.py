@@ -45,22 +45,16 @@ class SWAGWrapper(DistributionalWrapper):
         if self.training:
             return self.model(inputs)  # [B, C]
 
-        sampled_features = []
         sampled_logits = []
         for model_index in range(self.num_models):
             self._set_model(model_index=model_index)
-            features = self.model.forward_head(
-                self.model.forward_features(inputs), pre_logits=True
-            )
-            logits = self.model.get_classifier()(features)  # [B, C]
+            logits = self.model(inputs)  # [B, C]
 
             sampled_logits.append(logits)
 
-        sampled_features = torch.stack(sampled_features, dim=1)  # [B, S, D]
-        mean_features = sampled_features.mean(dim=1)
         sampled_logits = torch.stack(sampled_logits, dim=1)  # [B, S, C]
 
-        return {"logit": sampled_logits, "feature": mean_features}
+        return sampled_logits
 
     def forward_features(self, inputs):
         del inputs
