@@ -337,3 +337,9 @@ def auroc(y_true, y_score):
     true_positive_rate = true_positives / true_positives[-1]
 
     return torch.trapz(true_positive_rate, false_positive_rate)
+
+
+def diag_hessian_softmax(logit):
+    prob = logit.softmax(dim=-1)
+
+    return prob * (1 - prob)

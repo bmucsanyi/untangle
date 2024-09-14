@@ -14,19 +14,11 @@ from torch.nn.modules.batchnorm import _NormBase  # noqa: PLC2701
 from torch.nn.parameter import is_lazy
 
 from untangle.utils import calculate_output_padding, calculate_same_padding
-from untangle.utils.predictive import (
-    diag_hessian_normalized_normcdf,
-    diag_hessian_normalized_sigmoid,
+from untangle.utils.metric import (
     diag_hessian_softmax,
 )
 from untangle.utils.replace import register, register_cond, replace
 from untangle.wrappers.model_wrapper import DistributionalWrapper
-
-LIKELIHOOD_TO_HESSIAN_DIAG = {
-    "softmax": diag_hessian_softmax,
-    "sigmoid": diag_hessian_normalized_sigmoid,
-    "normcdf": diag_hessian_normalized_normcdf,
-}
 
 
 class GPOutputLayer(nn.Module):
@@ -118,12 +110,9 @@ class GPOutputLayer(nn.Module):
         self._gp_cov_layer.reset_precision_matrix()
 
     @staticmethod
-    def mean_field_logits(logits, covmat, mean_field_factor):
-        # Compute standard deviation.
-        variances = covmat.diag()
-
+    def mean_field_logits(logits, vars, mean_field_factor):
         # Compute scaling coefficient for mean-field approximation.
-        logits_scale = (1 + variances * mean_field_factor).sqrt()
+        logits_scale = (1 + vars * mean_field_factor).sqrt()
 
         # Cast logits_scale to compatible dimension.
         logits_scale = logits_scale.reshape(-1, 1)
@@ -131,9 +120,9 @@ class GPOutputLayer(nn.Module):
         return logits / logits_scale
 
     @staticmethod
-    def monte_carlo_sample_logits(logits, covmat, num_samples):
+    def monte_carlo_sample_logits(logits, vars, num_samples):
         batch_size, num_classes = logits.shape
-        vars = covmat.diag().reshape(-1, 1, 1)  # [B, 1, 1]
+        vars = vars.unsqueeze(dim=1)  # [B, 1, C]
 
         std_normal_samples = torch.randn(
             batch_size, num_samples, num_classes, device=logits.device
@@ -141,7 +130,7 @@ class GPOutputLayer(nn.Module):
 
         return vars.sqrt() * std_normal_samples + logits.unsqueeze(dim=1)
 
-    def forward(self, gp_inputs, targets=None):
+    def forward(self, gp_inputs):
         # Computes random features.
         if self._use_input_normalized_gp:
             gp_inputs = self._input_norm_layer(gp_inputs)
@@ -153,20 +142,13 @@ class GPOutputLayer(nn.Module):
         gp_features = self._random_feature(gp_inputs).cos()
 
         # Computes posterior center (i.e., MAP estimate) and variance
-        # TODO(bmucsanyi): https://github.com/google/edward2/blob/main/edward2/tensorflow/layers/random_feature.py#L260
         gp_outputs = self._gp_output_layer(gp_features) + self._gp_output_bias  # [B, C]
 
         if self.training:
-            if targets is None:
-                msg = "`targets` must be provided during training"
-                raise ValueError(msg)
-
             if self._likelihood == "gaussian":
                 self._gp_cov_layers[0].update(gp_features)
-            else:
-                multipliers = LIKELIHOOD_TO_HESSIAN_DIAG[self._likelihood](
-                    gp_outputs, targets
-                )
+            else:  # self._likelihood == "softmax"
+                multipliers = diag_hessian_softmax(gp_outputs)
                 with torch.no_grad():
                     for cov_layer, multiplier in zip(
                         self._gp_cov_layers, multipliers, strict=True
@@ -197,7 +179,7 @@ class GPOutputLayer(nn.Module):
                         gp_features,
                     )
 
-        return gp_outputs, gp_vars
+        return self.monte_carlo_sample_logits(gp_outputs, gp_vars)
 
     @staticmethod
     def _orthogonal_random_features_initializer(tensor, std):
@@ -268,6 +250,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         self.register_buffer("_precision_matrix", precision_matrix)
         covariance_matrix = torch.eye(gp_feature_dim)
         self.register_buffer("_covariance_matrix", covariance_matrix)
+        self._gp_feature_dim = gp_feature_dim
 
         # Boolean flag to indicate whether to update the covariance matrix (i.e.,
         # by inverting the newly updated precision matrix) during inference.
@@ -279,20 +262,19 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         This function is useful for resetting the model's covariance matrix at the
         beginning of a new epoch.
         """
-        self._precision_matrix.zero_()
+        self._precision_matrix.copy_(
+            self._ridge_penalty * torch.eye(self._gp_feature_dim)
+        )
 
-    def forward(self):
+    def forward(self, gp_features):
         """Minibatch updates the GP's posterior precision matrix estimate.
 
         Args:
-        inputs: (torch.Tensor) GP random features, shape (batch_size,
-            gp_hidden_size).
-        logits: (torch.Tensor) Pre-activation output from the model. Needed
+        gp_features: (torch.Tensor) Pre-activation output from the model. Needed
             for Laplace approximation under a non-Gaussian likelihood.
-        multiplier: (torch.Tensor) Multiplier of the precision matrix update.
 
         Returns:
-        gp_stddev (torch.Tensor): GP posterior predictive variance,
+        gp_var (torch.Tensor): GP posterior predictive variance,
             shape (batch_size, batch_size).
         """
         # Lazily computes feature covariance matrix during inference.
@@ -306,12 +288,14 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # matrix.
         self._update_covariance = False
 
-        return self._covariance_matrix
+        gp_var = self._compute_predictive_variance(gp_features)
 
-    def update(self, inputs, multiplier=1):
+        return gp_var
+
+    def update(self, gp_features, multiplier=1):
         # Computes the updated feature precision matrix.
         precision_matrix_updated = self._update_feature_precision_matrix(
-            gp_features=inputs,
+            gp_features=gp_features,
             multiplier=multiplier,
         )
 
@@ -371,18 +355,10 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         return covariance_matrix_updated
 
-    def _compute_predictive_covariance(self, gp_feature):
+    def _compute_predictive_variance(self, gp_feature):
         """Computes posterior predictive variance.
 
-        Approximates the Gaussian process posterior using random features.
-        Given training random feature Phi_tr (num_train, num_hidden) and testing
-        random feature Phi_ts (batch_size, num_hidden). The predictive covariance
-        matrix is computed as (assuming Gaussian likelihood):
-
-        s * Phi_ts @ inv(t(Phi_tr) * Phi_tr + s * I) @ t(Phi_ts),
-
-        where s is the ridge factor to be used for stablizing the inverse, and I is
-        the identity matrix with shape (num_hidden, num_hidden).
+        Approximates the Gaussian process posterior variance using random features.
 
         Args:
         gp_feature: (torch.Tensor) The random feature of testing data to be used for
@@ -391,12 +367,15 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         Returns:
         (torch.Tensor) Predictive covariance matrix, shape (batch_size, batch_size).
         """
-        # Computes the covariance matrix of the gp prediction.
-        gp_cov_matrix = (
-            self._ridge_penalty * gp_feature @ self._covariance_matrix @ gp_feature.T
+        # Computes the variance of the posterior gp prediction.
+        gp_var = torch.einsum(
+            "ij,jk,ik->i",
+            gp_feature,
+            self._covariance_matrix,
+            gp_feature,
         )
 
-        return gp_cov_matrix
+        return gp_var
 
 
 class LinearSpectralNormalizer(nn.Module):

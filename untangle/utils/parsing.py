@@ -355,6 +355,12 @@ group.add_argument(
     help="Number of output heads in the shallow ensemble method",
 )
 group.add_argument(
+    "--likelihood",
+    type=str,
+    default="gaussian",
+    help="Likelihood in the SNGP method",
+)
+group.add_argument(
     "--use-spectral-normalization",
     action="store_true",
     help="Whether to use spectral normalization in the SNGP method",

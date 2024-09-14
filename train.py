@@ -384,6 +384,7 @@ def main():
         max_rank=args.max_rank,
         magnitude=args.magnitude,
         num_heads=args.num_heads,
+        likelihood=args.likelihood,
         use_spectral_normalization=args.use_spectral_normalization,
         spectral_normalization_iteration=args.spectral_normalization_iteration,
         spectral_normalization_bound=args.spectral_normalization_bound,

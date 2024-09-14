@@ -107,6 +107,7 @@ def wrap_model(  # noqa: C901
     max_rank,
     magnitude,
     num_heads,
+    likelihood,
     use_spectral_normalization,
     spectral_normalization_iteration,
     spectral_normalization_bound,
@@ -265,6 +266,7 @@ def wrap_model(  # noqa: C901
             gp_cov_momentum=gp_cov_momentum,
             gp_cov_ridge_penalty=gp_cov_ridge_penalty,
             gp_input_dim=gp_input_dim,
+            likelihood=likelihood,
         )
     else:
         msg = (
