@@ -11,7 +11,7 @@ from torch import nn
 from torch.distributions import MultivariateNormal
 from torch.nn.utils import vector_to_parameters
 
-from untangle.utils.metrics import calibration_error
+from untangle.utils.metric import calibration_error
 from untangle.wrappers.model_wrapper import DistributionalWrapper
 
 logger = logging.getLogger(__name__)

@@ -117,30 +117,6 @@ class GPOutputLayer(nn.Module):
         """
         self._gp_cov_layer.reset_precision_matrix()
 
-    @staticmethod
-    def mean_field_logits(logits, covmat, mean_field_factor):
-        # Compute standard deviation.
-        variances = covmat.diag()
-
-        # Compute scaling coefficient for mean-field approximation.
-        logits_scale = (1 + variances * mean_field_factor).sqrt()
-
-        # Cast logits_scale to compatible dimension.
-        logits_scale = logits_scale.reshape(-1, 1)
-
-        return logits / logits_scale
-
-    @staticmethod
-    def monte_carlo_sample_logits(logits, covmat, num_samples):
-        batch_size, num_classes = logits.shape
-        vars = covmat.diag().reshape(-1, 1, 1)  # [B, 1, 1]
-
-        std_normal_samples = torch.randn(
-            batch_size, num_samples, num_classes, device=logits.device
-        )  # [B, S, C]
-
-        return vars.sqrt() * std_normal_samples + logits.unsqueeze(dim=1)
-
     def forward(self, gp_inputs, targets=None):
         # Computes random features.
         if self._use_input_normalized_gp:
@@ -177,12 +153,7 @@ class GPOutputLayer(nn.Module):
 
         if self._likelihood == "gaussian":
             gp_vars = (
-                torch.einsum(
-                    "ij,jk,ik->i",
-                    gp_outputs,
-                    self._gp_cov_layers[0](),
-                    gp_outputs,
-                )
+                self._gp_cov_layers[0](gp_features)
                 .unsqueeze(1)
                 .repeat(1, gp_outputs.shape[-1])
             )
@@ -190,12 +161,7 @@ class GPOutputLayer(nn.Module):
             with torch.no_grad():
                 gp_vars = torch.zeros_like(gp_outputs)
                 for i, cov_layer in enumerate(self._gp_cov_layers):
-                    gp_vars[:, i] = torch.einsum(
-                        "ij,jk,ik->i",
-                        gp_features,
-                        cov_layer(),
-                        gp_features,
-                    )
+                    gp_vars[:, i] = cov_layer(gp_features)
 
         return gp_outputs, gp_vars
 
@@ -279,20 +245,19 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         This function is useful for resetting the model's covariance matrix at the
         beginning of a new epoch.
         """
-        self._precision_matrix.zero_()
+        self._precision_matrix.copy_(
+            self._ridge_penalty * torch.eye(self._gp_feature_dim)
+        )
 
-    def forward(self):
+    def forward(self, gp_features):
         """Minibatch updates the GP's posterior precision matrix estimate.
 
         Args:
-        inputs: (torch.Tensor) GP random features, shape (batch_size,
-            gp_hidden_size).
-        logits: (torch.Tensor) Pre-activation output from the model. Needed
+        gp_features: (torch.Tensor) Pre-activation output from the model. Needed
             for Laplace approximation under a non-Gaussian likelihood.
-        multiplier: (torch.Tensor) Multiplier of the precision matrix update.
 
         Returns:
-        gp_stddev (torch.Tensor): GP posterior predictive variance,
+        gp_var (torch.Tensor): GP posterior predictive variance,
             shape (batch_size, batch_size).
         """
         # Lazily computes feature covariance matrix during inference.
@@ -306,12 +271,14 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # matrix.
         self._update_covariance = False
 
-        return self._covariance_matrix
+        gp_var = self._compute_predictive_variance(gp_features)
 
-    def update(self, inputs, multiplier=1):
+        return gp_var
+
+    def update(self, gp_features, multiplier=1):
         # Computes the updated feature precision matrix.
         precision_matrix_updated = self._update_feature_precision_matrix(
-            gp_features=inputs,
+            gp_features=gp_features,
             multiplier=multiplier,
         )
 
@@ -357,32 +324,19 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         """
         precision_matrix = self._precision_matrix
         covariance_matrix = self._covariance_matrix
-        gp_feature_dim = precision_matrix.shape[0]
 
         # Compute covariance matrix update only when `update_covariance = True`.
         if self._update_covariance:
-            covariance_matrix_updated = torch.linalg.inv(
-                self._ridge_penalty
-                * torch.eye(gp_feature_dim, device=precision_matrix.device)
-                + precision_matrix
-            )
+            covariance_matrix_updated = torch.linalg.inv(precision_matrix)
         else:
             covariance_matrix_updated = covariance_matrix
 
         return covariance_matrix_updated
 
-    def _compute_predictive_covariance(self, gp_feature):
+    def _compute_predictive_variance(self, gp_feature):
         """Computes posterior predictive variance.
 
-        Approximates the Gaussian process posterior using random features.
-        Given training random feature Phi_tr (num_train, num_hidden) and testing
-        random feature Phi_ts (batch_size, num_hidden). The predictive covariance
-        matrix is computed as (assuming Gaussian likelihood):
-
-        s * Phi_ts @ inv(t(Phi_tr) * Phi_tr + s * I) @ t(Phi_ts),
-
-        where s is the ridge factor to be used for stablizing the inverse, and I is
-        the identity matrix with shape (num_hidden, num_hidden).
+        Approximates the Gaussian process posterior variance using random features.
 
         Args:
         gp_feature: (torch.Tensor) The random feature of testing data to be used for
@@ -391,12 +345,15 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         Returns:
         (torch.Tensor) Predictive covariance matrix, shape (batch_size, batch_size).
         """
-        # Computes the covariance matrix of the gp prediction.
-        gp_cov_matrix = (
-            self._ridge_penalty * gp_feature @ self._covariance_matrix @ gp_feature.T
+        # Computes the variance of the posterior gp prediction.
+        gp_var = torch.einsum(
+            "ij,jk,ik->i",
+            gp_feature,
+            self._covariance_matrix,
+            gp_feature,
         )
 
-        return gp_cov_matrix
+        return gp_var
 
 
 class LinearSpectralNormalizer(nn.Module):

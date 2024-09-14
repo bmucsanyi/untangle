@@ -6,7 +6,7 @@ from .derivative import jvp, vjp
 from .loader import create_loader
 from .logging import log_wandb, setup_logging
 from .loss import create_loss_fn
-from .metrics import (
+from .metric import (
     AverageMeter,
     accuracy,
     area_under_lift_curve,
