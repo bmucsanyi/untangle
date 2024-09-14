@@ -234,6 +234,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         self.register_buffer("_precision_matrix", precision_matrix)
         covariance_matrix = torch.eye(gp_feature_dim)
         self.register_buffer("_covariance_matrix", covariance_matrix)
+        self._gp_feature_dim = gp_feature_dim
 
         # Boolean flag to indicate whether to update the covariance matrix (i.e.,
         # by inverting the newly updated precision matrix) during inference.
