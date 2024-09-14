@@ -159,12 +159,7 @@ class GPOutputLayer(nn.Module):
 
         if self._likelihood == "gaussian":
             gp_vars = (
-                torch.einsum(
-                    "ij,jk,ik->i",
-                    gp_outputs,
-                    self._gp_cov_layers[0](),
-                    gp_outputs,
-                )
+                self._gp_cov_layers[0](gp_features)
                 .unsqueeze(1)
                 .repeat(1, gp_outputs.shape[-1])
             )
@@ -172,12 +167,7 @@ class GPOutputLayer(nn.Module):
             with torch.no_grad():
                 gp_vars = torch.zeros_like(gp_outputs)
                 for i, cov_layer in enumerate(self._gp_cov_layers):
-                    gp_vars[:, i] = torch.einsum(
-                        "ij,jk,ik->i",
-                        gp_features,
-                        cov_layer(),
-                        gp_features,
-                    )
+                    gp_vars[:, i] = cov_layer(gp_features)
 
         return self.monte_carlo_sample_logits(gp_outputs, gp_vars)
 
@@ -341,15 +331,10 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         """
         precision_matrix = self._precision_matrix
         covariance_matrix = self._covariance_matrix
-        gp_feature_dim = precision_matrix.shape[0]
 
         # Compute covariance matrix update only when `update_covariance = True`.
         if self._update_covariance:
-            covariance_matrix_updated = torch.linalg.inv(
-                self._ridge_penalty
-                * torch.eye(gp_feature_dim, device=precision_matrix.device)
-                + precision_matrix
-            )
+            covariance_matrix_updated = torch.linalg.inv(precision_matrix)
         else:
             covariance_matrix_updated = covariance_matrix
 
