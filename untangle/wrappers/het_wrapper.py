@@ -1,4 +1,4 @@
-"""HET-XL implementation as a wrapper class.
+"""HET implementation as a wrapper class.
 
 Heteroscedastic Gaussian sampling based on https://github.com/google/uncertainty-baselines.
 """
@@ -10,8 +10,8 @@ from torch import nn
 from untangle.wrappers.model_wrapper import DistributionalWrapper
 
 
-class HETXLHead(nn.Module):
-    """Classification head for the HET-XL method."""
+class HETHead(nn.Module):
+    """Classification head for the HET method."""
 
     def __init__(
         self,
@@ -20,62 +20,59 @@ class HETXLHead(nn.Module):
         num_features,
         temperature,
         classifier,
-        use_het,
+        use_sampling,
     ):
         super().__init__()
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
+        self._use_sampling = use_sampling
         self._num_features = num_features
 
         self._low_rank_cov_layer = nn.Linear(
             in_features=self._num_features,
             out_features=self._num_features * self._matrix_rank,
         )
-        self._diagonal_std_layer = nn.Linear(
+        self._diagonal_var_layer = nn.Linear(
             in_features=self._num_features, out_features=self._num_features
         )
         self._min_scale_monte_carlo = 1e-3
 
         self._temperature = temperature
         self._classifier = classifier
-        self._use_het = use_het
 
     def forward(self, features):
-        if self._use_het:
-            features = self._classifier(features)  # D = C
+        logits = self._classifier(features)  # [B, C]
 
         # Shape variables
-        B, D = features.shape
+        B, C = features.shape
         R = self._matrix_rank
         S = self._num_mc_samples
 
-        low_rank_cov = self._low_rank_cov_layer(features).reshape(-1, D, R)  # [B, D, R]
-        diagonal_std = (
-            F.softplus(self._diagonal_std_layer(features)) + self._min_scale_monte_carlo
-        )  # [B, D]
+        low_rank_cov = self._low_rank_cov_layer(logits).reshape(-1, C, R)  # [B, C, R]
+        diagonal_var = (
+            F.softplus(self._diagonal_var_layer(logits)) + self._min_scale_monte_carlo
+        )  # [B, C]
 
-        # TODO(bmucsanyi): https://github.com/google/edward2/blob/main/edward2/jax/nn/heteroscedastic_lib.py#L189
-        diagonal_samples = diagonal_std.unsqueeze(1) * torch.randn(
-            B, S, D, device=features.device
-        )  # [B, S, D]
-        standard_samples = torch.randn(B, S, R, device=features.device)  # [B, S, R]
-        einsum_res = torch.einsum(
-            "bdr,bsr->bsd", low_rank_cov, standard_samples
-        )  # [B, S, D]
-        samples = einsum_res + diagonal_samples  # [B, S, D]
+        if self._use_sampling:
+            diagonal_samples = diagonal_var.sqrt().unsqueeze(1) * torch.randn(
+                B, S, C, device=features.device
+            )  # [B, S, C]
+            standard_samples = torch.randn(B, S, R, device=features.device)  # [B, S, R]
+            einsum_res = torch.einsum(
+                "bcr,bsr->bsc", low_rank_cov, standard_samples
+            )  # [B, S, D]
+            samples = einsum_res + diagonal_samples  # [B, S, C]
+            logits = features.unsqueeze(1) + samples  # [B, S, C]
 
-        pre_logits = features.unsqueeze(1) + samples  # [B, S, D]
+            return (logits / self._temperature,)
 
-        logits = self._classifier(pre_logits) if not self._use_het else pre_logits
-        logits_temperature = logits / self._temperature
+        vars = low_rank_cov.square().sum(dim=-1) + diagonal_var  # [B, C]
 
-        # TODO(bmucsanyi): https://github.com/google/edward2/blob/main/edward2/jax/nn/heteroscedastic_lib.py#L325
-
-        return logits_temperature
+        return logits / self._temperature, vars / self._temperature**2
 
 
-class HETXLWrapper(DistributionalWrapper):
-    """This module takes a model as input and creates a HET-XL model from it."""
+class HETWrapper(DistributionalWrapper):
+    """This module takes a model as input and creates a HET model from it."""
 
     def __init__(
         self,
@@ -83,22 +80,22 @@ class HETXLWrapper(DistributionalWrapper):
         matrix_rank: int,
         num_mc_samples: int,
         temperature: float,
-        use_het: bool,
+        use_sampling: bool,
     ):
         super().__init__(model)
 
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
         self._temperature = temperature
-        self._use_het = use_het
+        self._use_sampling = use_sampling
 
-        self._classifier = HETXLHead(
+        self._classifier = HETHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_features if not self._use_het else self.num_classes,
-            classifier=self.model.get_classifier(),
+            num_features=self.num_classes,
             temperature=self._temperature,
-            use_het=self._use_het,
+            classifier=self.model.get_classifier(),
+            use_sampling=self._use_sampling,
         )
 
     @torch.jit.ignore
@@ -110,7 +107,7 @@ class HETXLWrapper(DistributionalWrapper):
         matrix_rank: int | None = None,
         num_mc_samples: int | None = None,
         temperature: float | None = None,
-        use_het: bool | None = None,
+        use_sampling: bool | None = None,
         *args,
         **kwargs,
     ):
@@ -123,15 +120,15 @@ class HETXLWrapper(DistributionalWrapper):
         if temperature is not None:
             self._temperature = temperature
 
-        if use_het is not None:
-            self._use_het = use_het
+        if use_sampling is not None:
+            self._use_sampling = use_sampling
 
         self.model.reset_classifier(*args, **kwargs)
-        self._classifier = HETXLHead(
+        self._classifier = HETHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_features if not self._use_het else self.num_classes,
-            classifier=self.model.get_classifier(),
+            num_features=self.num_classes,
             temperature=self._temperature,
-            use_het=self._use_het,
+            classifier=self.model.get_classifier(),
+            use_sampling=self._use_sampling,
         )

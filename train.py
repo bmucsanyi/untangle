@@ -382,7 +382,7 @@ def main():
         rbf_length_scale=args.rbf_length_scale,
         ema_momentum=args.ema_momentum,
         matrix_rank=args.matrix_rank,
-        use_het=args.use_het,
+        use_sampling=args.use_sampling,
         temperature=args.temperature,
         pred_type=args.pred_type,
         hessian_structure=args.hessian_structure,

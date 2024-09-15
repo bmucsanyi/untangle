@@ -114,7 +114,7 @@ class Quadratic:
         return eigvals[sort_idx], eigvecs[:, sort_idx]
 
 
-class SamplePushforwardLaplace(DistributionalWrapper):
+class CovariancePushforwardLaplace(DistributionalWrapper):
     """Low-rank Laplace that pushes forward the weight-space covariance matrix."""
 
     def __init__(

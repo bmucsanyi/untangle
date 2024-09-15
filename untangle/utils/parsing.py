@@ -300,18 +300,18 @@ group.add_argument(
     "--matrix-rank",
     default=15,
     type=int,
-    help="Rank of low-rank covariance matrix part in the HET-XL method",
+    help="Rank of low-rank covariance matrix part in the HET method",
 )
 group.add_argument(
-    "--use-het",
+    "--use-sampling",
     action="store_true",
-    help="Whether to use HET instead of HET-XL",
+    help="Whether to sample instead of returning logit means and vars",
 )
 group.add_argument(
     "--temperature",
     type=float,
     default=1.5,
-    help="Temperature in the HET-XL method",
+    help="Temperature in the HET method",
 )
 group.add_argument(
     "--pred-type",

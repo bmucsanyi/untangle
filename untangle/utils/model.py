@@ -25,7 +25,7 @@ from untangle.wrappers import (
     DUQWrapper,
     EDLWrapper,
     HetClassNNWrapper,
-    HETXLWrapper,
+    HETWrapper,
     LaplaceWrapper,
     LossPredictionWrapper,
     MahalanobisWrapper,
@@ -101,7 +101,7 @@ def wrap_model(  # noqa: C901
     rbf_length_scale,
     ema_momentum,
     matrix_rank,
-    use_het,
+    use_sampling,
     temperature,
     pred_type,
     hessian_structure,
@@ -180,13 +180,13 @@ def wrap_model(  # noqa: C901
             use_spectral_normalized_batch_norm=use_spectral_normalized_batch_norm,
             use_tight_norm_for_pointwise_convs=use_tight_norm_for_pointwise_convs,
         )
-    elif model_wrapper_name == "het-xl":
-        wrapped_model = HETXLWrapper(
+    elif model_wrapper_name == "het":
+        wrapped_model = HETWrapper(
             model=model,
             matrix_rank=matrix_rank,
             num_mc_samples=num_mc_samples,
             temperature=temperature,
-            use_het=use_het,
+            use_sampling=use_sampling,
         )
     elif model_wrapper_name == "laplace":
         wrapped_model = LaplaceWrapper(
