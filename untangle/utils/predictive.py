@@ -63,7 +63,7 @@ def sigmoid_mc(
         * var.sqrt()
         + mean
     )
-    prob = torch.sigmoid(logit_samples)
+    prob = F.sigmoid(logit_samples)
     prob = prob / prob.sum(dim=-1, keepdim=True)
 
     return prob.mean(dim=0)
@@ -109,7 +109,7 @@ def probit_predictive(
     link_function: str = "probit",
     output_function: str = "normcdf",
 ) -> torch.Tensor:
-    """Implements the predictive with the probit link function or approximation."""
+    """Predictive distribution with the probit link function or approximation."""
     if output_function == "normcdf":
         predictives = gaussian_pushforward_mean(
             mean, var, link_function
@@ -129,7 +129,7 @@ def probit_predictive(
 
 
 def beta_predictive(beta_params: torch.Tensor) -> torch.Tensor:
-    """Implements the predictive mean of beta distributions."""
+    """Predictive mean of beta distributions."""
     predictives = beta_params[:, :, 0] / torch.sum(
         beta_params, axis=2, keepdim=False
     )  # [batch_size, num_classes]
@@ -141,17 +141,30 @@ def beta_predictive(beta_params: torch.Tensor) -> torch.Tensor:
 
 
 def dirichlet_predictive(params: torch.Tensor) -> torch.Tensor:
-    """Implements the predictive mean of dirichlet distributions."""
+    """Ppredictive mean of Dirichlet distributions."""
     predictives = params / torch.sum(
-        params, axis=-1, keepdim=True
+        params, axis=1, keepdim=True
     )  # [batch_size, num_classes]
+
+    # remove nans due to infinite dirichlet parameters
+    is_nan = torch.isnan(predictives)
+    nan_count = torch.sum(is_nan, axis=1, keepdim=True)
+    predictives = torch.where(
+        torch.any(is_nan, axis=1, keepdim=True),
+        torch.zeros(predictives.shape),
+        predictives,
+    )
+    predictives = torch.where(
+        is_nan, torch.ones(predictives.shape) / nan_count, predictives
+    )
+
     return predictives
 
 
 def get_laplace_bridge_approximation(
     mean: torch.Tensor, var: torch.Tensor, *, correction: bool = True
 ) -> torch.Tensor:
-    """Implements the Laplace bridge approximation."""
+    """Laplace bridge approximation."""
     num_classes = mean.shape[1]
 
     if correction:
@@ -214,15 +227,22 @@ def get_mom_beta_approximation(
     M2 = gaussian_pushforward_second_moment(means, vars, link_function)
 
     beta_params = torch.ones((*means.shape, 2))
-    beta_params[..., 0] = M1 * (M1 - M2) / (M2 - M1**2)
-    beta_params[..., 1] = (M1 * M2 + M1 - M2 - M1**2) / (M2 - M1**2)
+    L = (M1 - M2) / (M2 - M1**2)
+    beta_params[..., 0] = M1 * L
+    beta_params[..., 1] = (1 - M1) * L
     return beta_params
 
 
 def get_mom_dirichlet_approximation(
     means: torch.Tensor, vars: torch.Tensor, link_function: str = "probit"
 ) -> torch.Tensor:
-    del means, vars, link_function
+    M1 = gaussian_pushforward_mean(means, vars, link_function)
+    M2 = gaussian_pushforward_second_moment(means, vars, link_function)
+    S1 = torch.sum(M1, dim=-1, keepdim=True)
+    S = torch.maximum(S1, torch.ones(S1.shape))
+    LP = torch.mean(torch.log((M1 * S - M2) / (M2 - M1**2)), dim=-1, keepdim=True)
+    P = torch.exp(LP)
+    return P * M1 / S
 
 
 def diag_hessian_normalized_sigmoid(logit, target):
