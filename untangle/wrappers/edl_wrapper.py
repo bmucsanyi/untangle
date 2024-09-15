@@ -34,10 +34,4 @@ class EDLWrapper(DirichletWrapper):
         logits = self.get_classifier()(features)
         alphas = self._activation(logits).add(1)  # [B, C]
 
-        if self.training:
-            return alphas
-
-        return {
-            "alpha": alphas,  # [B, C]
-            "feature": features,  # [B, D]
-        }
+        return (alphas,)

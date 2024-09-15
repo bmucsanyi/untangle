@@ -54,7 +54,7 @@ class SWAGWrapper(DistributionalWrapper):
 
         sampled_logits = torch.stack(sampled_logits, dim=1)  # [B, S, C]
 
-        return sampled_logits
+        return (sampled_logits,)
 
     def forward_features(self, inputs):
         del inputs

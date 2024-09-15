@@ -35,7 +35,7 @@ class ModelWrapper(nn.Module):
 
         out = self.model.get_classifier()(features)
 
-        return out
+        return (out,)
 
     @staticmethod
     def _convert_state_dict(state_dict):

@@ -285,13 +285,7 @@ class PostNetWrapper(DirichletWrapper):
                 1 + self._sample_count_per_class.unsqueeze(1).mul(log_probs.exp()).T
             )  # [B, C]
 
-        if self.training:
-            return alphas
-
-        return {
-            "alpha": alphas,  # [B, C]
-            "feature": features,  # [B, D]
-        }
+        return (alphas,)
 
     def get_classifier(self):
         return self._classifier
