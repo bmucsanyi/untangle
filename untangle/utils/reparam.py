@@ -74,7 +74,7 @@ def augment_shapes(
 def add_shapes_to_parameters(
     model: torch.nn.Module, params: dict, input_shape: tuple
 ) -> dict:
-    device = list(params.values())[0].device
+    device = next(iter(params.values())).device
     _, shapes = predict_with_shapes(model, torch.randn(*input_shape, device=device))
     return augment_shapes(model, params, shapes, input_shape)
 
@@ -136,7 +136,11 @@ def get_reparam_distance(G: list[torch.Tensor]) -> float:
 
 
 def get_layer_scaling(
-    out_in_dims: tuple, layer_one_dims: tuple, *, layer_scaling: list, device: torch.DeviceObjType
+    out_in_dims: tuple,
+    layer_one_dims: tuple,
+    *,
+    layer_scaling: list,
+    device: torch.DeviceObjType,
 ) -> torch.Tensor:
     if layer_scaling == "uniform":  # Reparam.UNIFORM:
         scaling = 1
@@ -197,7 +201,10 @@ def get_g_norm(params_tree: dict, *, layer_scaling: list) -> tuple[list, list]:
                 1 / (norms * math.sqrt(out_in_dim[0])) if i < (n_layers - 1) else None
             )
             _scaling[layer_name] = get_layer_scaling(
-                out_in_dim, layer_one_dim, layer_scaling=layer_scaling, device=layer_weight.device
+                out_in_dim,
+                layer_one_dim,
+                layer_scaling=layer_scaling,
+                device=layer_weight.device,
             )
 
     return G_action, _scaling
@@ -282,7 +289,7 @@ def g_norm(
 
 
 def get_params_norm(params_tree: dict) -> float:
-    device = list(params_tree.values())[0]['weight'].device
+    device = next(iter(params_tree.values()))["weight"].device
     norm = torch.tensor(0.0, device=device)
     for layer in params_tree.values():
         norm += (
@@ -330,17 +337,15 @@ def g_min_norm(params: dict, *, conv_as_dense: bool) -> tuple[dict, float]:
 
 def g_rand(params: dict, *, conv_as_dense: bool) -> tuple[dict, float]:
     # Extract weights
-    device = list(params.values())[0].device
+    device = next(iter(params.values())).device
     params_tree = get_parameter_tree(params, conv_as_dense=conv_as_dense)
 
     # Draw random action
     indices = get_indices(params_tree)
     rand_action = torch.distributions.log_normal.LogNormal(
-        torch.tensor(-1 / 2, dtype=torch.float32, device=device), 
-        torch.tensor(1, dtype=torch.float32, device=device)
-    ).sample(
-        torch.concat(get_one_action(params_tree)).shape
-    )
+        torch.tensor(-1 / 2, dtype=torch.float32, device=device),
+        torch.tensor(1, dtype=torch.float32, device=device),
+    ).sample(torch.concat(get_one_action(params_tree)).shape)
     rand_action = list(rand_action.split_with_sizes(indices))
 
     # Apply reparametrization
