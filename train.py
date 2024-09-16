@@ -992,10 +992,7 @@ def forward(
     accumulation_steps,
 ):
     with amp_autocast():
-        if isinstance(model, SNGPWrapper):
-            output = model(input, target)
-        else:
-            output = model(input)
+        output = model(input)
         loss = loss_fn(output, target)
 
         if isinstance(model, DUQWrapper):

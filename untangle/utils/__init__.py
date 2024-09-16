@@ -40,6 +40,7 @@ from .parsing import (
     string_tuple,
 )
 from .random import set_random_seed
+from .reparam import REPARAMS
 from .replace import (
     ModuleData,
     deep_setattr,
@@ -53,6 +54,7 @@ from .timm import optimizer_kwargs, scheduler_kwargs
 from .transform import create_transform, hard_target_transform
 
 __all__ = [
+    "REPARAMS",
     "AverageMeter",
     "CheckpointSaver",
     "DefaultContext",
