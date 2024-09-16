@@ -204,7 +204,7 @@ def train(
     best_epoch = None
 
     if args.reparam_at_training_start:
-        model.load_state_dict(reparam(model.state_dict())[0])
+        model.model.load_state_dict(reparam(model.model.state_dict())[0], strict=False)
 
     for epoch in range(num_epochs):
         time_start_epoch = time.perf_counter()
@@ -892,7 +892,9 @@ def train_one_epoch(
 
         # Per-step reparam
         if args.reparam_at_each_step:
-            model.load_state_dict(reparam(model.state_dict())[0])
+            model.model.load_state_dict(
+                reparam(model.model.state_dict())[0], strict=False
+            )
 
         loss = forward(
             model=model,
@@ -929,7 +931,9 @@ def train_one_epoch(
         if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
             # Post-hoc reparam
             if args.reparam_before_checkpoint:
-                model.load_state_dict(reparam(model.state_dict())[0])
+                model.model.load_state_dict(
+                    reparam(model.model.state_dict())[0], strict=False
+                )
             model.update_stats()
 
         if update_idx % args.log_interval == 0:

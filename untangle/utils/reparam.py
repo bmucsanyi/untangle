@@ -90,6 +90,8 @@ def get_parameter_tree(params: dict, *, conv_as_dense: bool) -> dict:
     ndict = {}
     # Extract layers and parameters
     for n, p in params.items():
+        if n.endswith("swag"):
+            continue
         nsplit = n.split(".")
         layer_name = "".join(*nsplit[:-1])
         ndict[layer_name] = {nsplit[-1]: p, **ndict.get(layer_name, {})}
