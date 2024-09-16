@@ -290,7 +290,6 @@ class PostNetWrapper(DirichletWrapper):
 
         return {
             "alpha": alphas,  # [B, C]
-            "feature": features,  # [B, D]
         }
 
     def get_classifier(self):

@@ -85,7 +85,6 @@ class LaplaceWrapper(DistributionalWrapper):
 
         return {
             "logit": logit,
-            "feature": feature,
         }
 
     @staticmethod

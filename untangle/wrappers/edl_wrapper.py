@@ -39,5 +39,4 @@ class EDLWrapper(DirichletWrapper):
 
         return {
             "alpha": alphas,  # [B, C]
-            "feature": features,  # [B, D]
         }

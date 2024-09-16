@@ -57,22 +57,18 @@ class MCDropoutWrapper(DistributionalWrapper):
         if self.training:
             return self.model(inputs)  # [B, C]
 
-        sampled_features = []
         sampled_logits = []
         for _ in range(self._num_mc_samples):
             features = self.model.forward_head(
                 self.model.forward_features(inputs), pre_logits=True
             )
-            logits = self.model(inputs)  # [B, C]
+            logits = self.model.get_classifier()(features)  # [B, C]
 
-            sampled_features.append(features)
             sampled_logits.append(logits)
 
-        sampled_features = torch.stack(sampled_features, dim=1)  # [B, S, D]
-        mean_features = sampled_features.mean(dim=1)
         sampled_logits = torch.stack(sampled_logits, dim=1)  # [B, S, C]
 
-        return {"logit": sampled_logits, "feature": mean_features}
+        return {"logit": sampled_logits}
 
     def forward_features(self, inputs):
         del inputs

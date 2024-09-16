@@ -84,7 +84,6 @@ class DUQHead(nn.Module):
 
         return {
             "logit": logit,  # [B, C]
-            "feature": features,  # [B, D]
             "duq_value": 1 - rbf_values.max(dim=1)[0],  # [B]
         }
 

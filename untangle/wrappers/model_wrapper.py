@@ -37,7 +37,7 @@ class ModelWrapper(nn.Module):
 
         if self.training:
             return out
-        return {"logit": out, "feature": features}
+        return {"logit": out}
 
     @staticmethod
     def _convert_state_dict(state_dict):

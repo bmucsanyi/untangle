@@ -202,7 +202,6 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
             return logits, binary_logits
         return {
             "logit": logits,
-            "feature": features,
             "error_probability": 1 - F.sigmoid(binary_logits),  # prob. of error
         }
 

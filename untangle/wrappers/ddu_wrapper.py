@@ -123,7 +123,6 @@ class DDUWrapper(TemperatureWrapper):
 
         return {
             "logit": logits,
-            "feature": features,
             "gmm_neg_log_density": -gmm_log_density,
         }
 

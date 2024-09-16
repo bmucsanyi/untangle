@@ -112,7 +112,6 @@ class DeepLossPredictionWrapper(BaseLossPredictionWrapper):
             return logits, loss_values
         return {
             "logit": logits,
-            "feature": features,
             "loss_value": loss_values,
         }
 

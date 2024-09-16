@@ -69,10 +69,10 @@ class MahalanobisWrapper(SpecialWrapper):
             self._reconstruct_logistic_regressor()
 
         self._feature_list.clear()
-        ret_features = self.model.forward_head(
+        features = self.model.forward_head(
             self.model.forward_features(inputs), pre_logits=True
         )
-        ret_logits = self.model.get_classifier()(ret_features)
+        ret_logits = self.model.get_classifier()(features)
 
         noisy_mahalanobis_scores = self._calculate_noisy_mahalanobis_scores(
             inputs
@@ -86,7 +86,6 @@ class MahalanobisWrapper(SpecialWrapper):
 
         return {
             "logit": ret_logits,
-            "feature": ret_features,
             "mahalanobis_value": ret_uncertainties,
         }
 

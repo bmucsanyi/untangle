@@ -53,23 +53,19 @@ class HetClassNNWrapper(DistributionalWrapper):
         if self.training:
             return self._predict_single(inputs)
 
-        sampled_features = []
         sampled_logits = []
         sampled_internal_logits = []
         for _ in range(self._num_mc_samples):
-            features, internal_logits, logit_mc_samples = self._predict_single(
+            internal_logits, logit_mc_samples = self._predict_single(
                 inputs=inputs, return_bundle=True
             )
             logits = (
                 F.softmax(logit_mc_samples, dim=-1).mean(dim=1).add(self.eps).log()
             )  # [B, C]
 
-            sampled_features.append(features)
             sampled_logits.append(logits)
             sampled_internal_logits.append(internal_logits)
 
-        sampled_features = torch.stack(sampled_features, dim=1)  # [B, S, D]
-        mean_features = sampled_features.mean(dim=1)  # [B, D]
         sampled_logits = torch.stack(sampled_logits, dim=1)  # [B, S, C]
         sampled_internal_logits = torch.stack(
             sampled_internal_logits, dim=1
@@ -78,7 +74,6 @@ class HetClassNNWrapper(DistributionalWrapper):
         return {
             "logit": sampled_logits,
             "internal_logit": sampled_internal_logits,
-            "feature": mean_features,
         }
 
     def reset_classifier(self, num_classes, *args, **kwargs):
@@ -115,5 +110,5 @@ class HetClassNNWrapper(DistributionalWrapper):
         )  # [B, S', C]
 
         if return_bundle:
-            return pre_logits, logits, logit_mc_samples
+            return logits, logit_mc_samples
         return logit_mc_samples

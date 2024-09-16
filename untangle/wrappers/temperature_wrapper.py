@@ -34,7 +34,7 @@ class TemperatureWrapper(SpecialWrapper):
 
         if self.training:
             return out
-        return {"logit": out, "feature": features}
+        return {"logit": out}
 
     def set_temperature_loader(self, val_loader):
         device = next(self.model.parameters()).device
