@@ -16,3 +16,14 @@ class CEBaselineWrapper(DistributionalWrapper):
         model: nn.Module,
     ):
         super().__init__(model)
+
+    def forward_head(self, x, *, pre_logits: bool = False):
+        # Always get pre_logits
+        features = self.model.forward_head(x, pre_logits=True)
+
+        if pre_logits:
+            return features
+
+        out = self.model.get_classifier()(features).unsqueeze(dim=1)
+
+        return (out,)
