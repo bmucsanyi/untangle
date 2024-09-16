@@ -1,6 +1,7 @@
 """Predictive distribution utils."""
 
 import math
+from functools import partial
 
 import torch
 import torch.nn.functional as F
@@ -21,14 +22,16 @@ def softmax_laplace_bridge(
     return pred
 
 
-def softmax_probit_approx_sigmoid(
-    mean: torch.Tensor, var: torch.Tensor
-) -> torch.Tensor:
+def softmax_mean_field(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
     return (mean / (1 + LAMBDA_0 * var).sqrt()).softmax(dim=-1)
 
 
 def softmax_mc(
-    mean: torch.Tensor, var: torch.Tensor, num_mc_samples: int
+    mean: torch.Tensor,
+    var: torch.Tensor,
+    num_mc_samples: int,
+    *,
+    return_samples: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
@@ -36,27 +39,29 @@ def softmax_mc(
         + mean
     )
 
-    return logit_samples.softmax(dim=-1).mean(dim=0)
+    prob_mean = logit_samples.softmax(dim=-1).mean(dim=0)
+
+    return prob_mean, logit_samples if return_samples else prob_mean
 
 
-def sigmoid_probit_approx_normcdf(
-    mean: torch.Tensor, var: torch.Tensor
-) -> torch.Tensor:
+def logit_link_normcdf_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
     return probit_predictive(
-        mean, var, link_function="sigmoid", output_function="normcdf"
+        mean, var, link_function="logit", output_function="normcdf"
     )
 
 
-def sigmoid_probit_approx_sigmoid(
-    mean: torch.Tensor, var: torch.Tensor
-) -> torch.Tensor:
+def logit_link_sigmoid_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
     return probit_predictive(
-        mean, var, link_function="sigmoid", output_function="sigmoid"
+        mean, var, link_function="logit", output_function="sigmoid"
     )
 
 
-def sigmoid_mc(
-    mean: torch.Tensor, var: torch.Tensor, num_mc_samples: int
+def logit_link_mc(
+    mean: torch.Tensor,
+    var: torch.Tensor,
+    num_mc_samples: int,
+    *,
+    return_samples: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
@@ -66,27 +71,29 @@ def sigmoid_mc(
     prob = F.sigmoid(logit_samples)
     prob = prob / prob.sum(dim=-1, keepdim=True)
 
-    return prob.mean(dim=0)
+    prob_mean = prob.mean(dim=0)
+
+    return prob_mean, logit_samples if return_samples else prob_mean
 
 
-def normcdf_probit_approx_normcdf(
-    mean: torch.Tensor, var: torch.Tensor
-) -> torch.Tensor:
+def probit_link_normcdf_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
     return probit_predictive(
         mean, var, link_function="probit", output_function="normcdf"
     )
 
 
-def normcdf_probit_approx_sigmoid(
-    mean: torch.Tensor, var: torch.Tensor
-) -> torch.Tensor:
+def probit_link_sigmoid_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
     return probit_predictive(
         mean, var, link_function="probit", output_function="sigmoid"
     )
 
 
-def normcdf_mc(
-    mean: torch.Tensor, var: torch.Tensor, num_mc_samples: int
+def probit_link_mc(
+    mean: torch.Tensor,
+    var: torch.Tensor,
+    num_mc_samples: int,
+    *,
+    return_samples: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
@@ -96,7 +103,9 @@ def normcdf_mc(
     prob = normcdf(logit_samples)
     prob = prob / prob.sum(dim=-1, keepdim=True)
 
-    return prob.mean(dim=0)
+    prob_mean = prob.mean(dim=0)
+
+    return prob_mean, logit_samples if return_samples else prob_mean
 
 
 def normcdf(x: torch.Tensor) -> torch.Tensor:
@@ -141,7 +150,7 @@ def beta_predictive(beta_params: torch.Tensor) -> torch.Tensor:
 
 
 def dirichlet_predictive(params: torch.Tensor) -> torch.Tensor:
-    """Ppredictive mean of Dirichlet distributions."""
+    """Predictive mean of Dirichlet distributions."""
     predictives = params / torch.sum(
         params, axis=1, keepdim=True
     )  # [batch_size, num_classes]
@@ -283,12 +292,23 @@ def diag_hessian_softmax(logit, target):
 
 PREDICTIVE_DICT = {
     "softmax_laplace_bridge": softmax_laplace_bridge,
-    "softmax_probit_approx_sigmoid": softmax_probit_approx_sigmoid,
+    "softmax_mean_field": softmax_mean_field,
     "softmax_mc": softmax_mc,
-    "sigmoid_probit_approx_normcdf": sigmoid_probit_approx_normcdf,
-    "sigmoid_probit_approx_sigmoid": sigmoid_probit_approx_sigmoid,
-    "sigmoid_mc": sigmoid_mc,
-    "normcdf_probit_approx_normcdf": normcdf_probit_approx_normcdf,
-    "normcdf_probit_approx_sigmoid": normcdf_probit_approx_sigmoid,
-    "normcdf_mc": normcdf_mc,
+    "logit_link_normcdf_output": logit_link_normcdf_output,
+    "logit_link_sigmoid_output": logit_link_sigmoid_output,
+    "logit_link_mc": logit_link_mc,
+    "probit_link_normcdf_output": probit_link_normcdf_output,
+    "probit_link_sigmoid_output": probit_link_sigmoid_output,
+    "probit_link_mc": probit_link_mc,
 }
+
+
+def get_predictive(predictive, correction, num_mc_samples):
+    predictive_fn = PREDICTIVE_DICT[predictive]
+
+    if predictive.endswith("mc"):
+        predictive_fn = partial(predictive_fn, num_mc_samples=num_mc_samples)
+    elif predictive == "softmax_laplace_bridge":
+        predictive_fn = partial(predictive_fn, correction=correction)
+
+    return predictive_fn
