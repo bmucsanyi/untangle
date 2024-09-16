@@ -19,7 +19,6 @@ class CheckpointSaver:
         model,
         optimizer,
         amp_scaler,
-        decreasing,
         max_history,
         checkpoint_dir,
     ):
@@ -38,8 +37,7 @@ class CheckpointSaver:
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_prefix = "checkpoint"
         self.extension = "pt"
-        self.decreasing = decreasing  # A lower metric is better if True
-        self.cmp = operator.lt if decreasing else operator.gt
+        self.cmp = operator.gt
         self.max_history = max_history
 
     def save_checkpoint(self, epoch, metric):
