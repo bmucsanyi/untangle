@@ -4,12 +4,11 @@ from torch import nn
 
 from untangle.losses import (
     BMACrossEntropyLoss,
-    CorrectnessPredictionLoss,
-    DUQLoss,
     EDLLoss,
-    FBarCrossEntropyLoss,
-    LossPredictionLoss,
+    NormCDFNLLLoss,
+    RegularizedPredictiveNLLLoss,
     RegularizedUCELoss,
+    SigmoidNLLLoss,
 )
 
 
@@ -19,18 +18,6 @@ def create_loss_fn(args, num_batches):
         train_loss_fn = nn.CrossEntropyLoss()
     elif args.loss == "bma-cross-entropy":
         train_loss_fn = BMACrossEntropyLoss()
-    elif args.loss == "fbar-cross-entropy":
-        train_loss_fn = FBarCrossEntropyLoss()
-    elif args.loss == "correctness-prediction":
-        train_loss_fn = CorrectnessPredictionLoss(
-            args.lambda_uncertainty_loss, args.use_top5_correctness
-        )
-    elif args.loss == "duq":
-        train_loss_fn = DUQLoss()
-    elif args.loss == "loss-prediction":
-        train_loss_fn = LossPredictionLoss(
-            args.lambda_uncertainty_loss, args.detach_task_loss
-        )
     elif args.loss == "edl":
         train_loss_fn = EDLLoss(
             num_batches=num_batches,
@@ -40,7 +27,15 @@ def create_loss_fn(args, num_batches):
         )
     elif args.loss == "uce":
         train_loss_fn = RegularizedUCELoss(
-            regularization_factor=args.uce_regularization_factor
+            regularization_factor=args.regularization_factor
+        )
+    elif args.loss == "normcdf-nll":
+        train_loss_fn = NormCDFNLLLoss()
+    elif args.loss == "sigmoid-nll":
+        train_loss_fn = SigmoidNLLLoss()
+    elif args.loss == "predictive-nll":
+        train_loss_fn = RegularizedPredictiveNLLLoss(
+            predictive=args.predictive, regularization_factor=args.regularization_factor
         )
     else:
         msg = f"--loss {args.loss} is not implemented"
