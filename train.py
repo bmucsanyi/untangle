@@ -129,20 +129,6 @@ def setup_wrapper(model, train_loader):
         model.calculate_sample_counts(train_loader)
 
 
-def verify_eval_metric(args):
-    if not (
-        args.eval_metric.startswith("id_eval_")
-        and args.eval_metric.endswith("_auroc_hard_bma_correctness")
-    ):
-        msg = (
-            "Invalid eval metric name specified: must be "
-            "'id_eval_<estimator>_auroc_hard_bma_correctness'"
-        )
-        raise ValueError(msg)
-
-    return args.eval_metric
-
-
 def setup_output_dir(data_config, args):
     experiment_name = "-".join([
         datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S-%f"),
@@ -192,8 +178,6 @@ def train(
     amp_autocast,
     loss_scaler,
     id_eval_loader,
-    eval_metric,
-    decreasing,
     device,
     storage_device,
     output_dir,
@@ -202,6 +186,7 @@ def train(
     best_eval_metric = float("inf") if args.decreasing else -float("inf")
     best_eval_metrics = None
     best_epoch = None
+    eval_metric = "id_eval_hard_bma_accuracy_original"
 
     if args.reparam_at_training_start:
         model.load_state_dict(reparam(model.state_dict())[0])
@@ -237,13 +222,11 @@ def train(
                 is_soft_dataset="soft" in args.dataset_id,
                 args=args,
             )
-            accuracy_key = "id_eval_hard_bma_accuracy_original"
-            logger.info(f"{accuracy_key}: {eval_metrics[accuracy_key]}")
             logger.info(f"{eval_metric}: {eval_metrics[eval_metric]}")
 
-            is_new_best = epoch >= args.best_save_start_epoch and (
-                (decreasing and eval_metrics[eval_metric] < best_eval_metric)
-                or ((not decreasing) and eval_metrics[eval_metric] > best_eval_metric)
+            is_new_best = (
+                epoch >= args.best_save_start_epoch
+                and eval_metrics[eval_metric] > best_eval_metric
             )
 
             if is_new_best:
@@ -439,17 +422,13 @@ def main():
     train_loss_fn = create_loss_fn(args=args, num_batches=len(train_loader))
     train_loss_fn = train_loss_fn.to(device=device)
 
-    # Setup checkpoint saver and eval metric tracking
-    eval_metric = verify_eval_metric(args)
-
+    # Setup checkpoint saver
     output_dir = setup_output_dir(data_config, args)
 
-    decreasing = args.decreasing
     saver = CheckpointSaver(
         model=model,
         optimizer=optimizer,
         amp_scaler=loss_scaler,
-        decreasing=decreasing,
         max_history=args.checkpoint_history,
         checkpoint_dir=output_dir,
     )
@@ -474,8 +453,6 @@ def main():
                 amp_autocast,
                 loss_scaler,
                 id_eval_loader,
-                eval_metric,
-                decreasing,
                 device,
                 storage_device,
                 output_dir,
