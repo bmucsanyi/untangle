@@ -45,6 +45,8 @@ from .predictive import (
     diag_hessian_normalized_normcdf,
     diag_hessian_normalized_sigmoid,
     diag_hessian_softmax,
+    get_mom_dirichlet_approximation,
+    get_predictive,
 )
 from .random import set_random_seed
 from .reparam import REPARAMS
@@ -94,6 +96,8 @@ __all__ = [
     "entropy",
     "excess_area_under_risk_coverage_curve",
     "float_tuple",
+    "get_mom_dirichlet_approximation",
+    "get_predictive",
     "get_ranks",
     "hard_target_transform",
     "int_tuple",
