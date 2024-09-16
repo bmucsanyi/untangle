@@ -485,6 +485,11 @@ group.add_argument(
     help="Whether to use temperature scaling for the Temperature and DDU methods",
 )
 group.add_argument(
+    "--use-correction",
+    action="store_true",
+    help="Whether to use the correction in the Laplace bridge predictive",
+)
+group.add_argument(
     "--scale",
     default=(0.08, 1.0),
     type=float_tuple,
@@ -685,10 +690,10 @@ group.add_argument(
 # Augmentation & regularization parameters
 group = parser.add_argument_group("Augmentation and regularization parameters")
 group.add_argument(
-    "--uce-regularization-factor",
+    "--regularization-factor",
     type=float,
     default=1e-5,
-    help="UCE regularization factor for PostNets",
+    help="Regularization factor in the loss",
 )
 group.add_argument(
     "--edl-start-epoch",
@@ -707,6 +712,12 @@ group.add_argument(
     type=str,
     default="exp",
     help="EDL final activation function",
+)
+group.add_argument(
+    "--predictive",
+    type=str,
+    default="softmax_mc",
+    help="Predictive for evaluation (and training for HET)",
 )
 
 # Misc
@@ -754,17 +765,6 @@ group.add_argument(
     "--prefetcher",
     action="store_true",
     help="Use fast prefetcher",
-)
-group.add_argument(
-    "--eval-metric",
-    type=str,
-    default="id_eval_one_minus_expected_max_probs_auroc_hard_bma_correctness",
-    help="Metric to track for early stopping/checkpoint saving",
-)
-group.add_argument(
-    "--decreasing",
-    action="store_true",
-    help="Whether eval-metric is decreasing",
 )
 group.add_argument(
     "--best-save-start-epoch",
