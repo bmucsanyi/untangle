@@ -53,7 +53,7 @@ class SWAGWrapper(DistributionalWrapper):
                 self.model.forward_features(inputs), pre_logits=True
             )
             logits = self.model.get_classifier()(features)  # [B, C]
-
+            sampled_features.append(features)
             sampled_logits.append(logits)
 
         sampled_features = torch.stack(sampled_features, dim=1)  # [B, S, D]
