@@ -312,7 +312,7 @@ def get_cmd_str(args):
                 "/scratch_local/$SLURM_JOB_USER-$SLURM_JOBID/datasets/real.json"
             )
         else:  # "cifar10"
-            setup_str = (
+            setup_str += (
                 f"cp -r {args.datasets_root_path}/cifar-10-batches-py "
                 "/scratch_local/$SLURM_JOB_USER-$SLURM_JOBID/datasets/"
                 "cifar-10-batches-py\n"
