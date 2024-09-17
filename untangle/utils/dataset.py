@@ -79,14 +79,14 @@ def create_dataset(
                 download=download,
             )
         else:
-            msg = "Unsupported dataset."
+            msg = "Unsupported dataset"
             raise ValueError(msg)
     elif name.startswith("soft/"):
         name = name.split("/", 2)[-1]
 
         if name == "imagenet":
             if split != "val":
-                msg = "Only the val split is supported for SoftImageNet."
+                msg = "Only the val split is supported for SoftImageNet"
                 raise ValueError(msg)
 
             dataset = SoftImageNet(
@@ -104,10 +104,10 @@ def create_dataset(
                 target_transform=target_transform,
             )
         else:
-            msg = "Unsupported dataset."
+            msg = "Unsupported dataset"
             raise ValueError(msg)
     else:
-        msg = "Unsupported dataset type."
+        msg = "Unsupported dataset type"
         raise ValueError(msg)
 
     if ood_transform_type is not None and severity > 0:
