@@ -297,7 +297,7 @@ group.add_argument(
     help="Gradient penalty lambda in the DUQ method",
 )
 group.add_argument(
-    "--matrix-rank",
+    "--rank",
     default=15,
     type=int,
     help="Rank of low-rank covariance matrix part in the HET method",
@@ -312,18 +312,6 @@ group.add_argument(
     type=float,
     default=1.5,
     help="Temperature in the HET method",
-)
-group.add_argument(
-    "--pred-type",
-    type=str,
-    default="glm",
-    help="Prediction type used by Laplace",
-)
-group.add_argument(
-    "--hessian-structure",
-    type=str,
-    default="kron",
-    help="Hessian structure method used by Laplace",
 )
 group.add_argument(
     "--use-low-rank-cov",
@@ -341,18 +329,6 @@ group.add_argument(
     type=int,
     default=4,
     help="Number of checkpoints per epoch in the SWAG method",
-)
-group.add_argument(
-    "--magnitude",
-    type=float,
-    default=0.001,
-    help="Gradient magnitude in the Mahalanobis method",
-)
-group.add_argument(
-    "--num-heads",
-    type=int,
-    default=10,
-    help="Number of output heads in the shallow ensemble method",
 )
 group.add_argument(
     "--use-spectral-normalization",
@@ -444,32 +420,6 @@ group.add_argument(
     help="Number of density components in PostNet's normalizing flow",
 )
 group.add_argument(
-    "--reparam-type",
-    type=str,
-    default=None,
-    help="Type of reparametrization",
-)
-group.add_argument(
-    "--reparam-at-training-start",
-    action="store_true",
-    help="Whether to reparametrize the network at the start of training",
-)
-group.add_argument(
-    "--reparam-at-each-step",
-    action="store_true",
-    help="Whether to reparametrize the network at each gradient step",
-)
-group.add_argument(
-    "--reparam-before-checkpoint",
-    action="store_true",
-    help="Whether to reparametrize the network before each checkpoint",
-)
-group.add_argument(
-    "--conv-as-dense",
-    action="store_true",
-    help="Whether to reparametrize conv layers using their dense representations",
-)
-group.add_argument(
     "--use-batched-flow",
     action="store_true",
     help="Whether the normalizing flow in PostNet is batched",
@@ -478,11 +428,6 @@ group.add_argument(
     "--reset-classifier",
     action="store_true",
     help="Whether to reset the classifier layer before training",
-)
-group.add_argument(
-    "--use-temperature-scaling",
-    action="store_true",
-    help="Whether to use temperature scaling for the Temperature and DDU methods",
 )
 group.add_argument(
     "--use-correction",
@@ -533,28 +478,6 @@ group.add_argument(
     type=str,
     default="cross-entropy",
     help="Loss for training",
-)
-group.add_argument(
-    "--lambda-uncertainty-loss",
-    type=float,
-    default=0.01,
-    help=(
-        "Multiplier of the uncertainty loss when calculating the total loss for the "
-        "correctness and loss prediction methods"
-    ),
-)
-group.add_argument(
-    "--use-top5-correctness",
-    action="store_true",
-    help="Whether to use top-5 correctness to train the correctness prediction method",
-)
-group.add_argument(
-    "--detach-task-loss",
-    action="store_true",
-    help=(
-        "Whether to detach the task loss before calculating the uncertainty loss in "
-        "the loss prediction method"
-    ),
 )
 
 # Model parameters
@@ -635,7 +558,7 @@ group.add_argument(
     "--compile",
     type=str,
     default=None,
-    help="Enable compilation with specified backend",
+    help="Enable compilation",
 )
 
 # Optimizer parameters
@@ -715,6 +638,22 @@ group.add_argument(
 )
 group.add_argument(
     "--predictive",
+    type=str,
+    default="softmax_mc",
+    help="Predictive for evaluation (and training for HET)",
+)
+group.add_argument(
+    "--use-correction",
+    action="store_true",
+    help="Whether to use the correction in Laplace bridge",
+)
+group.add_argument(
+    "--use-eigval-prior",
+    action="store_true",
+    help="Whether to us the eigenvalue prior in Laplace",
+)
+group.add_argument(
+    "--likelihood",
     type=str,
     default="softmax_mc",
     help="Predictive for evaluation (and training for HET)",
