@@ -24,6 +24,6 @@ class BaselineWrapper(DistributionalWrapper):
         if pre_logits:
             return features
 
-        out = self.model.get_classifier()(features).unsqueeze(dim=1)
+        out = self.model.get_classifier()(features)
 
-        return out if self.training else (out,)
+        return out if self.training else (out.unsqueeze(dim=1),)
