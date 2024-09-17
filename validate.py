@@ -29,7 +29,7 @@ from untangle.utils import (
     spearmanr,
 )
 from untangle.wrappers import (
-    CovariancePushforwardLaplace,
+    CovariancePushforwardLaplaceWrapper,
     DeepEnsembleWrapper,
     EDLWrapper,
     HETWrapper,
@@ -1170,7 +1170,7 @@ def get_bundle(
     link = args.predictive.split("_")[0]
     is_distributional_het = isinstance(model, HETWrapper) and not args.use_sampling
     is_distributional = is_distributional_het or isinstance(
-        model, SNGPWrapper | CovariancePushforwardLaplace | LinearizedSWAGWrapper
+        model, SNGPWrapper | CovariancePushforwardLaplaceWrapper | LinearizedSWAGWrapper
     )
 
     if not isinstance(model, EDLWrapper, PostNetWrapper):
