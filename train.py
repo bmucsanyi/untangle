@@ -12,7 +12,6 @@ from timm.optim import create_optimizer_v2
 from timm.scheduler import create_scheduler_v2
 
 from untangle.utils import (
-    REPARAMS,
     AverageMeter,
     CheckpointSaver,
     DefaultContext,
@@ -21,6 +20,8 @@ from untangle.utils import (
     create_loader,
     create_loss_fn,
     create_model,
+    get_likelihood,
+    get_predictive,
     log_wandb,
     optimizer_kwargs,
     parse_args,
@@ -172,7 +173,6 @@ def train(
     optimizer,
     train_loss_fn,
     lr_scheduler,
-    reparam,
     train_loader,
     saver,
     amp_autocast,
@@ -188,9 +188,6 @@ def train(
     best_epoch = None
     eval_metric = "id_eval_hard_bma_accuracy_original"
 
-    if args.reparam_at_training_start:
-        model.load_state_dict(reparam(model.state_dict())[0])
-
     for epoch in range(num_epochs):
         time_start_epoch = time.perf_counter()
         train_metrics = train_one_epoch(
@@ -199,7 +196,6 @@ def train(
             loader=train_loader,
             optimizer=optimizer,
             loss_fn=train_loss_fn,
-            reparam=reparam,
             args=args,
             device=device,
             lr_scheduler=lr_scheduler,
@@ -338,6 +334,21 @@ def main():
     set_random_seed(args.seed)
     data_config = resolve_data_config(vars(args))
 
+    (
+        train_loader,
+        id_eval_loader,
+        hard_id_eval_loader,
+        id_test_loader,
+        ood_test_loaders,
+        mixed_s2_eval_loader,
+    ) = create_loaders(
+        data_config=data_config,
+        args=args,
+        device=device,
+    )
+    train_loss_fn = create_loss_fn(args=args, num_batches=len(train_loader))
+    train_loss_fn = train_loss_fn.to(device=device)
+
     model = create_model(
         model_name=args.model_name,
         pretrained=args.pretrained,
@@ -352,27 +363,12 @@ def main():
         reset_classifier=args.reset_classifier,
         weight_paths=args.weight_paths,
         num_hidden_features=args.num_hidden_features,
-        mlp_depth=args.mlp_depth,
-        stopgrad=args.stopgrad,
-        num_hooks=args.num_hooks,
-        module_type=args.module_type,
-        module_name_regex=args.module_name_regex,
-        dropout_probability=args.dropout_probability,
-        use_filterwise_dropout=args.use_filterwise_dropout,
         num_mc_samples=args.num_mc_samples,
-        num_mc_samples_integral=args.num_mc_samples_integral,
-        num_mc_samples_cv=args.num_mc_samples_cv,
-        rbf_length_scale=args.rbf_length_scale,
-        ema_momentum=args.ema_momentum,
-        matrix_rank=args.matrix_rank,
+        rank=args.rank,
         use_sampling=args.use_sampling,
         temperature=args.temperature,
-        pred_type=args.pred_type,
-        hessian_structure=args.hessian_structure,
         use_low_rank_cov=args.use_low_rank_cov,
         max_rank=args.max_rank,
-        magnitude=args.magnitude,
-        num_heads=args.num_heads,
         use_spectral_normalization=args.use_spectral_normalization,
         spectral_normalization_iteration=args.spectral_normalization_iteration,
         spectral_normalization_bound=args.spectral_normalization_bound,
@@ -391,6 +387,14 @@ def main():
         use_batched_flow=args.use_batched_flow,
         edl_activation=args.edl_activation,
         checkpoint_path=args.initial_checkpoint_path,
+        loss_function=train_loss_fn,
+        predictive_fn=get_predictive(
+            args.predictive,
+            use_correction=args.use_correction,
+            num_mc_samples=args.num_mc_samples,
+        ),
+        use_eigval_prior=args.use_eigval_prior,
+        likelihood=get_likelihood(args.predictive),
     )
 
     # Move model to device
@@ -404,23 +408,7 @@ def main():
     amp_autocast, loss_scaler = setup_amp(device, args)
     setup_compile(model, args)
 
-    (
-        train_loader,
-        id_eval_loader,
-        hard_id_eval_loader,
-        id_test_loader,
-        ood_test_loaders,
-        mixed_s2_eval_loader,
-    ) = create_loaders(
-        data_config=data_config,
-        args=args,
-        device=device,
-    )
-
     setup_wrapper(model, train_loader)
-
-    train_loss_fn = create_loss_fn(args=args, num_batches=len(train_loader))
-    train_loss_fn = train_loss_fn.to(device=device)
 
     # Setup checkpoint saver
     output_dir = setup_output_dir(data_config, args)
@@ -434,7 +422,6 @@ def main():
     )
 
     lr_scheduler, num_epochs = setup_scheduler(optimizer, train_loader, args)
-    reparam = partial(REPARAMS[args.reparam_type], conv_as_dense=args.conv_as_dense)
 
     time_end_setup = time.perf_counter()
     logger.info(f"Setup took {time_end_setup - time_start_setup} seconds.")
@@ -447,7 +434,6 @@ def main():
                 optimizer,
                 train_loss_fn,
                 lr_scheduler,
-                reparam,
                 train_loader,
                 saver,
                 amp_autocast,
@@ -819,7 +805,6 @@ def train_one_epoch(
     loader,
     optimizer,
     loss_fn,
-    reparam,
     args,
     device,
     lr_scheduler,
@@ -866,10 +851,6 @@ def train_one_epoch(
         if isinstance(model, DUQWrapper):
             input, target = model.prepare_data(input, target)
 
-        # Per-step reparam
-        if args.reparam_at_each_step:
-            model.load_state_dict(reparam(model.state_dict())[0])
-
         loss = forward(
             model=model,
             input=input,
@@ -903,9 +884,6 @@ def train_one_epoch(
         update_start_time = time_now
 
         if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
-            # Post-hoc reparam
-            if args.reparam_before_checkpoint:
-                model.load_state_dict(reparam(model.state_dict())[0])
             model.update_stats()
 
         if update_idx % args.log_interval == 0:
