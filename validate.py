@@ -1374,6 +1374,8 @@ def convert_inference_res(inference_res, time_forward, args):
         msg = "Invalid inference_res structure"
         raise ValueError(msg)
 
+    return converted_inference_res
+
 
 def update_logit_based(
     inference_res,
