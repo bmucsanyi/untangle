@@ -888,6 +888,7 @@ def forward_general_model_on_loader(
     device,
     storage_device,
     args,
+    log_probs,
     estimates,
     time_forward_m,
     gt_aleatorics_bregman,
@@ -934,6 +935,7 @@ def forward_general_model_on_loader(
             inference_res=inference_res,
             indices=indices,
             batch_size=batch_size,
+            log_probs=log_probs,
             estimates=estimates,
             time_forward_m=time_forward_m,
         )
@@ -967,6 +969,7 @@ def forward_deep_ensemble_on_loader(
     storage_device,
     num_samples,
     args,
+    log_probs,
     estimates,
     time_forward_m,
     gt_aleatorics_bregman,
@@ -1031,6 +1034,7 @@ def forward_deep_ensemble_on_loader(
             inference_res=inference_res,
             indices=indices,
             batch_size=batch_size,
+            log_probs=log_probs,
             estimates=estimates,
             time_forward_m=time_forward_m,
         )
@@ -1227,6 +1231,7 @@ def get_bundle(
             storage_device=storage_device,
             num_samples=num_samples,
             args=args,
+            log_probs=log_probs,
             estimates=estimates,
             time_forward_m=time_forward_m,
             gt_aleatorics_bregman=gt_aleatorics_bregman,
@@ -1243,6 +1248,7 @@ def get_bundle(
             device=device,
             storage_device=storage_device,
             args=args,
+            log_probs=log_probs,
             estimates=estimates,
             time_forward_m=time_forward_m,
             gt_aleatorics_bregman=gt_aleatorics_bregman,
@@ -1381,12 +1387,14 @@ def update_logit_based(
     inference_res,
     indices,
     batch_size,
+    log_probs,
     estimates,
     time_forward_m,
 ):
     for key in inference_res:
         if key == "time_forward":
-            continue
-        estimates[key][indices] = inference_res[key]
-
-    time_forward_m.update(inference_res["time_forward"], batch_size)
+            time_forward_m.update(inference_res[key], batch_size)
+        elif key.endswith("log_bmas"):
+            log_probs[key][indices] = inference_res[key]
+        else:
+            estimates[key][indices] = inference_res[key]
