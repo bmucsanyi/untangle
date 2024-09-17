@@ -12,7 +12,7 @@ parser.add_argument(
     "--username", type=str, default="bmucsanyi", help="The Weights & Biases username"
 )
 parser.add_argument(
-    "--project", type=str, default="bias", help="The Weights & Biases project"
+    "--project", type=str, default="probit", help="The Weights & Biases project"
 )
 parser.add_argument(
     "--count", type=int, default=1, help="Number of runs to query from the sweep"
@@ -42,7 +42,7 @@ parser.add_argument(
     default=Path("/mnt/lustre/work/oh/owl569/datasets"),
     help="Root path of datasets",
 )
-parser.add_argument("--job-name", type=str, default="untangle", help="Job name")
+parser.add_argument("--job-name", type=str, default="probit", help="Job name")
 parser.add_argument(
     "--partition",
     type=str,
