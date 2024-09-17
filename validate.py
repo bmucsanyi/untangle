@@ -343,7 +343,7 @@ def evaluate_on_auroc_hard_bma_correctness(
     model,
     targets,
 ):
-    if not isinstance(model, EDLWrapper, PostNetWrapper):
+    if not isinstance(model, EDLWrapper | PostNetWrapper):
         return {
             "id_eval_hard_bma_accuracy_original": targets[
                 "mc_gt_hard_bma_correctnesses_original"
@@ -1173,7 +1173,7 @@ def get_bundle(
         model, SNGPWrapper | CovariancePushforwardLaplaceWrapper | LinearizedSWAGWrapper
     )
 
-    if not isinstance(model, EDLWrapper, PostNetWrapper):
+    if not isinstance(model, EDLWrapper | PostNetWrapper):
         log_bmas = torch.empty(num_samples, model.num_classes, device=storage_device)
         log_probs["mc_log_bmas"] = log_bmas
         expected_entropies = torch.empty(num_samples, device=storage_device)
