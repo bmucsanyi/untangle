@@ -181,7 +181,7 @@ def train(
     output_dir,
     args,
 ):
-    best_eval_metric = float("inf") if args.decreasing else -float("inf")
+    best_eval_metric = -float("inf")
     best_eval_metrics = None
     best_epoch = None
     eval_metric = "id_eval_hard_bma_accuracy_original"
