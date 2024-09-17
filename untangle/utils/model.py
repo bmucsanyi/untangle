@@ -16,6 +16,7 @@ from untangle.models import (
     wide_resnet_c_preact_26_10,
 )
 from untangle.wrappers import (
+    BaselineWrapper,
     CovariancePushforwardLaplaceWrapper,
     EDLWrapper,
     HETWrapper,
@@ -109,7 +110,9 @@ def wrap_model(
     if reset_classifier:
         model.reset_classifier(model.num_classes)
 
-    if model_wrapper_name == "het":
+    if model_wrapper_name == "baseline":
+        wrapped_model = BaselineWrapper(model=model)
+    elif model_wrapper_name == "het":
         wrapped_model = HETWrapper(
             model=model,
             matrix_rank=rank,
