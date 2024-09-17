@@ -59,9 +59,7 @@ class CheckpointSaver:
             top_save_path = self.checkpoint_dir / top_filename
             top_save_path.hardlink_to(last_save_path)
             self.checkpoint_files.append((top_save_path, metric))
-            self.checkpoint_files.sort(
-                key=operator.itemgetter(1), reverse=not self.decreasing
-            )
+            self.checkpoint_files.sort(key=operator.itemgetter(1), reverse=True)
 
             checkpoints_str = "Current checkpoints:\n"
             for checkpoint_file in self.checkpoint_files:
