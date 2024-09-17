@@ -13,10 +13,10 @@ LAMBDA_0 = math.pi / 8
 
 
 def softmax_laplace_bridge(
-    mean: torch.Tensor, var: torch.Tensor, *, correction: bool = True
+    mean: torch.Tensor, var: torch.Tensor, *, use_correction: bool = True
 ) -> torch.Tensor:
     """Softmax + Laplace bridge predictive."""
-    params = get_laplace_bridge_approximation(mean, var, correction)
+    params = get_laplace_bridge_approximation(mean, var, use_correction)
     pred = dirichlet_predictive(params)
 
     return pred
@@ -303,12 +303,24 @@ PREDICTIVE_DICT = {
 }
 
 
-def get_predictive(predictive, correction, num_mc_samples):
+def get_predictive(predictive, use_correction, num_mc_samples):
     predictive_fn = PREDICTIVE_DICT[predictive]
 
     if predictive.endswith("mc"):
         predictive_fn = partial(predictive_fn, num_mc_samples=num_mc_samples)
     elif predictive == "softmax_laplace_bridge":
-        predictive_fn = partial(predictive_fn, correction=correction)
+        predictive_fn = partial(predictive_fn, correction=use_correction)
 
     return predictive_fn
+
+
+def get_likelihood(predictive):
+    if predictive.startswith("softmax"):
+        return "softmax"
+    if predictive.startswith("probit"):
+        return "normcdf"
+    if predictive.startswith("logit"):
+        return "sigmoid"
+
+    msg = "Invalid predictive provided"
+    raise ValueError(msg)
