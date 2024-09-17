@@ -4,7 +4,6 @@ import logging
 import math
 
 import torch
-from huggingface_hub import hf_hub_download
 from torch import nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
@@ -17,8 +16,6 @@ def resnet_fixup_50(
     in_chans=3,
     downsample_type="conv",
     act_layer=nn.ReLU,
-    *,
-    pretrained=False,
 ):
     """Constructs a ResNet-Fixup-50 model."""
     model = ResNetFixup(
@@ -29,27 +26,6 @@ def resnet_fixup_50(
         downsample_type=downsample_type,
         act_layer=act_layer,
     )
-
-    if pretrained:
-        cached_file = hf_hub_download(
-            "timm/resnet50.a1_in1k",
-            filename="pytorch_model.bin",
-            revision=None,
-            library_name="timm",
-            library_version="0.9.8dev0",
-        )
-        state_dict = torch.load(cached_file, map_location="cpu", weights_only=True)
-        mismatches = model.load_state_dict(state_dict, strict=False)
-
-        if mismatches.missing_keys:
-            logger.warning(
-                f"The following keys are missing: {mismatches.missing_keys}."
-            )
-
-        if mismatches.unexpected_keys:
-            logger.warning(
-                f"The following keys are unexpected: {mismatches.unexpected_keys}."
-            )
 
     return model
 
