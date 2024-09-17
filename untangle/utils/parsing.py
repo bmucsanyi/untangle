@@ -430,11 +430,6 @@ group.add_argument(
     help="Whether to reset the classifier layer before training",
 )
 group.add_argument(
-    "--use-correction",
-    action="store_true",
-    help="Whether to use the correction in the Laplace bridge predictive",
-)
-group.add_argument(
     "--scale",
     default=(0.08, 1.0),
     type=float_tuple,
@@ -650,7 +645,7 @@ group.add_argument(
 group.add_argument(
     "--use-eigval-prior",
     action="store_true",
-    help="Whether to us the eigenvalue prior in Laplace",
+    help="Whether to use the eigenvalue prior in Laplace",
 )
 group.add_argument(
     "--likelihood",
