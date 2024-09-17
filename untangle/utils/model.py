@@ -16,25 +16,14 @@ from untangle.models import (
     wide_resnet_c_preact_26_10,
 )
 from untangle.wrappers import (
-    BaselineWrapper,
-    CorrectnessPredictionWrapper,
-    DDUWrapper,
-    DeepCorrectnessPredictionWrapper,
-    DeepEnsembleWrapper,
-    DeepLossPredictionWrapper,
-    DUQWrapper,
+    CovariancePushforwardLaplaceWrapper,
     EDLWrapper,
-    HetClassNNWrapper,
     HETWrapper,
-    LaplaceWrapper,
-    LossPredictionWrapper,
-    MahalanobisWrapper,
-    MCDropoutWrapper,
+    LinearizedSWAGWrapper,
     PostNetWrapper,
-    ShallowEnsembleWrapper,
+    SamplePushforwardLaplaceWrapper,
     SNGPWrapper,
     SWAGWrapper,
-    TemperatureWrapper,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +57,7 @@ def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
             **model_kwargs,
         )
 
-        if model_name in {"resnet_fixup_50", "resnet_50"}:
+        if model_name == "resnet_50":
             kwargs["pretrained"] = pretrained
 
         model = UNTANGLE_STR_TO_MODEL_CLASS[model_name](**kwargs)
@@ -82,33 +71,18 @@ def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
     return model
 
 
-def wrap_model(  # noqa: C901
+def wrap_model(
     model,
     model_wrapper_name,
     reset_classifier,
     weight_paths,
     num_hidden_features,
-    mlp_depth,
-    stopgrad,
-    num_hooks,
-    module_type,
-    module_name_regex,
-    dropout_probability,
-    use_filterwise_dropout,
     num_mc_samples,
-    num_mc_samples_integral,
-    num_mc_samples_cv,
-    rbf_length_scale,
-    ema_momentum,
-    matrix_rank,
+    rank,
     use_sampling,
     temperature,
-    pred_type,
-    hessian_structure,
     use_low_rank_cov,
     max_rank,
-    magnitude,
-    num_heads,
     use_spectral_normalization,
     spectral_normalization_iteration,
     spectral_normalization_bound,
@@ -127,107 +101,46 @@ def wrap_model(  # noqa: C901
     use_batched_flow,
     edl_activation,
     checkpoint_path,
+    loss_function,
+    predictive_fn,
+    use_eigval_prior,
+    likelihood,
 ):
     if reset_classifier:
         model.reset_classifier(model.num_classes)
 
-    if model_wrapper_name == "correctness-prediction":
-        wrapped_model = CorrectnessPredictionWrapper(
-            model=model,
-            num_hidden_features=num_hidden_features,
-            mlp_depth=mlp_depth,
-            stopgrad=stopgrad,
-        )
-    elif model_wrapper_name == "deep-correctness-prediction":
-        wrapped_model = DeepCorrectnessPredictionWrapper(
-            model=model,
-            num_hidden_features=num_hidden_features,
-            mlp_depth=mlp_depth,
-            stopgrad=stopgrad,
-            num_hooks=num_hooks,
-            module_type=module_type,
-            module_name_regex=module_name_regex,
-        )
-    elif model_wrapper_name == "temperature-scaling":
-        wrapped_model = TemperatureWrapper(model=model, weight_path=weight_paths[0])
-    elif model_wrapper_name == "deep-ensemble":
-        return DeepEnsembleWrapper(
-            model=model,
-            weight_paths=weight_paths,
-        )
-    elif model_wrapper_name == "baseline":
-        wrapped_model = BaselineWrapper(model=model)
-    elif model_wrapper_name == "mc-dropout":
-        wrapped_model = MCDropoutWrapper(
-            model=model,
-            dropout_probability=dropout_probability,
-            use_filterwise_dropout=use_filterwise_dropout,
-            num_mc_samples=num_mc_samples,
-        )
-    elif model_wrapper_name == "duq":
-        wrapped_model = DUQWrapper(
-            model=model,
-            num_hidden_features=num_hidden_features,
-            rbf_length_scale=rbf_length_scale,
-            ema_momentum=ema_momentum,
-        )
-    elif model_wrapper_name == "ddu":
-        wrapped_model = DDUWrapper(
-            model=model,
-            use_spectral_normalization=use_spectral_normalization,
-            spectral_normalization_iteration=spectral_normalization_iteration,
-            spectral_normalization_bound=spectral_normalization_bound,
-            use_spectral_normalized_batch_norm=use_spectral_normalized_batch_norm,
-            use_tight_norm_for_pointwise_convs=use_tight_norm_for_pointwise_convs,
-        )
-    elif model_wrapper_name == "het":
+    if model_wrapper_name == "het":
         wrapped_model = HETWrapper(
             model=model,
-            matrix_rank=matrix_rank,
+            matrix_rank=rank,
             num_mc_samples=num_mc_samples,
             temperature=temperature,
             use_sampling=use_sampling,
         )
     elif model_wrapper_name == "laplace":
-        wrapped_model = LaplaceWrapper(
-            model=model,
-            num_mc_samples=num_mc_samples,
-            num_mc_samples_cv=num_mc_samples_cv,
-            weight_path=weight_paths[0],
-            pred_type=pred_type,
-            hessian_structure=hessian_structure,
-        )
+        kwargs = {
+            "model": model,
+            "loss_function": loss_function,
+            "rank": rank,
+            "predictive_fn": predictive_fn,
+            "use_eigval_prior": use_eigval_prior,
+        }
+        if use_sampling:
+            kwargs["num_mc_samples"] = num_mc_samples
+            wrapped_model = SamplePushforwardLaplaceWrapper(**kwargs)
+        else:
+            wrapped_model = CovariancePushforwardLaplaceWrapper(**kwargs)
     elif model_wrapper_name == "swag":
-        wrapped_model = SWAGWrapper(
-            model=model,
-            weight_path=weight_paths[0],
-            use_low_rank_cov=use_low_rank_cov,
-            max_rank=max_rank,
-        )
-    elif model_wrapper_name == "mahalanobis":
-        wrapped_model = MahalanobisWrapper(
-            model=model,
-            magnitude=magnitude,
-            weight_path=weight_paths[0],
-            num_hooks=num_hooks,
-            module_type=module_type,
-            module_name_regex=module_name_regex,
-        )
-    elif model_wrapper_name == "hetclassnn":
-        wrapped_model = HetClassNNWrapper(
-            model=model,
-            dropout_probability=dropout_probability,
-            use_filterwise_dropout=use_filterwise_dropout,
-            num_mc_samples=num_mc_samples,
-            num_mc_samples_integral=num_mc_samples_integral,
-        )
-    elif model_wrapper_name == "loss-prediction":
-        wrapped_model = LossPredictionWrapper(
-            model=model,
-            num_hidden_features=num_hidden_features,
-            mlp_depth=mlp_depth,
-            stopgrad=stopgrad,
-        )
+        kwargs = {
+            "model": model,
+            "weight_path": weight_paths[0],
+            "use_low_rank_cov": use_low_rank_cov,
+            "max_rank": max_rank,
+        }
+        if use_sampling:
+            wrapped_model = SWAGWrapper(**kwargs)
+        else:
+            wrapped_model = LinearizedSWAGWrapper(**kwargs)
     elif model_wrapper_name == "edl":
         wrapped_model = EDLWrapper(model=model, activation=edl_activation)
     elif model_wrapper_name == "postnet":
@@ -238,18 +151,6 @@ def wrap_model(  # noqa: C901
             num_density_components=num_density_components,
             use_batched_flow=use_batched_flow,
         )
-    elif model_wrapper_name == "deep-loss-prediction":
-        wrapped_model = DeepLossPredictionWrapper(
-            model=model,
-            num_hidden_features=num_hidden_features,
-            mlp_depth=mlp_depth,
-            stopgrad=stopgrad,
-            num_hooks=num_hooks,
-            module_type=module_type,
-            module_name_regex=module_name_regex,
-        )
-    elif model_wrapper_name == "shallow-ensemble":
-        wrapped_model = ShallowEnsembleWrapper(model=model, num_heads=num_heads)
     elif model_wrapper_name == "sngp":
         wrapped_model = SNGPWrapper(
             model=model,
@@ -267,6 +168,7 @@ def wrap_model(  # noqa: C901
             gp_cov_momentum=gp_cov_momentum,
             gp_cov_ridge_penalty=gp_cov_ridge_penalty,
             gp_input_dim=gp_input_dim,
+            likelihood=likelihood,
         )
     else:
         msg = (
