@@ -345,7 +345,7 @@ def evaluate_on_auroc_hard_bma_correctness(
 ):
     if not isinstance(model, EDLWrapper | PostNetWrapper):
         return {
-            "id_eval_hard_bma_accuracy_original": targets[
+            "hard_bma_accuracy_original": targets[
                 "mc_gt_hard_bma_correctnesses_original"
             ]
             .float()
@@ -354,7 +354,7 @@ def evaluate_on_auroc_hard_bma_correctness(
         }
 
     return {
-        "id_eval_hard_bma_accuracy_original": targets[
+        "hard_bma_accuracy_original": targets[
             "dirichlet_gt_hard_bma_correctnesses_original"
         ]
         .float()
