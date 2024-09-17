@@ -313,10 +313,10 @@ def get_cmd_str(args):
             )
         else:  # "cifar10"
             setup_str = (
-                f"cp -r {args.datasets_root_path}/cifar-10-batches-py"
+                f"cp -r {args.datasets_root_path}/cifar-10-batches-py "
                 "/scratch_local/$SLURM_JOB_USER-$SLURM_JOBID/datasets/"
                 "cifar-10-batches-py\n"
-                f"cp -r {args.datasets_root_path}/CIFAR10H"
+                f"cp -r {args.datasets_root_path}/CIFAR10H "
                 "/scratch_local/$SLURM_JOB_USER-$SLURM_JOBID/datasets/CIFAR10H"
             )
 
