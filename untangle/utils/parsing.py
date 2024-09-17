@@ -203,7 +203,7 @@ group = parser.add_argument_group("Method parameters")
 group.add_argument(
     "--method-name",
     type=str,
-    default="ce-baseline",
+    default="baseline",
     help="Name of uncertainty method",
 )
 group.add_argument(

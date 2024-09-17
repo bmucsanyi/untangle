@@ -16,7 +16,7 @@ from untangle.models import (
     wide_resnet_c_preact_26_10,
 )
 from untangle.wrappers import (
-    CEBaselineWrapper,
+    BaselineWrapper,
     CorrectnessPredictionWrapper,
     DDUWrapper,
     DeepCorrectnessPredictionWrapper,
@@ -155,8 +155,8 @@ def wrap_model(  # noqa: C901
             model=model,
             weight_paths=weight_paths,
         )
-    elif model_wrapper_name == "ce-baseline":
-        wrapped_model = CEBaselineWrapper(model=model)
+    elif model_wrapper_name == "baseline":
+        wrapped_model = BaselineWrapper(model=model)
     elif model_wrapper_name == "mc-dropout":
         wrapped_model = MCDropoutWrapper(
             model=model,

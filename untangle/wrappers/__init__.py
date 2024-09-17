@@ -1,5 +1,5 @@
 __all__ = [
-    "CEBaselineWrapper",
+    "BaselineWrapper",
     "CovariancePushforwardLaplace",
     "DeepEnsembleWrapper",
     "EDLWrapper",
@@ -11,7 +11,7 @@ __all__ = [
     "SamplePushforwardLaplace",
 ]
 
-from .ce_baseline_wrapper import CEBaselineWrapper
+from .baseline_wrapper import BaselineWrapper
 from .covariance_pushforward_laplace import CovariancePushforwardLaplace
 from .deep_ensemble_wrapper import DeepEnsembleWrapper
 from .edl_wrapper import EDLWrapper
