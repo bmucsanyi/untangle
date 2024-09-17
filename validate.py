@@ -1288,7 +1288,9 @@ def handle_samples(logits, converted_inference_res):
     converted_inference_res["mc_entropies_of_bma"] = entropies_of_bma
 
     one_minus_max_probs_of_bma = 1 - bmas.max(dim=-1)[0]
-    converted_inference_res["mc_max_probs_of_bma"] = one_minus_max_probs_of_bma
+    converted_inference_res["mc_one_minus_max_probs_of_bma"] = (
+        one_minus_max_probs_of_bma
+    )
 
     jsds = entropies_of_bma - expected_entropies
     converted_inference_res["mc_jensen_shannon_divergences"] = jsds
