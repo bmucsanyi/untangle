@@ -130,29 +130,6 @@ group.add_argument(
     help="Maximum number of samples in concatenated ID + OOD eval dataset",
 )
 group.add_argument(
-    "--max-num-id-ood-train-samples",
-    type=int,
-    default=100000,
-    help=(
-        "Maximum number of samples in concatenated ID + OOD train dataset in the "
-        "Mahalanobis method"
-    ),
-)
-group.add_argument(
-    "--max-num-id-train-samples",
-    type=int,
-    default=100000,
-    help="Maximum number of samples in (truncated) train dataset for the DDU method",
-)
-group.add_argument(
-    "--max-num-covariance-samples",
-    type=int,
-    default=100000,
-    help=(
-        "Number of samples to calculate the covariance matrix in the Mahalanobis method"
-    ),
-)
-group.add_argument(
     "--train-split",
     type=str,
     default="train",
@@ -213,88 +190,10 @@ group.add_argument(
     help="Number of hidden features in the uncertainty method",
 )
 group.add_argument(
-    "--mlp-depth",
-    type=int,
-    default=3,
-    help="Number of layers in the MLP used by the uncertainty method",
-)
-group.add_argument(
-    "--stopgrad",
-    action="store_true",
-    help=(
-        "Whether to stop gradient flow to the model backbone in direct prediction "
-        "methods"
-    ),
-)
-group.add_argument(
-    "--num-hooks",
-    type=int,
-    default=5,
-    help="Number of hooks in deep direct prediction methods",
-)
-group.add_argument(
-    "--module-type",
-    type=module,
-    default=nn.ReLU,
-    help="Module type to attach hooks to in direct prediction methods",
-)
-group.add_argument(
-    "--module-name-regex",
-    default="^(act1|layer[1-4])$",
-    type=str,
-    help="Module names to attach hooks to in direct prediction methods",
-)
-group.add_argument(
-    "--dropout-probability",
-    type=float,
-    default=0.05,
-    help="Dropout probability in the MC-Dropout method",
-)
-group.add_argument(
-    "--use-filterwise-dropout",
-    action="store_true",
-    help="whether to use filterwise dropout in the MC-Dropout method",
-)
-group.add_argument(
     "--num-mc-samples",
     type=int,
     default=10,
     help="Number of Monte Carlo samples in the uncertainty method",
-)
-group.add_argument(
-    "--num-mc-samples-integral",
-    default=1000,
-    type=int,
-    help=(
-        "Number of Monte Carlo samples to integrate out the logits with the diagonal "
-        "Gaussian in the heteroscedastic classification NN method"
-    ),
-)
-group.add_argument(
-    "--num-mc-samples-cv",
-    default=50,
-    type=int,
-    help=(
-        "Number of Monte Carlo samples in the prior precision CV of the Laplace method"
-    ),
-)
-group.add_argument(
-    "--rbf-length-scale",
-    type=float,
-    default=0.1,
-    help="Length scale of the RBF kernel in the DUQ method",
-)
-group.add_argument(
-    "--ema-momentum",
-    type=float,
-    default=0.999,
-    help="Momentum factor for the exponential moving average in the DUQ method",
-)
-group.add_argument(
-    "--lambda-gradient-penalty",
-    type=float,
-    default=0.75,
-    help="Gradient penalty lambda in the DUQ method",
 )
 group.add_argument(
     "--rank",

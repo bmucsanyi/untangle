@@ -32,14 +32,12 @@ from untangle.utils import (
     wrap_model,
 )
 from untangle.wrappers import (
-    DDUWrapper,
-    DUQWrapper,
-    LaplaceWrapper,
-    MahalanobisWrapper,
+    CovariancePushforwardLaplaceWrapper,
+    LinearizedSWAGWrapper,
     PostNetWrapper,
+    SamplePushforwardLaplaceWrapper,
     SNGPWrapper,
     SWAGWrapper,
-    TemperatureWrapper,
 )
 from validate import evaluate, evaluate_bulk
 
@@ -203,7 +201,7 @@ def train(
             loss_scaler=loss_scaler,
         )
 
-        if not isinstance(model, SWAGWrapper):
+        if not isinstance(model, SWAGWrapper | LinearizedSWAGWrapper):
             eval_metrics = evaluate(
                 model=model,
                 loader=id_eval_loader,
@@ -244,8 +242,8 @@ def train(
                 metric = eval_metrics[eval_metric]
                 saver.save_checkpoint(epoch=epoch, metric=metric)
         else:
-            # Add placeholder value for SWAGWrapper: this method does not support
-            # plateau-based LR scheduling
+            # Add placeholder value for [Linearized]SWAGWrapper: this method does not
+            # support plateau-based LR scheduling
             eval_metrics = {"id_eval_hard_bma_accuracy_original": 1.0}
 
         if lr_scheduler is not None:
@@ -275,7 +273,6 @@ def test(
     optimizer,
     train_loader,
     hard_id_eval_loader,
-    mixed_s2_eval_loader,
     id_test_loader,
     ood_test_loaders,
     saver,
@@ -287,7 +284,7 @@ def test(
 ):
     logger.info("Starting final tests.")
 
-    if num_epochs > 0 and not isinstance(model, SWAGWrapper):
+    if num_epochs > 0 and not isinstance(model, SWAGWrapper | LinearizedSWAGWrapper):
         # No post-hoc method, load best checkpoint first
         load_best_checkpoint(saver, model)
 
@@ -299,7 +296,6 @@ def test(
         model=model,
         train_loader=train_loader,
         hard_id_eval_loader=hard_id_eval_loader,
-        mixed_s2_eval_loader=mixed_s2_eval_loader,
         args=args,
     )
 
@@ -340,7 +336,6 @@ def main():
         hard_id_eval_loader,
         id_test_loader,
         ood_test_loaders,
-        mixed_s2_eval_loader,
     ) = create_loaders(
         data_config=data_config,
         args=args,
@@ -445,7 +440,7 @@ def main():
                 args,
             )
 
-            if not isinstance(model, SWAGWrapper):
+            if not isinstance(model, SWAGWrapper | LinearizedSWAGWrapper):
                 logger.info(
                     f"Best eval metric: {best_eval_metric} (epoch {best_epoch})."
                 )
@@ -457,7 +452,6 @@ def main():
                 optimizer,
                 train_loader,
                 hard_id_eval_loader,
-                mixed_s2_eval_loader,
                 id_test_loader,
                 ood_test_loaders,
                 saver,
@@ -602,31 +596,6 @@ def create_datasets(args, data_config):
         convert_soft_labels_to_hard=True,
     )
 
-    mixed_s2_eval_dataset = create_dataset(
-        name=args.dataset_id,
-        root=args.data_dir_id,
-        label_root=args.soft_imagenet_label_dir,
-        split=args.val_split,
-        download=args.dataset_download,
-        seed=args.seed,
-        subset=1.0,
-        input_size=data_config["input_size"],
-        padding=args.padding,
-        is_training_dataset=False,
-        use_prefetcher=args.prefetcher,
-        scale=args.scale,
-        ratio=args.ratio,
-        hflip=args.hflip,
-        color_jitter=args.color_jitter,
-        interpolation=data_config["interpolation"],
-        mean=data_config["mean"],
-        std=data_config["std"],
-        crop_pct=data_config["crop_pct"],
-        ood_transform_type=args.ood_transforms_eval,
-        severity=2,
-        convert_soft_labels_to_hard=True,
-    )
-
     dataset_locations_ood_test = {}
     for severity in args.severities:
         dataset_locations_ood_test[f"{args.dataset_id}S{severity}"] = args.data_dir_id
@@ -692,7 +661,6 @@ def create_datasets(args, data_config):
         hard_id_eval_dataset,
         id_test_dataset,
         ood_test_datasets,
-        mixed_s2_eval_dataset,
     )
 
 
@@ -703,7 +671,6 @@ def create_loaders(args, data_config, device):
         hard_id_eval_dataset,
         id_test_dataset,
         ood_test_datasets,
-        mixed_s2_eval_dataset,
     ) = create_datasets(args, data_config)
 
     train_loader = create_loader(
@@ -734,19 +701,6 @@ def create_loaders(args, data_config, device):
 
     hard_id_eval_loader = create_loader(
         dataset=hard_id_eval_dataset,
-        batch_size=args.validation_batch_size or args.batch_size,
-        is_training_dataset=False,
-        use_prefetcher=args.prefetcher,
-        mean=data_config["mean"],
-        std=data_config["std"],
-        num_workers=args.num_eval_workers,
-        pin_memory=args.pin_memory,
-        persistent_workers=True,
-        device=device,
-    )
-
-    mixed_s2_eval_loader = create_loader(
-        dataset=mixed_s2_eval_dataset,
         batch_size=args.validation_batch_size or args.batch_size,
         is_training_dataset=False,
         use_prefetcher=args.prefetcher,
@@ -795,7 +749,6 @@ def create_loaders(args, data_config, device):
         hard_id_eval_loader,
         id_test_loader,
         ood_test_loaders,
-        mixed_s2_eval_loader,
     )
 
 
@@ -830,7 +783,7 @@ def train_one_epoch(
     if isinstance(model, SNGPWrapper) and args.gp_cov_momentum < 0:
         model.reset_covariance_matrix()
 
-    if isinstance(model, SWAGWrapper):
+    if isinstance(model, SWAGWrapper | LinearizedSWAGWrapper):
         checkpoint_batches = model.calculate_checkpoint_batches(
             num_batches=num_batches,
             num_checkpoints_per_epoch=args.num_checkpoints_per_epoch,
@@ -848,23 +801,16 @@ def train_one_epoch(
         if not args.prefetcher:
             input, target = input.to(device), target.to(device)
 
-        if isinstance(model, DUQWrapper):
-            input, target = model.prepare_data(input, target)
-
         loss = forward(
             model=model,
             input=input,
             target=target,
             loss_fn=loss_fn,
-            lambda_gradient_penalty=args.lambda_gradient_penalty,
             amp_autocast=amp_autocast,
             accumulation_steps=accumulation_steps,
         )
 
         backward(
-            model=model,
-            input=input,
-            target=target,
             optimizer=optimizer,
             loss_scaler=loss_scaler,
             need_update=need_update,
@@ -883,7 +829,10 @@ def train_one_epoch(
         update_time_m.update(time.perf_counter() - update_start_time)
         update_start_time = time_now
 
-        if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
+        if (
+            isinstance(model, SWAGWrapper | LinearizedSWAGWrapper)
+            and batch_idx in checkpoint_batches
+        ):
             model.update_stats()
 
         if update_idx % args.log_interval == 0:
@@ -904,32 +853,14 @@ def train_one_epoch(
     return {"loss": losses_m.avg}
 
 
-def update_post_hoc_method(
-    model, train_loader, hard_id_eval_loader, mixed_s2_eval_loader, args
-):
-    if isinstance(model, LaplaceWrapper):
+def update_post_hoc_method(model, train_loader, hard_id_eval_loader, args):
+    if isinstance(
+        model, SamplePushforwardLaplaceWrapper | CovariancePushforwardLaplaceWrapper
+    ):
         if hard_id_eval_loader is None:
             msg = "For Laplace approximation, the ID eval loader has to be specified."
             raise ValueError(msg)
         model.perform_laplace_approximation(train_loader, hard_id_eval_loader)
-    elif isinstance(model, MahalanobisWrapper):
-        if hard_id_eval_loader is None or mixed_s2_eval_loader is None:
-            msg = (
-                "For the Mahalanobis method, the ID and OOD eval loaders have to be "
-                "specified."
-            )
-            raise ValueError(msg)
-        model.train_logistic_regressor(
-            train_loader,
-            hard_id_eval_loader,
-            mixed_s2_eval_loader,
-            args.max_num_covariance_samples,
-            args.max_num_id_ood_train_samples,
-        )
-    elif isinstance(model, DDUWrapper):
-        model.fit_gmm(train_loader, args.max_num_id_train_samples)
-    elif isinstance(model, TemperatureWrapper) and args.use_temperature_scaling:
-        model.set_temperature_loader(hard_id_eval_loader)
     elif isinstance(model, SWAGWrapper):
         model.get_mc_samples(
             train_loader=train_loader, num_mc_samples=args.num_mc_samples
@@ -941,7 +872,6 @@ def forward(
     input,
     target,
     loss_fn,
-    lambda_gradient_penalty,
     amp_autocast,
     accumulation_steps,
 ):
@@ -952,16 +882,12 @@ def forward(
             output = model(input)
         loss = loss_fn(output, target)
 
-        if isinstance(model, DUQWrapper):
-            gradient_penalty = model.calc_gradient_penalty(input, output)
-            loss += lambda_gradient_penalty * gradient_penalty
-
     if accumulation_steps > 1:
         loss /= accumulation_steps
     return loss
 
 
-def backward(model, input, target, optimizer, loss_scaler, need_update, loss):
+def backward(optimizer, loss_scaler, need_update, loss):
     if loss_scaler is not None:
         loss_scaler(
             loss=loss,
@@ -973,12 +899,6 @@ def backward(model, input, target, optimizer, loss_scaler, need_update, loss):
 
         if need_update:
             optimizer.step()
-
-        if isinstance(model, DUQWrapper):
-            input.requires_grad_(False)
-
-            with torch.no_grad():
-                model.update_centroids(input, target)
 
 
 if __name__ == "__main__":
