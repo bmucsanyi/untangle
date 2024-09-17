@@ -26,4 +26,4 @@ class BaselineWrapper(DistributionalWrapper):
 
         out = self.model.get_classifier()(features).unsqueeze(dim=1)
 
-        return (out,)
+        return out if self.training else (out,)
