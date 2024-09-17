@@ -1385,7 +1385,7 @@ def update_logit_based(
     time_forward_m,
 ):
     for key in inference_res:
-        if key == "time_forward_m":
+        if key == "time_forward":
             continue
         estimates[key][indices] = inference_res[key]
 
