@@ -14,7 +14,7 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 from torch.nn.utils.convert_parameters import parameters_to_vector
 
-from untangle.utils.derivative import jvp, vjp
+from untangle.utils.derivative import jvp
 from untangle.utils.metric import calibration_error
 from untangle.wrappers.model_wrapper import DistributionalWrapper
 
@@ -114,16 +114,16 @@ class Quadratic:
         return eigvals[sort_idx], eigvecs[:, sort_idx]
 
 
-class CovariancePushforwardLaplace(DistributionalWrapper):
+class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
     """Low-rank Laplace that pushes forward the weight-space covariance matrix."""
 
     def __init__(
         self,
         model,
         loss_function,
-        train_loader,
         rank,
         predictive_fn,
+        num_mc_samples,
         *,
         use_eigval_prior=False,
     ):
@@ -131,9 +131,9 @@ class CovariancePushforwardLaplace(DistributionalWrapper):
         # Save args
         self.rank = rank
         self.loss_function = loss_function
-        self.train_loader = train_loader
         self.use_eigval_prior = use_eigval_prior
         self.predictive_fn = predictive_fn
+        self.num_mc_samples = num_mc_samples
 
         # Model parameters
         self.theta_0_list = [
@@ -146,6 +146,7 @@ class CovariancePushforwardLaplace(DistributionalWrapper):
         self.is_initialized = False
 
     def perform_laplace_approximation(self, train_loader, val_loader):
+        self.train_loader = train_loader
         # Construct quadratic model
         self.quadratic = Quadratic(
             B_0v=self.get_B_0v,
@@ -156,7 +157,7 @@ class CovariancePushforwardLaplace(DistributionalWrapper):
 
         self.prior_precision = self._optimize_prior_precision_cv(val_loader)
         self.quad_root_terms = self.get_quad_root_terms(
-            len(train_loader.dataset), rank_k=self.rank
+            len(self.train_loader.dataset), rank_k=self.rank
         )
         self.is_initialized = True
 
@@ -279,6 +280,22 @@ class CovariancePushforwardLaplace(DistributionalWrapper):
         lambda_k = 1 / torch.sqrt(eigvals_k)
         return QuadRootTerms(U_k=U_k, lambda_k=lambda_k, mul=mul)
 
+    def linearized_prediction(self, map_pred, theta, retain_graph):
+        """Linearizes the model in its parameters around its current parameters."""
+        if self.model.training:
+            warn(
+                "Model is in training mode, i.e. outputs are not deterministic.",
+                stacklevel=1,
+            )
+
+        theta_diff = theta - self.theta_0_vec.detach()
+        theta_diff_params = vector_to_parameter_list(theta_diff, self.theta_0_list)
+        jvp_res = jvp(
+            map_pred, self.theta_0_list, theta_diff_params, retain_graph=retain_graph
+        )[0]
+
+        return (map_pred + jvp_res).detach()
+
     def forward(self, x):
         if not self.is_initialized:
             msg = (
@@ -287,31 +304,42 @@ class CovariancePushforwardLaplace(DistributionalWrapper):
             )
             raise ValueError(msg)
 
-        param_list = [param for param in self.model.parameters() if param.requires_grad]
-
         with torch.enable_grad():
-            y = self.model(x)  # [B, C]
-            a = torch.zeros((self.model.num_classes,), dtype=y.dtype, device=y.device)
-            for i in range(self.model.num_classes):
-                e_i = torch.zeros_like(y)
-                e_i[i] = 1.0
-                J_i = vjp(y=y, x=param_list, v=e_i, retain_graph=True)
-                a[i] = self.quad_root_terms.mul**2 * self.square_sum(J_i)
+            map_pred = self.model(x)  # [B, C]
+            lin_preds = []
 
-            u = vector_to_parameter_list(
-                self.quad_root_terms.d.sqrt().unsqueeze(dim=1)
-                * self.quad_root_terms.U_k.T
-            )
-            B = jvp(y=y, x=param_list, v=u, is_grads_batched=True, retain_graph=True)[0]
-            b = 2 * self.quad_root_terms.mul * B.square().sum(dim=0)
+            mul = self.quad_root_terms.mul
+            U_k = self.quad_root_terms.U_k
+            d = self.quad_root_terms.d
+            lambda_k = self.quad_root_terms.lambda_k
 
-            v = vector_to_parameter_list(
-                self.quad_root_terms.d.unsqueeze(dim=1) * self.quad_root_terms.U_k.T
-            )
-            C = jvp(y=y, x=param_list, v=v, is_grads_batched=True)[0]
-            c = self.quad_root_terms.mul * C.square().sum(dim=0)
+            # TODO(bmucsanyi): batch this if it's too slow
+            for i in range(self.num_mc_samples):
+                sample_dim = (
+                    self.theta_0_vec.shape[0] if self.use_eigval_prior else self.rank
+                )
+                randn = torch.randn(
+                    sample_dim, device=map_pred.device, dtype=map_pred.dtype
+                )
 
-            return y, a + b + c
+                mul = self.quad_root_terms.mul
+                U_k = self.quad_root_terms.U_k
+                d = self.quad_root_terms.d
+                lambda_k = self.quad_root_terms.lambda_k
+
+                if self.use_eigval_prior:
+                    theta = mul * (U_k @ lambda_k * randn) + self.theta_0_vec
+                else:
+                    theta = mul * randn + U_k @ (d * (U_k.T @ randn)) + self.theta_0_vec
+
+                lin_pred = self.linearized_prediction(
+                    map_pred=map_pred,
+                    theta=theta,
+                    retain_graph=i < self.num_mc_samples - 1,
+                )
+                lin_preds.append(lin_pred)
+
+        return torch.stack(lin_preds, dim=1)  # [B, S, C]
 
     @staticmethod
     def vector_to_parameter_list(vec, parameters):
