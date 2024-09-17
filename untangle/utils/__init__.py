@@ -45,11 +45,11 @@ from .predictive import (
     diag_hessian_normalized_normcdf,
     diag_hessian_normalized_sigmoid,
     diag_hessian_softmax,
+    get_likelihood,
     get_mom_dirichlet_approximation,
     get_predictive,
 )
 from .random import set_random_seed
-from .reparam import REPARAMS
 from .replace import (
     ModuleData,
     deep_setattr,
@@ -64,7 +64,6 @@ from .transform import create_transform, hard_target_transform
 
 __all__ = [
     "PREDICTIVE_DICT",
-    "REPARAMS",
     "AverageMeter",
     "CheckpointSaver",
     "DefaultContext",
@@ -96,6 +95,7 @@ __all__ = [
     "entropy",
     "excess_area_under_risk_coverage_curve",
     "float_tuple",
+    "get_likelihood",
     "get_mom_dirichlet_approximation",
     "get_predictive",
     "get_ranks",
