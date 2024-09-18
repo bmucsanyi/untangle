@@ -13,13 +13,12 @@ class NormCDFNLLLoss(nn.Module):
         super().__init__()
 
     @staticmethod
-    def forward(logits, targets):
+    def forward(logits, targets, *, apply_activation=True):
         # Compute sigmoid BCE loss
-        logits = logits.double()
         targets = F.one_hot(targets, num_classes=logits.shape[-1])
 
         # Compute CDF of standard normal
-        cdf = ndtr(logits)
+        cdf = ndtr(logits) if apply_activation else logits
 
         # Compute loss
         loss = torch.where(targets == 1, -torch.log(cdf), -torch.log(1 - cdf))
@@ -28,4 +27,4 @@ class NormCDFNLLLoss(nn.Module):
         loss = loss.sum(dim=1)
 
         # Mean over the batch
-        return loss.mean().float()
+        return loss.mean()

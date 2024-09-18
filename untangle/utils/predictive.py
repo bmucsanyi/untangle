@@ -44,15 +44,27 @@ def softmax_mc(
     return prob_mean, logit_samples if return_samples else prob_mean
 
 
-def logit_link_normcdf_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
+def logit_link_normcdf_output(
+    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+) -> torch.Tensor:
     return probit_predictive(
-        mean, var, link_function="logit", output_function="normcdf"
+        mean,
+        var,
+        link_function="logit",
+        output_function="normcdf",
+        return_unnormalized=return_unnormalized,
     )
 
 
-def logit_link_sigmoid_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
+def logit_link_sigmoid_output(
+    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+) -> torch.Tensor:
     return probit_predictive(
-        mean, var, link_function="logit", output_function="sigmoid"
+        mean,
+        var,
+        link_function="logit",
+        output_function="sigmoid",
+        return_unnormalized=return_unnormalized,
     )
 
 
@@ -62,6 +74,7 @@ def logit_link_mc(
     num_mc_samples: int,
     *,
     return_samples: bool = False,
+    return_unnormalized: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
@@ -69,22 +82,36 @@ def logit_link_mc(
         + mean
     )
     prob = F.sigmoid(logit_samples)
-    prob = prob / prob.sum(dim=-1, keepdim=True)
+
+    if not return_unnormalized:
+        prob = prob / prob.sum(dim=-1, keepdim=True)
 
     prob_mean = prob.mean(dim=0)
 
     return prob_mean, logit_samples if return_samples else prob_mean
 
 
-def probit_link_normcdf_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
+def probit_link_normcdf_output(
+    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+) -> torch.Tensor:
     return probit_predictive(
-        mean, var, link_function="probit", output_function="normcdf"
+        mean,
+        var,
+        link_function="probit",
+        output_function="normcdf",
+        return_unnormalized=return_unnormalized,
     )
 
 
-def probit_link_sigmoid_output(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
+def probit_link_sigmoid_output(
+    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+) -> torch.Tensor:
     return probit_predictive(
-        mean, var, link_function="probit", output_function="sigmoid"
+        mean,
+        var,
+        link_function="probit",
+        output_function="sigmoid",
+        return_unnormalized=return_unnormalized,
     )
 
 
@@ -94,6 +121,7 @@ def probit_link_mc(
     num_mc_samples: int,
     *,
     return_samples: bool = False,
+    return_unnormalized: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
@@ -101,7 +129,9 @@ def probit_link_mc(
         + mean
     )
     prob = normcdf(logit_samples)
-    prob = prob / prob.sum(dim=-1, keepdim=True)
+
+    if not return_unnormalized:
+        prob = prob / prob.sum(dim=-1, keepdim=True)
 
     prob_mean = prob.mean(dim=0)
 
@@ -109,7 +139,10 @@ def probit_link_mc(
 
 
 def normcdf(x: torch.Tensor) -> torch.Tensor:
-    return (1 + torch.erf(x / sqrt(2))) / 2
+    x = x.double()
+    res = (1 + torch.erf(x / sqrt(2))) / 2
+
+    return res.float()
 
 
 def probit_predictive(
@@ -117,6 +150,8 @@ def probit_predictive(
     var: torch.Tensor,
     link_function: str = "probit",
     output_function: str = "normcdf",
+    *,
+    return_unnormalized: bool = False,
 ) -> torch.Tensor:
     """Predictive distribution with the probit link function or approximation."""
     if output_function == "normcdf":
@@ -130,20 +165,22 @@ def probit_predictive(
         msg = "Invalid output function"
         raise NotImplementedError(msg)
 
-    sum_predictives = torch.sum(
-        predictives, axis=1, keepdim=True
-    )  # [batch_size, num_classes]
-    norm_predictives = predictives / sum_predictives  # [batch_size, num_classes]
-    return norm_predictives
+    if not return_unnormalized:
+        sum_predictives = torch.sum(
+            predictives, dim=1, keepdim=True
+        )  # [batch_size, num_classes]
+        predictives = predictives / sum_predictives  # [batch_size, num_classes]
+
+    return predictives
 
 
 def beta_predictive(beta_params: torch.Tensor) -> torch.Tensor:
     """Predictive mean of beta distributions."""
     predictives = beta_params[:, :, 0] / torch.sum(
-        beta_params, axis=2, keepdim=False
+        beta_params, dim=2, keepdim=False
     )  # [batch_size, num_classes]
     sum_predictives = torch.sum(
-        predictives, axis=1, keepdim=True
+        predictives, dim=1, keepdim=True
     )  # [batch_size, num_classes]
     norm_predictives = predictives / sum_predictives  # [batch_size, num_classes]
     return norm_predictives
@@ -152,14 +189,14 @@ def beta_predictive(beta_params: torch.Tensor) -> torch.Tensor:
 def dirichlet_predictive(params: torch.Tensor) -> torch.Tensor:
     """Predictive mean of Dirichlet distributions."""
     predictives = params / torch.sum(
-        params, axis=1, keepdim=True
+        params, dim=1, keepdim=True
     )  # [batch_size, num_classes]
 
     # remove nans due to infinite dirichlet parameters
     is_nan = torch.isnan(predictives)
-    nan_count = torch.sum(is_nan, axis=1, keepdim=True)
+    nan_count = torch.sum(is_nan, dim=1, keepdim=True)
     predictives = torch.where(
-        torch.any(is_nan, axis=1, keepdim=True),
+        torch.any(is_nan, dim=1, keepdim=True),
         torch.zeros(predictives.shape),
         predictives,
     )
@@ -177,7 +214,7 @@ def get_laplace_bridge_approximation(
     num_classes = mean.shape[1]
 
     if correction:
-        c = torch.sum(var, axis=1) * (1 / sqrt(num_classes / 2))  # [B]
+        c = torch.sum(var, dim=1) * (1 / sqrt(num_classes / 2))  # [B]
         c_expanded = torch.tile(c[:, None], (1, num_classes))  # [B, C]
         mean_p = mean / torch.sqrt(c_expanded)  # [B, C]
         var_p = var / c_expanded  # [B, C]
@@ -186,7 +223,7 @@ def get_laplace_bridge_approximation(
         var_p = var
 
     # Laplace bridge
-    sum_exp_neg_mean_p = torch.sum(torch.exp(-mean_p), axis=1)  # [batch_size]
+    sum_exp_neg_mean_p = torch.sum(torch.exp(-mean_p), dim=1)  # [batch_size]
     sum_exp_neg_mean_p_expanded = torch.tile(
         sum_exp_neg_mean_p[:, None], (1, num_classes)
     )  # [B, C]

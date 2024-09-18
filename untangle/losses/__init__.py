@@ -4,6 +4,7 @@ from .normcdf_nll_loss import NormCDFNLLLoss
 from .regularized_predictive_nll_loss import RegularizedPredictiveNLLLoss
 from .regularized_uce_loss import RegularizedUCELoss
 from .sigmoid_nll_loss import SigmoidNLLLoss
+from .unnormalized_predictive_nll_loss import UnnormalizedPredictiveNLLLoss
 
 __all__ = [
     "BMACrossEntropyLoss",
@@ -12,4 +13,5 @@ __all__ = [
     "RegularizedPredictiveNLLLoss",
     "RegularizedUCELoss",
     "SigmoidNLLLoss",
+    "UnnormalizedPredictiveNLLLoss",
 ]
