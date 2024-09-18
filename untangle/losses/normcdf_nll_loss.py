@@ -18,7 +18,7 @@ class NormCDFNLLLoss(nn.Module):
         targets = F.one_hot(targets, num_classes=logits.shape[-1])
 
         # Compute CDF of standard normal
-        cdf = ndtr(logits) if apply_activation else logits
+        cdf = ndtr(logits.double()).float() if apply_activation else logits
 
         # Compute loss
         loss = torch.where(targets == 1, -torch.log(cdf), -torch.log(1 - cdf))
