@@ -44,7 +44,7 @@ class CheckpointSaver:
 
     def save_checkpoint(self, epoch, metric):
         # Save as last checkpoint
-        last_filename = f"{self.checkpoint_prefix}-last.{self.extension}"
+        last_filename = f"{self.checkpoint_prefix}_last.{self.extension}"
         last_save_path = self.checkpoint_dir / last_filename
         self._save(last_save_path, epoch, metric)
 
@@ -57,7 +57,7 @@ class CheckpointSaver:
             if len(self.checkpoint_files) >= self.max_history:
                 self._cleanup_checkpoints(1)
 
-            top_filename = f"{self.checkpoint_prefix}-{epoch}.{self.extension}"
+            top_filename = f"{self.checkpoint_prefix}_{epoch}.{self.extension}"
             top_save_path = self.checkpoint_dir / top_filename
             top_save_path.hardlink_to(last_save_path)
             self.checkpoint_files.append((top_save_path, metric))
@@ -73,7 +73,7 @@ class CheckpointSaver:
             if self.best_metric is None or self.cmp(metric, self.best_metric):
                 self.best_epoch = epoch
                 self.best_metric = metric
-                best_filename = f"{self.checkpoint_prefix}-last.{self.extension}"
+                best_filename = f"{self.checkpoint_prefix}_best.{self.extension}"
                 best_save_path = self.checkpoint_dir / best_filename
                 best_save_path.unlink(missing_ok=True)
                 best_save_path.hardlink_to(top_save_path)

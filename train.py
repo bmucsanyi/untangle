@@ -278,7 +278,9 @@ def train(
 
 
 def load_best_checkpoint(saver, model):
-    best_save_path = saver.checkpoint_dir / f"model_best.{saver.extension}"
+    best_save_path = (
+        saver.checkpoint_dir / f"{saver.checkpoint_prefix}_best.{saver.extension}"
+    )
     checkpoint = torch.load(best_save_path, map_location="cpu", weights_only=True)
     state_dict = checkpoint["state_dict"]
     model.load_state_dict(state_dict, strict=True)
