@@ -236,9 +236,9 @@ class ResNet(nn.Module):
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
 
-        self.init_weights(init_bias_minus_log_c)
+        self.init_weights(init_bias_minus_log_c=init_bias_minus_log_c)
 
-    def init_weights(self, init_bias_minus_log_c):
+    def init_weights(self, *, init_bias_minus_log_c):
         for _, module in self.named_modules():
             if isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(

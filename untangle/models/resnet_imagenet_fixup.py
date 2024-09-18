@@ -210,9 +210,9 @@ class ResNetFixup(nn.Module):
         self.bias2 = nn.Parameter(torch.zeros(1))
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
 
-        self.init_weights(init_bias_minus_log_c)
+        self.init_weights(init_bias_minus_log_c=init_bias_minus_log_c)
 
-    def init_weights(self, init_bias_minus_log_c):
+    def init_weights(self, *, init_bias_minus_log_c):
         for module in self.modules():
             if isinstance(module, BasicBlockFixup):
                 weight1 = module.conv1.weight

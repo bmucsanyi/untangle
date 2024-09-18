@@ -137,7 +137,7 @@ class ResNetCFixup(nn.Module):
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.bias2 = nn.Parameter(torch.zeros(1))
         self.fc = nn.Linear(self.num_features, self.num_classes)
-        self.init_weights(init_bias_minus_log_c)
+        self.init_weights(init_bias_minus_log_c=init_bias_minus_log_c)
 
     def init_weights(self, *, init_bias_minus_log_c):
         for module in self.modules():
