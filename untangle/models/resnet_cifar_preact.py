@@ -1,5 +1,7 @@
 """CIFAR (Wide-)ResNet implementation using the pre-activation variant."""
 
+import math
+
 from torch import nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
@@ -10,6 +12,8 @@ def wide_resnet_c_preact_26_10(
     in_chans=3,
     downsample_type="conv",
     act_layer=nn.ReLU,
+    *,
+    init_bias_minus_log_c=False,
 ):
     """Constructs a WideResNet-28-10 model."""
     model = ResNetCPreAct(
@@ -20,6 +24,7 @@ def wide_resnet_c_preact_26_10(
         in_chans=in_chans,
         downsample_type=downsample_type,
         act_layer=act_layer,
+        init_bias_minus_log_c=init_bias_minus_log_c,
     )
 
     return model
@@ -30,6 +35,8 @@ def resnet_c_preact_26(
     in_chans=3,
     downsample_type="conv",
     act_layer=nn.ReLU,
+    *,
+    init_bias_minus_log_c=False,
 ):
     """Constructs a ResNet-26 model."""
     model = ResNetCPreAct(
@@ -40,6 +47,7 @@ def resnet_c_preact_26(
         in_chans=in_chans,
         downsample_type=downsample_type,
         act_layer=act_layer,
+        init_bias_minus_log_c=init_bias_minus_log_c,
     )
 
     return model
@@ -109,6 +117,7 @@ class ResNetCPreAct(nn.Module):
         in_chans,
         downsample_type,
         act_layer,
+        init_bias_minus_log_c,
     ):
         super().__init__()
         self.in_planes = 16
@@ -138,6 +147,9 @@ class ResNetCPreAct(nn.Module):
         self.act = act_layer(inplace=True)
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes)
+
+        if init_bias_minus_log_c:
+            nn.init.constant_(self.fc.bias, -math.log(self.num_classes))
 
     def make_layer(self, block, planes, num_blocks, stride, act_layer):
         blocks = nn.Sequential(

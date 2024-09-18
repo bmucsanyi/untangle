@@ -1,6 +1,7 @@
 """ImageNet ResNet implementation."""
 
 import logging
+import math
 
 import torch
 from huggingface_hub import hf_hub_download
@@ -18,6 +19,7 @@ def resnet_50(
     act_layer=nn.ReLU,
     *,
     pretrained=False,
+    init_bias_minus_log_c=False,
 ):
     """Constructs a ResNet-50 model."""
     model = ResNet(
@@ -27,6 +29,7 @@ def resnet_50(
         in_chans=in_chans,
         downsample_type=downsample_type,
         act_layer=act_layer,
+        init_bias_minus_log_c=init_bias_minus_log_c,
     )
 
     if pretrained:
@@ -200,6 +203,7 @@ class ResNet(nn.Module):
         in_chans,
         downsample_type,
         act_layer,
+        init_bias_minus_log_c,
     ):
         super().__init__()
 
@@ -232,9 +236,9 @@ class ResNet(nn.Module):
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
 
-        self.init_weights()
+        self.init_weights(init_bias_minus_log_c)
 
-    def init_weights(self):
+    def init_weights(self, init_bias_minus_log_c):
         for _, module in self.named_modules():
             if isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(
@@ -244,6 +248,9 @@ class ResNet(nn.Module):
         for module in self.modules():
             if hasattr(module, "zero_init_last"):
                 module.zero_init_last()
+
+        if init_bias_minus_log_c:
+            nn.init.constant_(self.fc.bias, -math.log(self.num_classes))
 
     def get_classifier(self, *, name_only=False):
         return "fc" if name_only else self.fc

@@ -16,6 +16,8 @@ def resnet_fixup_50(
     in_chans=3,
     downsample_type="conv",
     act_layer=nn.ReLU,
+    *,
+    init_bias_minus_log_c=False,
 ):
     """Constructs a ResNet-Fixup-50 model."""
     model = ResNetFixup(
@@ -25,6 +27,7 @@ def resnet_fixup_50(
         in_chans=in_chans,
         downsample_type=downsample_type,
         act_layer=act_layer,
+        init_bias_minus_log_c=init_bias_minus_log_c,
     )
 
     return model
@@ -172,6 +175,7 @@ class ResNetFixup(nn.Module):
         in_chans,
         downsample_type,
         act_layer,
+        init_bias_minus_log_c,
     ):
         super().__init__()
 
@@ -206,9 +210,9 @@ class ResNetFixup(nn.Module):
         self.bias2 = nn.Parameter(torch.zeros(1))
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
 
-        self.init_weights()
+        self.init_weights(init_bias_minus_log_c)
 
-    def init_weights(self):
+    def init_weights(self, init_bias_minus_log_c):
         for module in self.modules():
             if isinstance(module, BasicBlockFixup):
                 weight1 = module.conv1.weight
@@ -276,6 +280,9 @@ class ResNetFixup(nn.Module):
             elif isinstance(module, nn.Linear):
                 nn.init.constant_(module.weight, 0)
                 nn.init.constant_(module.bias, 0)
+
+        if init_bias_minus_log_c:
+            nn.init.constant_(self.fc.bias, -math.log(self.num_classes))
 
     def get_classifier(self, *, name_only=False):
         return "fc" if name_only else lambda x: self.fc(x + self.bias2)
