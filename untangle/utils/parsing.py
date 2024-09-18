@@ -814,10 +814,10 @@ def resolve_data_config(args):
     msg = "Data processing configuration for current model:"
 
     for n, v in data_config.items():
-        if "imagenet" in args.dataset and n == "padding":
+        if "imagenet" in args["dataset"] and n == "padding":
             continue
 
-        if "cifar" in args.dataset and n in {"crop_pct", "crop_mode"}:
+        if "cifar" in args["dataset"] and n in {"crop_pct", "crop_mode"}:
             continue
 
         msg += f"\n\t{n}: {v}"
