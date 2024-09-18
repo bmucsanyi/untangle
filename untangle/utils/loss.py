@@ -9,6 +9,7 @@ from untangle.losses import (
     RegularizedPredictiveNLLLoss,
     RegularizedUCELoss,
     SigmoidNLLLoss,
+    UnnormalizedPredictiveNLLLoss,
 )
 
 
@@ -33,10 +34,12 @@ def create_loss_fn(args, num_batches):
         train_loss_fn = NormCDFNLLLoss()
     elif args.loss == "sigmoid-nll":
         train_loss_fn = SigmoidNLLLoss()
-    elif args.loss == "predictive-nll":
+    elif args.loss == "regularized-predictive-nll":
         train_loss_fn = RegularizedPredictiveNLLLoss(
             predictive=args.predictive, regularization_factor=args.regularization_factor
         )
+    elif args.loss == "unnormalized-predictive-nll":
+        train_loss_fn = UnnormalizedPredictiveNLLLoss(predictive=args.predictive)
     else:
         msg = f"--loss {args.loss} is not implemented"
         raise NotImplementedError(msg)
