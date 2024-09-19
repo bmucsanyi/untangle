@@ -12,7 +12,7 @@ class NormCDFNLLLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self._eps = 1e-22
+        self._eps = 1e-10
 
     def forward(self, logits, targets, *, apply_activation=True):
         # Compute sigmoid BCE loss
