@@ -812,6 +812,10 @@ def train_one_epoch(
             accumulation_steps=accumulation_steps,
         )
 
+        if loss.isnan():
+            msg = "NaN detected in loss"
+            raise ValueError(msg)
+
         backward(
             optimizer=optimizer,
             loss_scaler=loss_scaler,
