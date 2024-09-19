@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from numpy import sqrt
 from scipy.special import owens_t
 from torch.distributions import Normal
+from torch.special import ndtr
 
 LAMBDA_0 = math.pi / 8
 
@@ -45,26 +46,26 @@ def softmax_mc(
 
 
 def logit_link_normcdf_output(
-    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+    mean: torch.Tensor, var: torch.Tensor, *, return_logits: bool = False
 ) -> torch.Tensor:
     return probit_predictive(
         mean,
         var,
         link_function="logit",
         output_function="normcdf",
-        return_unnormalized=return_unnormalized,
+        return_logits=return_logits,
     )
 
 
 def logit_link_sigmoid_output(
-    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+    mean: torch.Tensor, var: torch.Tensor, *, return_logits: bool = False
 ) -> torch.Tensor:
     return probit_predictive(
         mean,
         var,
         link_function="logit",
         output_function="sigmoid",
-        return_unnormalized=return_unnormalized,
+        return_logits=return_logits,
     )
 
 
@@ -74,7 +75,6 @@ def logit_link_mc(
     num_mc_samples: int,
     *,
     return_samples: bool = False,
-    return_unnormalized: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
@@ -82,9 +82,7 @@ def logit_link_mc(
         + mean
     )
     prob = F.sigmoid(logit_samples)
-
-    if not return_unnormalized:
-        prob = prob / prob.sum(dim=-1, keepdim=True)
+    prob = prob / prob.sum(dim=-1, keepdim=True)
 
     prob_mean = prob.mean(dim=0)
 
@@ -92,26 +90,26 @@ def logit_link_mc(
 
 
 def probit_link_normcdf_output(
-    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+    mean: torch.Tensor, var: torch.Tensor, *, return_logits: bool = False
 ) -> torch.Tensor:
     return probit_predictive(
         mean,
         var,
         link_function="probit",
         output_function="normcdf",
-        return_unnormalized=return_unnormalized,
+        return_logits=return_logits,
     )
 
 
 def probit_link_sigmoid_output(
-    mean: torch.Tensor, var: torch.Tensor, *, return_unnormalized: bool = False
+    mean: torch.Tensor, var: torch.Tensor, *, return_logits: bool = False
 ) -> torch.Tensor:
     return probit_predictive(
         mean,
         var,
         link_function="probit",
         output_function="sigmoid",
-        return_unnormalized=return_unnormalized,
+        return_logits=return_logits,
     )
 
 
@@ -121,28 +119,18 @@ def probit_link_mc(
     num_mc_samples: int,
     *,
     return_samples: bool = False,
-    return_unnormalized: bool = False,
 ) -> torch.Tensor:
     logit_samples = (
         torch.randn((num_mc_samples, *mean.shape), dtype=mean.dtype, device=mean.device)
         * var.sqrt()
         + mean
     )
-    prob = normcdf(logit_samples)
-
-    if not return_unnormalized:
-        prob = prob / prob.sum(dim=-1, keepdim=True)
+    prob = ndtr(logit_samples)
+    prob = prob / prob.sum(dim=-1, keepdim=True)
 
     prob_mean = prob.mean(dim=0)
 
     return prob_mean, logit_samples if return_samples else prob_mean
-
-
-def normcdf(x: torch.Tensor) -> torch.Tensor:
-    x = x.double()
-    res = (1 + torch.erf(x / sqrt(2))) / 2
-
-    return res.float()
 
 
 def probit_predictive(
@@ -151,25 +139,29 @@ def probit_predictive(
     link_function: str = "probit",
     output_function: str = "normcdf",
     *,
-    return_unnormalized: bool = False,
+    return_logits: bool = False,
 ) -> torch.Tensor:
     """Predictive distribution with the probit link function or approximation."""
     if output_function == "normcdf":
         predictives = gaussian_pushforward_mean(
-            mean, var, link_function
+            mean, var, link_function, return_logits=return_logits
         )  # [batch_size, num_classes]
     elif output_function == "sigmoid":
         scale = probit_scale(link_function)
-        predictives = torch.sigmoid(mean / torch.sqrt(1 + scale * var))
+        logits = mean / torch.sqrt(1 + scale * var)
+
+        if return_logits:
+            return logits
+
+        predictives = torch.sigmoid(logits)
     else:
         msg = "Invalid output function"
         raise NotImplementedError(msg)
 
-    if not return_unnormalized:
-        sum_predictives = torch.sum(
-            predictives, dim=1, keepdim=True
-        )  # [batch_size, num_classes]
-        predictives = predictives / sum_predictives  # [batch_size, num_classes]
+    sum_predictives = torch.sum(
+        predictives, dim=1, keepdim=True
+    )  # [batch_size, num_classes]
+    predictives = predictives / sum_predictives  # [batch_size, num_classes]
 
     return predictives
 
@@ -248,11 +240,19 @@ def probit_scale(link_function: str = "probit") -> float:
 
 
 def gaussian_pushforward_mean(
-    means: torch.Tensor, vars: torch.Tensor, link_function: str = "probit"
+    means: torch.Tensor,
+    vars: torch.Tensor,
+    link_function: str = "probit",
+    *,
+    return_logits: bool = False,
 ) -> torch.Tensor:
-    norm = Normal(loc=0.0, scale=1.0)
     scale = probit_scale(link_function)
-    return norm.cdf(means / torch.sqrt(1 / scale + vars))
+    logits = means / torch.sqrt(1 / scale + vars)
+
+    if return_logits:
+        return logits
+
+    return ndtr(logits)
 
 
 def gaussian_pushforward_second_moment(
@@ -305,7 +305,7 @@ def diag_hessian_normalized_sigmoid(logit, target):
 
 
 def diag_hessian_normalized_normcdf(logit, target):
-    q = normcdf(logit)
+    q = ndtr(logit)
     s = q.sum(dim=-1, keepdim=True)
     normal = Normal(0, 1)
     phi = normal.log_prob(logit).exp()  # Norm pdf

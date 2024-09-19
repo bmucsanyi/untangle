@@ -3,7 +3,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.special import ndtr
+from torch.special import log_ndtr
 
 
 class NormCDFNLLLoss(nn.Module):
@@ -12,18 +12,16 @@ class NormCDFNLLLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self._eps = 1e-10
-
-    def forward(self, logits, targets, *, apply_activation=True):
+    @staticmethod
+    def forward(logits, targets):
         # Compute sigmoid BCE loss
         targets = F.one_hot(targets, num_classes=logits.shape[-1])
 
-        # Compute CDF of standard normal
-        cdf = ndtr(logits.double()).float() if apply_activation else logits
-
         # Compute loss
         loss = torch.where(
-            targets == 1, -torch.log(cdf + self._eps), -torch.log(1 - cdf + self._eps)
+            targets == 1,
+            -log_ndtr(logits.double()).float(),
+            -log_ndtr(-logits.double()).float(),
         )
 
         # Sum along the class dimension

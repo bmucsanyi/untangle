@@ -14,7 +14,7 @@ class UnnormalizedPredictiveNLLLoss(nn.Module):
     def __init__(self, predictive):
         super().__init__()
 
-        if not predictive.startswith("probit", "logit"):
+        if not predictive.startswith("probit", "logit") or predictive.endswith("mc"):
             msg = "Invalid predictive provided"
             raise ValueError(msg)
 
@@ -25,7 +25,7 @@ class UnnormalizedPredictiveNLLLoss(nn.Module):
         )
 
     def forward(self, logits, targets):
-        preds = self._predictive(logits, return_unnormalized=True)
-        loss = self._loss(preds, targets, apply_activation=False)
+        preds = self._predictive(logits, return_logits=True)
+        loss = self._loss(preds, targets)
 
         return loss
