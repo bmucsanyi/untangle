@@ -2,10 +2,11 @@
 
 import torch.nn.functional as F
 from torch import nn
+from torch.special import ndtr
 
 from untangle.losses.normcdf_nll_loss import NormCDFNLLLoss
 from untangle.losses.sigmoid_nll_loss import SigmoidNLLLoss
-from untangle.utils.predictive import PREDICTIVE_DICT, normcdf
+from untangle.utils.predictive import PREDICTIVE_DICT
 
 
 class UnnormalizedPredictiveNLLLoss(nn.Module):
@@ -19,7 +20,7 @@ class UnnormalizedPredictiveNLLLoss(nn.Module):
             raise ValueError(msg)
 
         self._predictive = PREDICTIVE_DICT[predictive]
-        self._activation = normcdf if predictive.startswith("probit") else F.sigmoid
+        self._activation = ndtr if predictive.startswith("probit") else F.sigmoid
         self._loss = (
             NormCDFNLLLoss() if predictive.startswith("probit") else SigmoidNLLLoss()
         )
