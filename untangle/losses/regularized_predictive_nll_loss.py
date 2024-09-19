@@ -3,8 +3,9 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.special import ndtr
 
-from untangle.utils.predictive import PREDICTIVE_DICT, normcdf
+from untangle.utils.predictive import PREDICTIVE_DICT
 
 
 class RegularizedPredictiveNLLLoss(nn.Module):
@@ -18,7 +19,7 @@ class RegularizedPredictiveNLLLoss(nn.Module):
             raise ValueError(msg)
 
         self._predictive = PREDICTIVE_DICT[predictive]
-        self._activation = normcdf if predictive.startswith("probit") else F.sigmoid
+        self._activation = ndtr if predictive.startswith("probit") else F.sigmoid
         self._regularization_factor = regularization_factor
 
     def forward(self, logits, targets):
