@@ -925,9 +925,11 @@ def validate(
                 mean, var = output
                 prob = predictive_fn(mean, var)
             elif len(output) == 1 and output[0].ndim == 3:
+                output = output[0]
                 act_fn = get_activation(args.predictive)
                 prob = act_fn(output).mean(dim=1)
             elif len(output) == 1 and output[0].ndim == 2:
+                output = output[0]
                 prob = output / output.mean(dim=-1, keepdim=True)
 
         if target.ndim == 2:
