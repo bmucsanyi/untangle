@@ -337,8 +337,10 @@ def main():
     time_start_setup = time.perf_counter()
     args = parse_args()
 
-    setup_logging(args)
     device, storage_device = setup_devices(args)
+
+    if args.rank == 0:
+        setup_logging(args)
 
     if args.distributed and args.evaluate_on_test_sets:
         msg = "Distributed setting is not supported"
