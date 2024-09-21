@@ -1,6 +1,7 @@
 """Copyright 2020 Ross Wightman and 2024 Bálint Mucsányi."""
 
 import logging
+import os
 import time
 from numbers import Number
 from pathlib import Path
@@ -88,7 +89,7 @@ def evaluate_bulk(
     flattened_metrics = flatten(results=metrics, key_prefix=key_prefix)
 
     # Remove tmp file
-    upstream_dict_path = Path("data/upstream_dict.pt")
+    upstream_dict_path = Path(f"data/upstream_dict_{os.environ.get('SLURM_JOBID')}.pt")
     upstream_dict_path.unlink()
 
     return flattened_metrics
@@ -141,7 +142,9 @@ def save_upstream_dict(
         "is_soft_upstream_dataset": is_soft_dataset,
     }
 
-    torch.save(upstream_dict, data_dir / "upstream_dict.pt")
+    torch.save(
+        upstream_dict, data_dir / f"upstream_dict_{os.environ.get('SLURM_JOBID')}.pt"
+    )
 
 
 @torch.no_grad()
@@ -201,7 +204,10 @@ def evaluate(
         )
 
     if not is_upstream_dataset and is_test_dataset:
-        upstream_dict = torch.load(data_dir / "upstream_dict.pt", weights_only=True)
+        upstream_dict = torch.load(
+            data_dir / f"upstream_dict_{os.environ.get('SLURM_JOBID')}.pt",
+            weights_only=True,
+        )
         upstream_estimates = upstream_dict["upstream_estimates"]
         upstream_log_probs = upstream_dict["upstream_log_probs"]
         upstream_targets = upstream_dict["upstream_targets"]
