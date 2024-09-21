@@ -6,7 +6,7 @@ import torch
 
 
 def is_distributed_env():
-    return int(os.environ.get("WORLD_SIZE"), "1") > 1
+    return int(os.environ.get("WORLD_SIZE", "1")) > 1
 
 
 def init_distributed_device(args):
