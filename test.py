@@ -20,6 +20,7 @@ from untangle.utils import (
     coverage_for_accuracy,
     entropy,
     excess_area_under_risk_coverage_curve,
+    get_activation,
     get_mom_dirichlet_approximation,
     get_predictive,
     multiclass_brier,
@@ -48,7 +49,6 @@ def evaluate_bulk(
     storage_device,
     amp_autocast,
     key_prefix,
-    output_dir,
     is_upstream_dataset,
     is_test_dataset,
     is_soft_dataset,
@@ -65,12 +65,10 @@ def evaluate_bulk(
             metrics[name][ood_transform_type] = evaluate(
                 model=model,
                 loader=loader,
-                loader_name=f"{name}_{ood_transform_type}",
                 device=device,
                 storage_device=storage_device,
                 amp_autocast=amp_autocast,
                 key_prefix="",
-                output_dir=output_dir,
                 is_upstream_dataset=is_upstream_dataset,
                 is_test_dataset=is_test_dataset,
                 is_soft_dataset=is_soft_dataset,
@@ -122,16 +120,38 @@ def flatten(results, key_prefix):
     return flattened_results
 
 
+def save_upstream_dict(
+    estimates, targets, log_probs, data_dir, is_soft_dataset, storage_device, args
+):
+    # Save ingredients to disk
+    max_num_indices = len(targets["gt_hard_labels"])
+    num_indices = min(max_num_indices, args.max_num_id_ood_eval_samples // 2)
+    path_indices = data_dir / f"{num_indices}_indices_out_of_{max_num_indices}.pt"
+
+    if path_indices.exists():
+        indices = torch.load(path_indices, weights_only=True)
+    else:
+        indices = torch.randperm(max_num_indices, device=storage_device)[:num_indices]
+        torch.save(indices, path_indices)
+
+    upstream_dict = {
+        "upstream_estimates": filter_entries(estimates, indices),
+        "upstream_targets": filter_entries(targets, indices),
+        "upstream_log_probs": filter_entries(log_probs, indices),
+        "is_soft_upstream_dataset": is_soft_dataset,
+    }
+
+    torch.save(upstream_dict, data_dir / "upstream_dict.pt")
+
+
 @torch.no_grad()
 def evaluate(
     model,
     loader,
-    loader_name,
     device,
     storage_device,
     amp_autocast,
     key_prefix,
-    output_dir,
     is_upstream_dataset,
     is_test_dataset,
     is_soft_dataset,
@@ -152,17 +172,12 @@ def evaluate(
     metrics = times
 
     if is_test_dataset:
-        ood_prefix = "id" if is_upstream_dataset else "ood"
-        save_prefix = f"{ood_prefix}_test_{loader_name.replace('/', '_')}_"
-
         metrics = evaluate_on_tasks(
             estimates=estimates,
             log_probs=log_probs,
             targets=targets,
             metrics=metrics,
             is_soft_dataset=is_soft_dataset,
-            save_prefix=save_prefix,
-            output_dir=output_dir,
             args=args,
         )
     else:
@@ -173,44 +188,33 @@ def evaluate(
 
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
-    if is_upstream_dataset and is_test_dataset and output_dir is not None:
-        # Save ingredients to disk
-        max_num_indices = len(targets["gt_hard_labels"])
-        num_indices = min(max_num_indices, args.max_num_id_ood_eval_samples // 2)
-        path_indices = data_dir / f"{num_indices}_indices_out_of_{max_num_indices}.pt"
 
-        if path_indices.exists():
-            indices = torch.load(path_indices, weights_only=True)
-        else:
-            indices = torch.randperm(max_num_indices, device=storage_device)[
-                :num_indices
-            ]
-            torch.save(indices, path_indices)
+    if is_upstream_dataset and is_test_dataset:
+        save_upstream_dict(
+            estimates=estimates,
+            targets=targets,
+            log_probs=log_probs,
+            data_dir=data_dir,
+            is_soft_dataset=is_soft_dataset,
+            storage_device=storage_device,
+            args=args,
+        )
 
-        upstream_dict = {
-            "upstream_estimates": filter_entries(estimates, indices),
-            "upstream_targets": filter_entries(targets, indices),
-            "is_soft_upstream_dataset": is_soft_dataset,
-        }
-
-        upstream_dict["upstream_log_probs"] = filter_entries(log_probs, indices)
-
-        torch.save(upstream_dict, data_dir / "upstream_dict.pt")
-    elif is_test_dataset and output_dir is not None:
-        # Load ingredients from disk
+    if not is_upstream_dataset and is_test_dataset:
         upstream_dict = torch.load(data_dir / "upstream_dict.pt", weights_only=True)
         upstream_estimates = upstream_dict["upstream_estimates"]
         upstream_log_probs = upstream_dict["upstream_log_probs"]
         upstream_targets = upstream_dict["upstream_targets"]
         is_soft_upstream_dataset = upstream_dict["is_soft_upstream_dataset"]
 
-        # Make both upstream and downstream tensors the same size to get a 50/50 split
+        # Make both upstream and downstream tensors the same size to get a 50/50
+        # split
         num_upstream_indices = len(upstream_targets["gt_hard_labels"])
         max_num_downstream_indices = len(targets["gt_hard_labels"])
         num_indices_to_keep = min(num_upstream_indices, max_num_downstream_indices)
 
-        # For upstream, we can just use [:num_samples_keep] in the following, because
-        # it's already shuffled. For downstream, let's use random indices
+        # For upstream, we can just use [:num_samples_keep] in the following,
+        # because it's already shuffled. For downstream, let's use random indices
         path_downstream_indices = (
             data_dir
             / f"{num_indices_to_keep}_indices_out_of_{max_num_downstream_indices}.pt"
@@ -226,18 +230,15 @@ def evaluate(
 
         upstream_estimates = truncate_entries(upstream_estimates, num_indices_to_keep)
         upstream_targets = truncate_entries(upstream_targets, num_indices_to_keep)
-
         upstream_log_probs = truncate_entries(upstream_log_probs, num_indices_to_keep)
-        downstream_log_probs = filter_entries(log_probs, downstream_indices)
 
+        downstream_log_probs = filter_entries(log_probs, downstream_indices)
         downstream_estimates = filter_entries(estimates, downstream_indices)
         downstream_targets = filter_entries(targets, downstream_indices)
 
-        # Mix ingredients (remember, we're cooking!)
+        # Mix ingredients
         mixed_estimates = concatenate_values(upstream_estimates, downstream_estimates)
-
         mixed_log_probs = concatenate_values(upstream_log_probs, downstream_log_probs)
-
         mixed_targets = concatenate_values(
             upstream_targets, downstream_targets, keys_to_exclude=["gt_soft_labels"]
         )
@@ -282,20 +283,12 @@ def evaluate(
                 downstream_targets["gt_soft_labels"],
             ])
 
-        ood_prefix = "id" if is_upstream_dataset else "ood"
-        save_prefix = (
-            f"{ood_prefix}_test_{loader_name.replace('/', '_')}_mixed_"
-            f"{args.dataset_id.replace('/', '_')}_"
-        )
-
         metrics = evaluate_on_tasks(
             estimates=mixed_estimates,
             log_probs=mixed_log_probs,
             targets=mixed_targets,
             metrics=metrics,
             is_soft_dataset=is_soft_dataset,
-            save_prefix=save_prefix,
-            output_dir=output_dir,
             args=args,
             is_soft_upstream_dataset=is_soft_upstream_dataset,
         )
@@ -369,8 +362,6 @@ def evaluate_on_tasks(
     targets,
     metrics,
     is_soft_dataset,
-    save_prefix,
-    output_dir,
     args,
     is_soft_upstream_dataset=None,
 ):
@@ -408,8 +399,6 @@ def evaluate_on_tasks(
     metrics |= evaluate_on_correlation_of_decomposition(
         estimates=estimates,
         is_soft_dataset=is_soft_dataset,
-        output_dir=output_dir,
-        save_prefix=save_prefix,
         args=args,
         is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
@@ -816,8 +805,6 @@ def evaluate_on_proper_scoring_and_calibration(
 def evaluate_on_correlation_of_decomposition(
     estimates,
     is_soft_dataset,
-    output_dir,
-    save_prefix,
     args,
     is_soft_upstream_dataset,
 ):
@@ -850,11 +837,6 @@ def evaluate_on_correlation_of_decomposition(
         entropies_of_bma = estimates[f"{prefix}_entropies_of_bma"]
         expected_entropies = estimates[f"{prefix}_expected_entropies"]
         jensen_shannon_divergences = estimates[f"{prefix}_jensen_shannon_divergences"]
-
-        torch.save(
-            (expected_entropies, jensen_shannon_divergences),
-            f"{output_dir}/{save_prefix}{prefix}_it_au_eu.pt",
-        )
 
         metrics[f"{key_prefix}{prefix}_rank_correlation_it_au_eu"] = float(
             spearmanr(expected_entropies, jensen_shannon_divergences)
@@ -1269,13 +1251,12 @@ def get_bundle(
     return estimates, log_probs, targets, times
 
 
-def handle_samples(logits, converted_inference_res):
+def handle_samples(logits, converted_inference_res, act_fn):
     min_real = torch.finfo(logits.dtype).min
     if logits.dim() == 2:  # [B, C]
         logits = logits.unsqueeze(dim=1)  # [B, 1, C]
-    log_probs = F.log_softmax(logits, dim=-1)  # [B, S, C]
 
-    probs = log_probs.exp()  # [B, S, C]
+    probs = act_fn(logits)  # [B, S, C]
 
     bmas = probs.mean(dim=1)  # [B, C]
     log_bmas = bmas.log().clamp(min=min_real)  # [B, C]
@@ -1364,7 +1345,8 @@ def convert_inference_res(inference_res, time_forward, args):
 
             if suffix.endswith("mc"):
                 bma, samples = predictive_fn(mean, var, return_samples=True)  # [B, C]
-                handle_samples(samples, converted_inference_res)
+                act_fn = get_activation(predictive_name)
+                handle_samples(samples, converted_inference_res, act_fn)
             else:
                 bma = predictive_fn(mean, var)
                 handle_bma(bma, converted_inference_res, suffix)
@@ -1374,7 +1356,8 @@ def convert_inference_res(inference_res, time_forward, args):
             handle_alpha(alpha, converted_inference_res)
     elif len(inference_res) == 1 and inference_res[0].ndim == 3:
         samples = inference_res[0]
-        handle_samples(samples, converted_inference_res)
+        act_fn = get_activation(args.predictive)
+        handle_samples(samples, converted_inference_res, act_fn)
     elif len(inference_res) == 1 and inference_res[0].ndim == 2:
         alpha = inference_res[0]
         handle_alpha(alpha, converted_inference_res)
