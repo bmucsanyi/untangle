@@ -16,7 +16,7 @@ def setup_logging(args, level=logging.INFO):
     )
 
     if args.log_wandb:
-        wandb.init(project="bias", config=args)
+        wandb.init(project="untangle", config=args)
 
 
 def log_wandb(
