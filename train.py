@@ -937,7 +937,7 @@ def validate(
             target = target[:, -1]
 
         loss = (
-            prob[torch.arange(target.shape[0]), target]
+            -prob[torch.arange(target.shape[0]), target]
             .log()
             .clamp(torch.finfo(prob.dtype).min)
             .mean()
