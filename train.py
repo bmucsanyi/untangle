@@ -262,9 +262,7 @@ def train(
 
         if lr_scheduler is not None:
             # Step LR for next epoch
-            lr_scheduler.step(
-                epoch + 1, eval_metrics["id_eval_hard_bma_accuracy_original"]
-            )
+            lr_scheduler.step(epoch + 1, eval_metrics["top_1_accuracy"])
 
         time_end_epoch = time.perf_counter()
         logger.info(
