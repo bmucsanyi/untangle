@@ -43,6 +43,10 @@ parser.add_argument(
     help="Root path of datasets",
 )
 parser.add_argument("--job-name", type=str, default="probit", help="Job name")
+parser.add_argument("--nodes", type=int, default=1, help="Number of nodes")
+parser.add_argument(
+    "--ntasks-per-node", type=int, default=1, help="Number of tasks per node"
+)
 parser.add_argument(
     "--partition",
     type=str,
@@ -54,13 +58,13 @@ parser.add_argument(
     "--cpus-per-task",
     type=int,
     default=12,
-    help="Number of CPUs (only a single task is used)",
+    help="Number of CPUs per task",
 )
 parser.add_argument(
     "--mem-per-cpu", type=str, default="4G", help="Available RAM per each CPU"
 )
 parser.add_argument(
-    "--gres", type=str, default="gpu:1", help="GPU resources to allocate"
+    "--gres", type=str, default="gpu:1", help="GPU resources to allocate per node"
 )
 parser.add_argument(
     "--time",
@@ -106,6 +110,8 @@ class SlurmJob:
         cmd_str: str,
         job_name: str,
         partition: str,
+        nodes: int,
+        ntasks_per_node: int,
         cpus_per_task: int,
         mem_per_cpu: str | None,
         mem: str | None,
@@ -126,7 +132,9 @@ class SlurmJob:
                 cpu-galvani: 30h time limit
                 2080-galvani: 3d time limit
                 a100-galvani: 3d time limit
-            cpus_per_task: The number of CPUs (as only a single task is used).
+            nodes: The number of nodes.
+            ntasks_per_node: The number of tasks per node.
+            cpus_per_task: The number of CPUs per task.
             mem_per_cpu: Available RAM per each CPU specified in megabytes (suffix `M`)
                 or gigabytes (suffix `G`).
             mem: Total available RAM in the same format as mem_per_cpu.
@@ -167,6 +175,8 @@ class SlurmJob:
         self._cmd_str = cmd_str
         self._job_name = job_name
         self._partition = partition
+        self._nodes = nodes
+        self._ntasks_per_node = ntasks_per_node
         self._cpus_per_task = cpus_per_task
         self._mem_per_cpu = mem_per_cpu
         self._mem = mem
@@ -256,8 +266,8 @@ class SlurmJob:
         sbatch_str = (
             f"#SBATCH --job-name={self._job_name}\n"
             f"#SBATCH --partition={self._partition}\n"
-            "#SBATCH --nodes=1\n"
-            "#SBATCH --ntasks=1\n"
+            f"#SBATCH --nodes={self._nodes}\n"
+            f"#SBATCH --ntasks-per-node={self._ntasks_per_node}\n"
             f"#SBATCH --cpus-per-task={self._cpus_per_task}\n"
             f"#SBATCH {mem_option}\n"
             f"#SBATCH --gres={self._gres}\n"
