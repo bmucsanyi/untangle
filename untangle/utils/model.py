@@ -40,7 +40,7 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
 }
 
 
-def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
+def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs, verbose):
     prefix, model_name = model_name.split("/")
 
     if prefix == "timm":
@@ -67,7 +67,9 @@ def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
         raise ValueError(msg)
 
     num_params = sum(param.numel() for param in model.parameters())
-    logger.info(f"Model {model_name} created, param count: {num_params}.")
+
+    if verbose:
+        logger.info(f"Model {model_name} created, param count: {num_params}.")
 
     return model
 
@@ -106,6 +108,7 @@ def wrap_model(
     predictive_fn,
     use_eigval_prior,
     likelihood,
+    verbose,
 ):
     if reset_classifier:
         model.reset_classifier(model.num_classes)
@@ -181,13 +184,15 @@ def wrap_model(
         raise ValueError(msg)
 
     if checkpoint_path:
-        load_checkpoint(wrapped_model, checkpoint_path)
+        load_checkpoint(wrapped_model, checkpoint_path, verbose=verbose)
 
     num_params = sum(param.numel() for param in model.parameters())
-    logger.info(
-        f"Wrapper {model_wrapper_name} created, total param count: {num_params}."
-    )
-    logger.info(str(model))
+
+    if verbose:
+        logger.info(
+            f"Wrapper {model_wrapper_name} created, total param count: {num_params}."
+        )
+        logger.info(str(model))
 
     return wrapped_model
 
@@ -195,11 +200,14 @@ def wrap_model(
 def load_checkpoint(
     model: torch.nn.Module,
     checkpoint_path: str,
+    verbose: bool,
 ) -> dict[str, Any]:
     if checkpoint_path.exists():
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
         state_dict = checkpoint["state_dict"]
-        logger.info(f"Loaded state_dict from checkpoint '{checkpoint_path}'.")
+
+        if verbose:
+            logger.info(f"Loaded state_dict from checkpoint '{checkpoint_path}'.")
     else:
         msg = f"No checkpoint found at '{checkpoint_path}'"
         raise FileNotFoundError(msg)

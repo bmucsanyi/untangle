@@ -3,6 +3,7 @@ from .context import DefaultContext
 from .convolution import calculate_output_padding, calculate_same_padding
 from .dataset import create_dataset
 from .derivative import jvp, vjp
+from .distributed import distribute_bn, init_distributed_device, reduce_tensor
 from .loader import create_loader
 from .logging import log_wandb, setup_logging
 from .loss import create_loss_fn
@@ -45,6 +46,7 @@ from .predictive import (
     diag_hessian_normalized_normcdf,
     diag_hessian_normalized_sigmoid,
     diag_hessian_softmax,
+    get_activation,
     get_likelihood,
     get_mom_dirichlet_approximation,
     get_predictive,
@@ -92,14 +94,17 @@ __all__ = [
     "diag_hessian_normalized_normcdf",
     "diag_hessian_normalized_sigmoid",
     "diag_hessian_softmax",
+    "distribute_bn",
     "entropy",
     "excess_area_under_risk_coverage_curve",
     "float_tuple",
+    "get_activation",
     "get_likelihood",
     "get_mom_dirichlet_approximation",
     "get_predictive",
     "get_ranks",
     "hard_target_transform",
+    "init_distributed_device",
     "int_tuple",
     "is_correct_pred",
     "jvp",
@@ -112,6 +117,7 @@ __all__ = [
     "optimizer_kwargs",
     "parse_args",
     "pearsonr",
+    "reduce_tensor",
     "register",
     "register_cond",
     "relative_area_under_lift_curve",

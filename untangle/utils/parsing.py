@@ -664,17 +664,18 @@ def resolve_data_config(args):
     # Resolve padding
     data_config["padding"] = args["padding"]
 
-    msg = "Data processing configuration for current model:"
+    if args.rank == 0:
+        msg = "Data processing configuration for current model:"
 
-    for n, v in data_config.items():
-        if "imagenet" in args["dataset"] and n == "padding":
-            continue
+        for n, v in data_config.items():
+            if "imagenet" in args["dataset"] and n == "padding":
+                continue
 
-        if "cifar" in args["dataset"] and n in {"crop_pct", "crop_mode"}:
-            continue
+            if "cifar" in args["dataset"] and n in {"crop_pct", "crop_mode"}:
+                continue
 
-        msg += f"\n\t{n}: {v}"
+            msg += f"\n\t{n}: {v}"
 
-    logger.info(msg)
+        logger.info(msg)
 
     return data_config

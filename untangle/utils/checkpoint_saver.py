@@ -18,14 +18,14 @@ class CheckpointSaver:
         self,
         model,
         optimizer,
-        amp_scaler,
+        loss_scaler,
         max_history,
         checkpoint_dir,
     ):
         # Objects to save state_dicts of
         self.model = model
         self.optimizer = optimizer
-        self.amp_scaler = amp_scaler
+        self.loss_scaler = loss_scaler
 
         # State
         # (filename, metric) tuples in order of decreasing performance
@@ -82,8 +82,8 @@ class CheckpointSaver:
             "metric": metric,
         }
 
-        if self.amp_scaler is not None:
-            save_state["amp_scaler"] = self.amp_scaler.state_dict()
+        if self.loss_scaler is not None:
+            save_state["amp_scaler"] = self.loss_scaler.state_dict()
 
         torch.save(save_state, save_path)
 

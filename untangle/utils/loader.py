@@ -90,20 +90,29 @@ def create_loader(
     pin_memory,
     persistent_workers,
     device,
+    distributed,
 ):
     if use_prefetcher:
         collate_fn = fast_collate
     else:
         collate_fn = torch.utils.data.dataloader.default_collate
 
+    # NOTE: IterableDataset not supported
+    sampler = None
+    if distributed:
+        sampler = torch.utils.data.distributed.DistributedSampler(
+            dataset, shuffle=is_training_dataset, drop_last=is_training_dataset
+        )
+
     loader = torch.utils.data.DataLoader(
         dataset=dataset,
         batch_size=batch_size,
-        shuffle=is_training_dataset,
+        shuffle=None if distributed else is_training_dataset,
         num_workers=num_workers,
+        sampler=sampler,
         collate_fn=collate_fn,
         pin_memory=pin_memory,
-        drop_last=is_training_dataset,
+        drop_last=is_training_dataset,  # TODO(bmucsanyi): Check for distributed case
         persistent_workers=persistent_workers,
     )
 

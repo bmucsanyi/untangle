@@ -361,3 +361,15 @@ def get_likelihood(predictive):
 
     msg = "Invalid predictive provided"
     raise ValueError(msg)
+
+
+def get_activation(predictive):
+    if predictive.startswith("softmax"):
+        return partial(F.softmax, dim=-1)
+    if predictive.startswith("probit"):
+        return ndtr
+    if predictive.startswith("logit"):
+        return F.sigmoid
+
+    msg = "Invalid predictive provided"
+    raise ValueError(msg)

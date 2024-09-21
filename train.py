@@ -8,23 +8,31 @@ from functools import partial
 from pathlib import Path
 
 import torch
+import torch.distributed
 from timm.optim import create_optimizer_v2
 from timm.scheduler import create_scheduler_v2
+from torch.nn.parallel import DistributedDataParallel
 
+from test import evaluate, evaluate_bulk
 from untangle.utils import (
     AverageMeter,
     CheckpointSaver,
     DefaultContext,
     NativeScaler,
+    accuracy,
     create_dataset,
     create_loader,
     create_loss_fn,
     create_model,
+    distribute_bn,
+    get_activation,
     get_likelihood,
     get_predictive,
+    init_distributed_device,
     log_wandb,
     optimizer_kwargs,
     parse_args,
+    reduce_tensor,
     resolve_data_config,
     scheduler_kwargs,
     set_random_seed,
@@ -39,7 +47,6 @@ from untangle.wrappers import (
     SNGPWrapper,
     SWAGWrapper,
 )
-from validate import evaluate, evaluate_bulk
 
 # TODO(bmucsanyi): Remove Namespace from safe globals once the old checkpoints are not
 # used
@@ -51,16 +58,20 @@ def setup_devices(args):
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
-        device = torch.device("cuda")
+
+    device, storage_device = init_distributed_device(args)
+
+    if args.distributed:
+        logger.info(
+            f"Training in distributed mode with {args.world_size} processes, one "
+            f"device per process. Process {args.rank}, device {args.device}, storage "
+            f"device {args.storage_device}."
+        )
     else:
-        device = torch.device("cpu")
-
-    storage_device = torch.device(args.storage_device)
-
-    logger.info(
-        f"Training on device {device}, "
-        f"storing eval metrics on device {storage_device}."
-    )
+        logger.info(
+            f"Training on single device {args.device}, storage device "
+            f"{args.storage_device}."
+        )
 
     return device, storage_device
 
@@ -92,19 +103,20 @@ def setup_amp(device, args):
             # Loss scaler only used for float16 (half) dtype, bfloat16 does not need it
             loss_scaler = NativeScaler()
 
-    action = "Training" if args.epochs > 0 else "Testing"
+    if args.rank == 0:
+        action = "Training" if args.epochs > 0 else "Testing"
 
-    if isinstance(amp_autocast, DefaultContext):
-        logger.info(f"AMP not enabled. {action} in float32.")
-    else:
-        logger.info(f"Using native Torch AMP. {action} in mixed precision.")
+        if isinstance(amp_autocast, DefaultContext):
+            logger.info(f"AMP not enabled. {action} in float32.")
+        else:
+            logger.info(f"Using native Torch AMP. {action} in mixed precision.")
 
     return amp_autocast, loss_scaler
 
 
 def setup_learning_rate(args):
     if args.lr is None:
-        global_batch_size = args.batch_size * args.accumulation_steps
+        global_batch_size = args.batch_size * args.world_size * args.accumulation_steps
         batch_ratio = global_batch_size / 256
         optimizer_name = args.opt.lower()
         lr_base_scale = (
@@ -116,11 +128,12 @@ def setup_learning_rate(args):
 
         args.lr = args.lr_base * batch_ratio
 
-        logger.info(
-            f"Learning rate ({args.lr}) calculated from base learning rate "
-            f"({args.lr_base}) and effective global batch size "
-            f"({global_batch_size}) with {lr_base_scale} scaling."
-        )
+        if args.rank == 0:
+            logger.info(
+                f"Learning rate ({args.lr}) calculated from base learning rate "
+                f"({args.lr_base}) and effective global batch size "
+                f"({global_batch_size}) with {lr_base_scale} scaling."
+            )
 
 
 def setup_wrapper(model, train_loader):
@@ -129,15 +142,15 @@ def setup_wrapper(model, train_loader):
 
 
 def setup_output_dir(data_config, args):
-    experiment_name = "-".join([
-        datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S-%f"),
-        args.model_name.replace("/", "_"),
-        str(data_config["input_size"][-1]),
-    ])
+    experiment_name = (
+        f"{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d-%H%M%S-%f')}-"
+        f"{args.model_name.replace('/', '_')}-{data_config['input_size'][-1]}"
+    )
     output_dir = Path("checkpoints") / experiment_name
     output_dir.mkdir(parents=True)
 
-    logger.info(f"Output directory is {output_dir}.")
+    if args.rank == 0:
+        logger.info(f"Output directory is {output_dir}.")
 
     return output_dir
 
@@ -157,10 +170,11 @@ def setup_scheduler(optimizer, train_loader, args):
             updates_per_epoch=updates_per_epoch,
         )
 
-        logger.info(f"Scheduled epochs: {num_epochs}.")
-        logger.info(
-            f'LR stepped per {"epoch" if lr_scheduler.t_in_epochs else "update"}.'
-        )
+        if args.rank == 0:
+            logger.info(f"Scheduled epochs: {num_epochs}.")
+            logger.info(
+                f'LR stepped per {"epoch" if lr_scheduler.t_in_epochs else "update"}.'
+            )
 
     return lr_scheduler, num_epochs
 
@@ -177,17 +191,19 @@ def train(
     loss_scaler,
     id_eval_loader,
     device,
-    storage_device,
-    output_dir,
     args,
 ):
     best_eval_metric = -float("inf")
     best_eval_metrics = None
     best_epoch = None
-    eval_metric = "id_eval_hard_bma_accuracy_original"
+    eval_metric = "top_1_accuracy"
 
     for epoch in range(num_epochs):
         time_start_epoch = time.perf_counter()
+
+        if args.distributed:
+            train_loader.sampler.set_epoch(epoch)
+
         train_metrics = train_one_epoch(
             epoch=epoch,
             model=model,
@@ -201,20 +217,18 @@ def train(
             loss_scaler=loss_scaler,
         )
 
+        if args.distributed:
+            if args.rank == 0:
+                logger.info("Distributing batch norm statistics.")
+            distribute_bn(model, args.world_size)
+
         if not isinstance(model, SWAGWrapper | LinearizedSWAGWrapper):
-            eval_metrics = evaluate(
+            eval_metrics = validate(
                 model=model,
                 loader=id_eval_loader,
-                loader_name=args.dataset_id,
-                device=device,
-                storage_device=storage_device,
-                amp_autocast=amp_autocast,
-                key_prefix="id_eval",
-                output_dir=output_dir,
-                is_upstream_dataset=True,
-                is_test_dataset=False,
-                is_soft_dataset="soft" in args.dataset_id,
                 args=args,
+                device=device,
+                amp_autocast=amp_autocast,
             )
             logger.info(f"{eval_metric}: {eval_metrics[eval_metric]}")
 
@@ -228,7 +242,7 @@ def train(
                 best_eval_metrics = eval_metrics
                 best_epoch = epoch
 
-            if args.log_wandb:
+            if args.rank == 0 and args.log_wandb:
                 log_wandb(
                     epoch=epoch,
                     train_metrics=train_metrics,
@@ -237,14 +251,14 @@ def train(
                     optimizer=optimizer,
                 )
 
-            if saver is not None and epoch >= args.best_save_start_epoch:
+            if args.rank == 0 and epoch >= args.best_save_start_epoch:
                 # Save proper checkpoint with eval metric
                 metric = eval_metrics[eval_metric]
                 saver.save_checkpoint(epoch=epoch, metric=metric)
         else:
             # Add placeholder value for [Linearized]SWAGWrapper: this method does not
             # support plateau-based LR scheduling
-            eval_metrics = {"id_eval_hard_bma_accuracy_original": 1.0}
+            eval_metrics = {"top_1_accuracy": 1.0}
 
         if lr_scheduler is not None:
             # Step LR for next epoch
@@ -281,7 +295,6 @@ def test(
     amp_autocast,
     device,
     storage_device,
-    output_dir,
     args,
 ):
     logger.info("Starting final tests.")
@@ -308,7 +321,6 @@ def test(
         device=device,
         storage_device=storage_device,
         amp_autocast=amp_autocast,
-        output_dir=output_dir,
         discard_ood_test_sets=args.discard_ood_test_sets,
         args=args,
     )
@@ -326,10 +338,15 @@ def test(
 def main():
     time_start_setup = time.perf_counter()
     args = parse_args()
+
     setup_logging(args)
     device, storage_device = setup_devices(args)
 
-    set_random_seed(args.seed)
+    if args.distributed and args.evaluate_on_test_sets:
+        msg = "Distributed setting is not supported"
+        raise ValueError(msg)
+
+    set_random_seed(args.seed, args.rank)
     data_config = resolve_data_config(vars(args))
 
     (
@@ -352,6 +369,7 @@ def main():
         num_classes=args.num_classes,
         in_chans=data_config["input_size"][0],
         model_kwargs=args.model_kwargs,
+        verbose=args.rank == 0,
     )
 
     model = wrap_model(
@@ -392,10 +410,17 @@ def main():
         ),
         use_eigval_prior=args.use_eigval_prior,
         likelihood=get_likelihood(args.predictive),
+        verbose=args.rank == 0,
     )
 
     # Move model to device
     model.to(device=device)
+
+    # Setup distributed training
+    if args.distributed:
+        model = DistributedDataParallel(
+            model, device_ids=[device], broadcast_buffers=True
+        )
 
     setup_learning_rate(args)
     optimizer = create_optimizer_v2(
@@ -407,39 +432,40 @@ def main():
 
     setup_wrapper(model, train_loader)
 
-    # Setup checkpoint saver
-    output_dir = setup_output_dir(data_config, args)
+    if args.rank == 0:
+        # Setup checkpoint saver
+        output_dir = setup_output_dir(data_config, args)
 
-    saver = CheckpointSaver(
-        model=model,
-        optimizer=optimizer,
-        amp_scaler=loss_scaler,
-        max_history=args.checkpoint_history,
-        checkpoint_dir=output_dir,
-    )
+        saver = CheckpointSaver(
+            model=model,
+            optimizer=optimizer,
+            loss_scaler=loss_scaler,
+            max_history=args.checkpoint_history,
+            checkpoint_dir=output_dir,
+        )
 
     lr_scheduler, num_epochs = setup_scheduler(optimizer, train_loader, args)
 
     time_end_setup = time.perf_counter()
-    logger.info(f"Setup took {time_end_setup - time_start_setup} seconds.")
+
+    if args.rank == 0:
+        logger.info(f"Setup took {time_end_setup - time_start_setup} seconds.")
 
     try:
         if num_epochs > 0:
             best_eval_metric, best_epoch = train(
-                num_epochs,
-                model,
-                optimizer,
-                train_loss_fn,
-                lr_scheduler,
-                train_loader,
-                saver,
-                amp_autocast,
-                loss_scaler,
-                id_eval_loader,
-                device,
-                storage_device,
-                output_dir,
-                args,
+                num_epochs=num_epochs,
+                model=model,
+                optimizer=optimizer,
+                train_loss_fn=train_loss_fn,
+                lr_scheduler=lr_scheduler,
+                train_loader=train_loader,
+                saver=saver,
+                amp_autocast=amp_autocast,
+                loss_scaler=loss_scaler,
+                id_eval_loader=id_eval_loader,
+                device=device,
+                args=args,
             )
 
             if not isinstance(model, SWAGWrapper | LinearizedSWAGWrapper):
@@ -449,22 +475,23 @@ def main():
 
         if args.evaluate_on_test_sets:
             test(
-                num_epochs,
-                model,
-                optimizer,
-                train_loader,
-                hard_id_eval_loader,
-                id_test_loader,
-                ood_test_loaders,
-                saver,
-                amp_autocast,
-                device,
-                storage_device,
-                output_dir,
-                args,
+                num_epochs=num_epochs,
+                model=model,
+                optimizer=optimizer,
+                train_loader=train_loader,
+                hard_id_eval_loader=hard_id_eval_loader,
+                id_test_loader=id_test_loader,
+                ood_test_loaders=ood_test_loaders,
+                saver=saver,
+                amp_autocast=amp_autocast,
+                device=device,
+                storage_device=storage_device,
+                args=args,
             )
     except KeyboardInterrupt:
         pass
+
+    torch.distributed.destroy_process_group()
 
 
 def evaluate_on_test_sets(
@@ -474,19 +501,16 @@ def evaluate_on_test_sets(
     device,
     storage_device,
     amp_autocast,
-    output_dir,
     discard_ood_test_sets,
     args,
 ):
     best_test_metrics = evaluate(
         model=model,
         loader=id_test_loader,
-        loader_name=args.dataset_id,
         device=device,
         storage_device=storage_device,
         amp_autocast=amp_autocast,
         key_prefix="id_test",
-        output_dir=output_dir,
         is_upstream_dataset=True,
         is_test_dataset=True,
         is_soft_dataset="soft" in args.dataset_id,
@@ -503,7 +527,6 @@ def evaluate_on_test_sets(
         storage_device=storage_device,
         amp_autocast=amp_autocast,
         key_prefix="ood_test",
-        output_dir=output_dir,
         is_upstream_dataset=False,
         is_test_dataset=True,
         is_soft_dataset="soft" in args.dataset_id,
@@ -686,6 +709,7 @@ def create_loaders(args, data_config, device):
         pin_memory=args.pin_memory,
         persistent_workers=True,
         device=device,
+        distributed=args.distributed,
     )
 
     id_eval_loader = create_loader(
@@ -699,6 +723,7 @@ def create_loaders(args, data_config, device):
         pin_memory=args.pin_memory,
         persistent_workers=True,
         device=device,
+        distributed=args.distributed,
     )
 
     hard_id_eval_loader = create_loader(
@@ -712,6 +737,7 @@ def create_loaders(args, data_config, device):
         pin_memory=args.pin_memory,
         persistent_workers=True,
         device=device,
+        distributed=False,
     )
 
     id_test_loader = create_loader(
@@ -725,6 +751,7 @@ def create_loaders(args, data_config, device):
         pin_memory=args.pin_memory,
         persistent_workers=False,
         device=device,
+        distributed=False,
     )
 
     ood_test_loaders = {}
@@ -743,6 +770,7 @@ def create_loaders(args, data_config, device):
                 pin_memory=args.pin_memory,
                 persistent_workers=False,
                 device=device,
+                distributed=False,
             )
 
     return (
@@ -823,7 +851,8 @@ def train_one_epoch(
             loss=loss,
         )
 
-        losses_m.update(loss.item() * accumulation_steps, input.shape[0])
+        if not args.distributed:
+            losses_m.update(loss.item() * accumulation_steps, input.shape[0])
 
         if not need_update:
             continue
@@ -845,18 +874,91 @@ def train_one_epoch(
             lrl = [param_group["lr"] for param_group in optimizer.param_groups]
             lr = sum(lrl) / len(lrl)
 
-            logger.info(
-                f"Train: {epoch} [{update_idx:>4d}/{updates_per_epoch} "
-                f"({100 * update_idx / (updates_per_epoch - 1):>3.0f}%)]  "
-                f"Loss: {losses_m.avg:#.3g}  "
-                f"Time: {update_time_m.avg:.3f}s  "
-                f"LR: {lr:.3e}  "
-            )
+            if args.distributed:
+                reduced_loss = reduce_tensor(loss.data, args.world_size)
+                losses_m.update(
+                    reduced_loss.item() * accumulation_steps, input.shape[0]
+                )
+
+            if args.rank == 0:
+                logger.info(
+                    f"Train: {epoch} [{update_idx:>4d}/{updates_per_epoch} "
+                    f"({100 * update_idx / (updates_per_epoch - 1):>3.0f}%)]  "
+                    f"Loss: {losses_m.avg:#.3g}  "
+                    f"Time: {update_time_m.avg:.3f}s  "
+                    f"LR: {lr:.3e}  "
+                )
 
         if lr_scheduler is not None:
             lr_scheduler.step_update(num_updates=num_updates, metric=losses_m.avg)
 
     return {"loss": losses_m.avg}
+
+
+@torch.no_grad()
+def validate(
+    model,
+    loader,
+    args,
+    device,
+    amp_autocast,
+):
+    batch_time_m = AverageMeter()
+    losses_m = AverageMeter()
+    top_1_m = AverageMeter()
+
+    model.eval()
+
+    end = time.time()
+
+    for input, target in loader:
+        if not args.prefetcher:
+            input = input.to(device)
+            target = target.to(device)
+
+        with amp_autocast():
+            output = model(input)
+            if len(output) == 2:
+                predictive_fn = get_predictive(
+                    args.predictive, args.use_correction, args.num_mc_samples
+                )
+                mean, var = output
+                prob = predictive_fn(mean, var)
+            elif len(output) == 1 and output[0].ndim == 3:
+                act_fn = get_activation(args.predictive)
+                prob = act_fn(output).mean(dim=1)
+            elif len(output) == 1 and output[0].ndim == 2:
+                prob = output / output.mean(dim=-1, keepdim=True)
+
+        if target.ndim == 2:
+            target = target[:, -1]
+
+        loss = (
+            prob[torch.arange(target.shape[0]), target]
+            .log()
+            .clamp(torch.finfo(prob.dtype).min)
+            .mean()
+        )
+        top_1 = accuracy(output, target)[0]
+
+        if args.distributed:
+            reduced_loss = reduce_tensor(loss, args.world_size)
+            top_1 = reduce_tensor(top_1, args.world_size)
+        else:
+            reduced_loss = loss
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+
+        losses_m.update(reduced_loss.item(), input.shape[0])
+        top_1_m.update(top_1.item(), output.shape[0])
+
+        batch_time_m.update(time.time() - end)
+        end = time.time()
+
+    metrics = {"loss": losses_m.avg, "top_1_accuracy": top_1_m.avg}
+
+    return metrics
 
 
 def update_post_hoc_method(model, train_loader, hard_id_eval_loader, args):
