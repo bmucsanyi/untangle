@@ -664,7 +664,7 @@ def resolve_data_config(args):
     # Resolve padding
     data_config["padding"] = args["padding"]
 
-    if args.rank == 0:
+    if args["rank"] == 0:
         msg = "Data processing configuration for current model:"
 
         for n, v in data_config.items():
