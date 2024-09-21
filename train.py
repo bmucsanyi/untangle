@@ -941,7 +941,7 @@ def validate(
             .clamp(torch.finfo(prob.dtype).min)
             .mean()
         )
-        top_1 = accuracy(output, target)[0]
+        top_1 = accuracy(prob, target)[0]
 
         if args.distributed:
             reduced_loss = reduce_tensor(loss, args.world_size)
