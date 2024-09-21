@@ -353,6 +353,8 @@ def main():
         cmd_str=cmd_str,
         job_name=args.job_name,
         partition=args.partition,
+        nodes=args.nodes,
+        ntasks_per_node=args.ntasks_per_node,
         cpus_per_task=args.cpus_per_task,
         mem_per_cpu=args.mem_per_cpu,
         mem=None,
