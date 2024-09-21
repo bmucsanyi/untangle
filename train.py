@@ -432,6 +432,7 @@ def main():
 
     setup_wrapper(model, train_loader)
 
+    saver = None
     if args.rank == 0:
         # Setup checkpoint saver
         output_dir = setup_output_dir(data_config, args)
