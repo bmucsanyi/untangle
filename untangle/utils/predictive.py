@@ -334,9 +334,9 @@ def diag_hessian_normalized_normcdf(logit, target):
 
 def diag_hessian_softmax(logit, target):
     del target
-    prob = logit.softmax(dim=-1)
+    prob = logit.softmax(dim=-1)  # [B, C]
 
-    return prob * (1 - prob)
+    return prob * (1 - prob)  # [B, C]
 
 
 PREDICTIVE_DICT = {

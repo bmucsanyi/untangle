@@ -143,10 +143,11 @@ class GPOutputLayer(nn.Module):
             else:
                 multipliers = LIKELIHOOD_TO_HESSIAN_DIAG[self._likelihood](
                     gp_outputs, targets
-                )
+                )  # [B, C]
+
                 with torch.no_grad():
                     for cov_layer, multiplier in zip(
-                        self._gp_cov_layers, multipliers, strict=True
+                        self._gp_cov_layers, multipliers.T, strict=True
                     ):
                         cov_layer.update(gp_features, multiplier)
 
@@ -277,7 +278,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         return gp_var
 
-    def update(self, gp_features, multiplier=1):
+    def update(self, gp_features, multiplier=1):  # [B, C], [B]
         # Computes the updated feature precision matrix.
         precision_matrix_updated = self._update_feature_precision_matrix(
             gp_features=gp_features,
@@ -295,7 +296,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         batch_size = gp_features.shape[0]
 
         # Computes batch-specific normalized precision matrix.
-        precision_matrix_minibatch = multiplier * gp_features.T @ gp_features
+        precision_matrix_minibatch = (multiplier * gp_features.T) @ gp_features
 
         # Updates the population-wise precision matrix.
         if self._momentum > 0:
