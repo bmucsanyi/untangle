@@ -15,6 +15,7 @@ def wide_resnet_c_fixup_26_10(
     act_layer=nn.ReLU,
     *,
     init_bias_minus_log_c=False,
+    no_zero_init_fc_weight=False,
 ):
     """Constructs a WideResNet-Fixup-26-10 model."""
     model = ResNetCFixup(
@@ -26,6 +27,7 @@ def wide_resnet_c_fixup_26_10(
         downsample_type=downsample_type,
         act_layer=act_layer,
         init_bias_minus_log_c=init_bias_minus_log_c,
+        no_zero_init_fc_weight=no_zero_init_fc_weight,
     )
 
     return model
@@ -100,6 +102,7 @@ class ResNetCFixup(nn.Module):
         downsample_type,
         act_layer,
         init_bias_minus_log_c,
+        no_zero_init_fc_weight,
     ):
         super().__init__()
 
@@ -137,9 +140,12 @@ class ResNetCFixup(nn.Module):
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.bias2 = nn.Parameter(torch.zeros(1))
         self.fc = nn.Linear(self.num_features, self.num_classes)
-        self.init_weights(init_bias_minus_log_c=init_bias_minus_log_c)
+        self.init_weights(
+            init_bias_minus_log_c=init_bias_minus_log_c,
+            no_zero_init_fc_weight=no_zero_init_fc_weight,
+        )
 
-    def init_weights(self, *, init_bias_minus_log_c):
+    def init_weights(self, *, init_bias_minus_log_c, no_zero_init_fc_weight):
         for module in self.modules():
             if isinstance(module, BasicBlockCFixup):
                 weight1 = module.conv1.weight
@@ -169,7 +175,8 @@ class ResNetCFixup(nn.Module):
                         std=std_downsample,
                     )
             elif isinstance(module, nn.Linear):
-                nn.init.constant_(module.weight, 0.0)
+                if not no_zero_init_fc_weight:
+                    nn.init.constant_(module.weight, 0.0)
                 nn.init.constant_(module.bias, 0.0)
 
         if init_bias_minus_log_c:
