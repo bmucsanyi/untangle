@@ -12,7 +12,7 @@ def scheduler_kwargs(args):
     plateau_mode = "max"
 
     kwargs = {
-        "sched": sched_kwargs.get(sched_kwargs["sched"], "cosine"),
+        "sched": sched_kwargs.get("sched", "cosine"),
         "num_epochs": args.epochs,
         "decay_epochs": sched_kwargs.get("decay_epochs", args.epochs),
         "decay_milestones": sched_kwargs.get("decay_milestones", [30, 60]),
