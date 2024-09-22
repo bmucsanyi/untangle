@@ -310,7 +310,7 @@ def diag_hessian_normalized_sigmoid(logit, target):
     n_batch = logit.shape[0]
     n_classes = logit.shape[1]
     z = target.unsqueeze(1)
-    y = torch.zeros(n_batch, n_classes)
+    y = torch.zeros(n_batch, n_classes, device=logit.device)
     y.scatter_(1, z, 1)
 
     return y * q * (1 - q) + p * (1 - 3 * q + 2 * q**2) - (p * (1 - q)) ** 2
@@ -326,7 +326,7 @@ def diag_hessian_normalized_normcdf(logit, target):
     n_batch = logit.shape[0]
     n_classes = logit.shape[1]
     z = target.unsqueeze(1)
-    y = torch.zeros(n_batch, n_classes)
+    y = torch.zeros(n_batch, n_classes, device=logit.device)
     y.scatter_(1, z, 1)
 
     return theta * (1 / s - y / q) + phi**2 * (y / q**2 - 1 / s**2)
