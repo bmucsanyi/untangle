@@ -28,10 +28,11 @@ class HETHead(nn.Module):
         self._use_sampling = use_sampling
         self._num_features = num_features
 
-        self._low_rank_cov_layer = nn.Linear(
-            in_features=self._num_features,
-            out_features=self._num_features * self._matrix_rank,
-        )
+        if self._matrix_rank > 0:
+            self._low_rank_cov_layer = nn.Linear(
+                in_features=self._num_features,
+                out_features=self._num_features * self._matrix_rank,
+            )
         self._diagonal_var_layer = nn.Linear(
             in_features=self._num_features, out_features=self._num_features
         )
@@ -45,10 +46,14 @@ class HETHead(nn.Module):
 
         # Shape variables
         B, C = features.shape
-        R = self._matrix_rank
         S = self._num_mc_samples
+        R = self._matrix_rank
 
-        low_rank_cov = self._low_rank_cov_layer(logits).reshape(-1, C, R)  # [B, C, R]
+        if R > 0:
+            low_rank_cov = self._low_rank_cov_layer(logits).reshape(
+                -1, C, R
+            )  # [B, C, R]
+
         diagonal_var = (
             F.softplus(self._diagonal_var_layer(logits)) + self._min_scale_monte_carlo
         )  # [B, C]
@@ -57,16 +62,26 @@ class HETHead(nn.Module):
             diagonal_samples = diagonal_var.sqrt().unsqueeze(1) * torch.randn(
                 B, S, C, device=features.device
             )  # [B, S, C]
-            standard_samples = torch.randn(B, S, R, device=features.device)  # [B, S, R]
-            einsum_res = torch.einsum(
-                "bcr,bsr->bsc", low_rank_cov, standard_samples
-            )  # [B, S, D]
-            samples = einsum_res + diagonal_samples  # [B, S, C]
+
+            if R > 0:
+                standard_samples = torch.randn(
+                    B, S, R, device=features.device
+                )  # [B, S, R]
+                einsum_res = torch.einsum(
+                    "bcr,bsr->bsc", low_rank_cov, standard_samples
+                )  # [B, S, D]
+                samples = einsum_res + diagonal_samples  # [B, S, C]
+            else:
+                samples = diagonal_samples
+
             logits = features.unsqueeze(1) + samples  # [B, S, C]
 
             return (logits / self._temperature,)
 
-        vars = low_rank_cov.square().sum(dim=-1) + diagonal_var  # [B, C]
+        if R > 0:
+            vars = low_rank_cov.square().sum(dim=-1) + diagonal_var  # [B, C]
+        else:
+            vars = diagonal_var
 
         return logits / self._temperature, vars / self._temperature**2
 
