@@ -74,7 +74,7 @@ class HETHead(nn.Module):
             else:
                 samples = diagonal_samples
 
-            logits = features.unsqueeze(1) + samples  # [B, S, C]
+            logits = logits.unsqueeze(1) + samples  # [B, S, C]
 
             return (logits / self._temperature,)
 
