@@ -186,13 +186,13 @@ def wrap_model(
     if checkpoint_path:
         load_checkpoint(wrapped_model, checkpoint_path, verbose=verbose)
 
-    num_params = sum(param.numel() for param in model.parameters())
+    num_params = sum(param.numel() for param in wrapped_model.parameters())
 
     if verbose:
         logger.info(
             f"Wrapper {model_wrapper_name} created, total param count: {num_params}."
         )
-        logger.info(str(model))
+        logger.info(str(wrapped_model))
 
     return wrapped_model
 
