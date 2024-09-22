@@ -983,7 +983,7 @@ class SNGPWrapper(DistributionalWrapper):
             self._random_projection = random_projection
         else:
             num_gp_features = self.num_features
-            self._random_projection = None
+            self._random_projection = lambda x: x
 
         gp_output_layer = GPOutputLayer(
             num_features=num_gp_features,
@@ -1119,7 +1119,7 @@ class SNGPWrapper(DistributionalWrapper):
             self._random_projection = random_projection
         else:
             num_gp_features = self.num_features
-            self._random_projection = None
+            self._random_projection = lambda x: x
 
         gp_output_layer = GPOutputLayer(
             num_features=num_gp_features,
