@@ -33,7 +33,7 @@ class ModelWrapper(nn.Module):
         if pre_logits:
             return features
 
-        out = self.model.get_classifier()(features)
+        out = self.get_classifier()(features)
 
         return out
 
