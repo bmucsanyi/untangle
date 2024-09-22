@@ -44,7 +44,7 @@ class BMACrossEntropyLoss(nn.Module):
                     + mean
                 )
             else:
-                logits = self.predictive(logits, return_logits=True)
+                logits = self.predictive(mean, var, return_logits=True)
                 return self.loss(logits, targets)
 
         logits = logits[0]
