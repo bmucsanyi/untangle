@@ -41,7 +41,7 @@ def resnet_c_preact_26(
     """Constructs a ResNet-26 model."""
     model = ResNetCPreAct(
         block_fn=BasicBlockCPreAct,
-        depth=28,
+        depth=26,
         width_multiplier=1,
         num_classes=num_classes,
         in_chans=in_chans,
