@@ -16,7 +16,7 @@ class RegularizedPredictiveNLLLoss(nn.Module):
     ):
         super().__init__()
 
-        if not predictive.startswith("probit", "logit"):
+        if not predictive.startswith(("probit", "logit")):
             msg = "Invalid predictive provided"
             raise ValueError(msg)
 
