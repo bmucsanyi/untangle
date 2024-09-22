@@ -208,12 +208,12 @@ def dirichlet_predictive(params: torch.Tensor) -> torch.Tensor:
 
 
 def get_laplace_bridge_approximation(
-    mean: torch.Tensor, var: torch.Tensor, *, correction: bool = True
+    mean: torch.Tensor, var: torch.Tensor, *, use_correction: bool = True
 ) -> torch.Tensor:
     """Laplace bridge approximation."""
     num_classes = mean.shape[1]
 
-    if correction:
+    if use_correction:
         c = torch.sum(var, dim=1) * (1 / sqrt(num_classes / 2))  # [B]
         c_expanded = torch.tile(c[:, None], (1, num_classes))  # [B, C]
         mean_p = mean / torch.sqrt(c_expanded)  # [B, C]
@@ -358,7 +358,7 @@ def get_predictive(predictive, use_correction, num_mc_samples):
     if predictive.endswith("mc"):
         predictive_fn = partial(predictive_fn, num_mc_samples=num_mc_samples)
     elif predictive == "softmax_laplace_bridge":
-        predictive_fn = partial(predictive_fn, correction=use_correction)
+        predictive_fn = partial(predictive_fn, use_correction=use_correction)
 
     return predictive_fn
 
