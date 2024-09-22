@@ -267,10 +267,14 @@ def gaussian_pushforward_second_moment(
     means: torch.Tensor, vars: torch.Tensor, link_function: str = "probit"
 ) -> torch.Tensor:
     scale = probit_scale(link_function)
-    t_term = -2 * owens_t(
-        means / torch.sqrt(1 / scale + vars), 1 / torch.sqrt(1 + 2 * scale * vars)
-    )
+    device = means.device
+
+    owens_t_input1 = (means / torch.sqrt(1 / scale + vars)).cpu().numpy()
+    owens_t_input2 = (1 / torch.sqrt(1 + 2 * scale * vars)).cpu().numpy()
+
+    t_term = -2 * torch.from_numpy(owens_t(owens_t_input1, owens_t_input2)).to(device)
     p_term = gaussian_pushforward_mean(means, vars, link_function)
+
     return p_term + t_term
 
 
