@@ -14,17 +14,25 @@ LAMBDA_0 = math.pi / 8
 
 
 def softmax_laplace_bridge(
-    mean: torch.Tensor, var: torch.Tensor, *, use_correction: bool = True
+    mean: torch.Tensor,
+    var: torch.Tensor,
+    *,
+    use_correction: bool = True,
+    return_logits: bool = False,
 ) -> torch.Tensor:
     """Softmax + Laplace bridge predictive."""
     params = get_laplace_bridge_approximation(mean, var, use_correction)
     pred = dirichlet_predictive(params)
 
-    return pred
+    return pred.add(1e-10).log() if return_logits else pred
 
 
-def softmax_mean_field(mean: torch.Tensor, var: torch.Tensor) -> torch.Tensor:
-    return (mean / (1 + LAMBDA_0 * var).sqrt()).softmax(dim=-1)
+def softmax_mean_field(
+    mean: torch.Tensor, var: torch.Tensor, *, return_logits: bool = False
+) -> torch.Tensor:
+    logits = mean / (1 + LAMBDA_0 * var).sqrt()
+
+    return logits if return_logits else logits.softmax(dim=-1)
 
 
 def softmax_mc(
