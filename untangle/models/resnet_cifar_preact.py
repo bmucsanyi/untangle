@@ -125,11 +125,11 @@ class ResNetCPreAct(nn.Module):
         self.num_features = 64 * block_fn.expansion * width_multiplier
         self.downsample_type = downsample_type
 
-        if (depth - 4) % 6 != 0:
-            msg = "Depth should be 6n+4 (e.g., 22, 34, 46, 58, 112, 1204)"
+        if (depth - 2) % 6 != 0:
+            msg = "Depth should be 6n+2 (e.g., 20, 32, 44, 56, 110, 1202)"
             raise ValueError(msg)
 
-        n = (depth - 4) // 6
+        n = (depth - 2) // 6
 
         self.conv1 = nn.Conv2d(
             in_chans, 16, kernel_size=3, stride=1, padding=1, bias=False
