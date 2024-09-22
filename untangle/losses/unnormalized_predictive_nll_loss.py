@@ -26,7 +26,7 @@ class UnnormalizedPredictiveNLLLoss(nn.Module):
         )
 
     def forward(self, logits, targets):
-        preds = self._predictive(logits, return_logits=True)
+        preds = self._predictive(*logits, return_logits=True)
         loss = self._loss(preds, targets)
 
         return loss
