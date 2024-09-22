@@ -954,7 +954,7 @@ def validate(
             torch.cuda.synchronize()
 
         losses_m.update(reduced_loss.item(), input.shape[0])
-        top_1_m.update(top_1.item(), output.shape[0])
+        top_1_m.update(top_1.item(), input.shape[0])
 
         batch_time_m.update(time.time() - end)
         end = time.time()
