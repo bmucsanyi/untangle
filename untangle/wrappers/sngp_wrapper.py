@@ -107,7 +107,8 @@ class GPOutputLayer(nn.Module):
         This function is useful for resetting the model's covariance matrix at the
         beginning of a new epoch.
         """
-        self._gp_cov_layer.reset_precision_matrix()
+        for cov_layer in self._gp_cov_layers:
+            cov_layer.reset_precision_matrix()
 
     @staticmethod
     def mean_field_logits(logits, vars, mean_field_factor):
