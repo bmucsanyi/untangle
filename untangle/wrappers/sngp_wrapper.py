@@ -279,7 +279,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
     def update(self, gp_features, multiplier=1):
         # Computes the updated feature precision matrix.
-        precision_matrix_updated = self.update_feature_precision_matrix(
+        precision_matrix_updated = self._update_feature_precision_matrix(
             gp_features=gp_features,
             multiplier=multiplier,
         )
