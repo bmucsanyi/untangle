@@ -37,8 +37,7 @@ class EDLLoss(nn.Module):
             - torch.lgamma(self.sum_uniform_alphas),
         )  # []
 
-    def kullback_leibler_term(self, alpha_tildes: tuple[torch.Tensor]) -> torch.Tensor:
-        alpha_tildes = alpha_tildes[0]
+    def kullback_leibler_term(self, alpha_tildes: torch.Tensor) -> torch.Tensor:
         sum_alpha_tildes = alpha_tildes.sum(dim=1)  # [B]
         log_b_alpha_tildes = torch.lgamma(alpha_tildes).sum(dim=1) - torch.lgamma(
             sum_alpha_tildes
@@ -59,7 +58,10 @@ class EDLLoss(nn.Module):
 
         return kullback_leibler_term  # [B]
 
-    def forward(self, alphas: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, alphas: tuple[torch.Tensor], targets: torch.Tensor
+    ) -> torch.Tensor:
+        alphas = alphas[0]
         sum_alphas = alphas.sum(dim=1)  # [B]
         mean_alphas = alphas.div(sum_alphas.unsqueeze(1))  # [B, C]
 
