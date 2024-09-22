@@ -492,8 +492,6 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    torch.distributed.destroy_process_group()
-
 
 def evaluate_on_test_sets(
     model,
