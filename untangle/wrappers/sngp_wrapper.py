@@ -263,7 +263,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
             shape (batch_size, batch_size).
         """
         # Lazily computes feature covariance matrix during inference.
-        covariance_matrix_updated = self.update_feature_covariance_matrix()
+        covariance_matrix_updated = self._update_feature_covariance_matrix()
 
         # Store updated covariance matrix.
         self._covariance_matrix.copy_(covariance_matrix_updated)
