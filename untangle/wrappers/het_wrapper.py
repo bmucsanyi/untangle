@@ -113,7 +113,6 @@ class HETWrapper(DistributionalWrapper):
             use_sampling=self._use_sampling,
         )
 
-    @torch.jit.ignore
     def get_classifier(self):
         return self._classifier
 

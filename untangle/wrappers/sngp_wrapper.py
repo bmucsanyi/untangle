@@ -1051,7 +1051,6 @@ class SNGPWrapper(DistributionalWrapper):
                     target_module=SNBN,
                 )
 
-    @torch.jit.ignore
     def get_classifier(self):
         return self._classifier
 
