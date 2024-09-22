@@ -51,7 +51,7 @@ class GPOutputLayer(nn.Module):
         self._num_random_features = num_random_features
         self._num_mc_samples = num_mc_samples
 
-        self._use_input_normalized_gp = use_input_normalized_gp
+        self.use_input_normalized_gp = use_input_normalized_gp
         self._gp_input_scale = (
             1 / gp_kernel_scale**0.5 if gp_kernel_scale is not None else None
         )
@@ -83,7 +83,7 @@ class GPOutputLayer(nn.Module):
             nn.init.uniform_, a=0, b=2 * torch.pi
         )
 
-        if self._use_input_normalized_gp:
+        if self.use_input_normalized_gp:
             self._input_norm_layer = nn.LayerNorm(num_features)
 
         self._random_feature = self._make_random_feature_layer(num_features)
@@ -120,7 +120,7 @@ class GPOutputLayer(nn.Module):
 
     def forward(self, gp_inputs, targets=None):
         # Computes random features.
-        if self._use_input_normalized_gp:
+        if self.use_input_normalized_gp:
             gp_inputs = self._input_norm_layer(gp_inputs)
         elif self._gp_input_scale is not None:
             # Supports lengthscale for custom random feature layer by directly
@@ -239,7 +239,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         # Boolean flag to indicate whether to update the covariance matrix (i.e.,
         # by inverting the newly updated precision matrix) during inference.
-        self._update_covariance = False
+        self.update_covariance = False
 
     def reset_precision_matrix(self):
         """Resets precision matrix to its initial value.
@@ -263,7 +263,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
             shape (batch_size, batch_size).
         """
         # Lazily computes feature covariance matrix during inference.
-        covariance_matrix_updated = self._update_feature_covariance_matrix()
+        covariance_matrix_updated = self.update_feature_covariance_matrix()
 
         # Store updated covariance matrix.
         self._covariance_matrix.copy_(covariance_matrix_updated)
@@ -271,7 +271,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # Disable covariance update in future inference calls (to avoid the
         # expensive torch.linalg.inv op) unless there are new update to precision
         # matrix.
-        self._update_covariance = False
+        self.update_covariance = False
 
         gp_var = self._compute_predictive_variance(gp_features)
 
@@ -279,7 +279,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
     def update(self, gp_features, multiplier=1):
         # Computes the updated feature precision matrix.
-        precision_matrix_updated = self._update_feature_precision_matrix(
+        precision_matrix_updated = self.update_feature_precision_matrix(
             gp_features=gp_features,
             multiplier=multiplier,
         )
@@ -288,7 +288,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         self._precision_matrix.copy_(precision_matrix_updated)
 
         # Enables covariance update in the next inference call.
-        self._update_covariance = True
+        self.update_covariance = True
 
     def _update_feature_precision_matrix(self, gp_features, multiplier):
         """Computes the update precision matrix of feature weights."""
@@ -328,7 +328,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         covariance_matrix = self._covariance_matrix
 
         # Compute covariance matrix update only when `update_covariance = True`.
-        if self._update_covariance:
+        if self.update_covariance:
             covariance_matrix_updated = torch.linalg.inv(precision_matrix)
         else:
             covariance_matrix_updated = covariance_matrix
@@ -374,10 +374,10 @@ class LinearSpectralNormalizer(nn.Module):
         weight = module.weight
         ndim = weight.ndim
 
-        self._spectral_normalization_iteration = spectral_normalization_iteration
-        self._spectral_normalization_bound = spectral_normalization_bound
-        self._dim = dim if dim >= 0 else dim + ndim
-        self._eps = eps
+        self.spectral_normalization_iteration = spectral_normalization_iteration
+        self.spectral_normalization_bound = spectral_normalization_bound
+        self.dim = dim if dim >= 0 else dim + ndim
+        self.eps = eps
 
         if ndim > 1:
             weight_matrix = self._reshape_weight_to_matrix(weight)
@@ -385,20 +385,20 @@ class LinearSpectralNormalizer(nn.Module):
 
             u = weight_matrix.new_empty(height).normal_(mean=0, std=1)
             v = weight_matrix.new_empty(width).normal_(mean=0, std=1)
-            self.register_buffer("_u", F.normalize(u, dim=0, eps=self._eps))
-            self.register_buffer("_v", F.normalize(v, dim=0, eps=self._eps))
+            self.register_buffer("_u", F.normalize(u, dim=0, eps=self.eps))
+            self.register_buffer("_v", F.normalize(v, dim=0, eps=self.eps))
 
-            self._power_method(
+            self.power_method(
                 weight_matrix=weight_matrix, spectral_normalization_iteration=15
             )
 
     def forward(self, weight: torch.Tensor) -> torch.Tensor:
         if weight.ndim == 1:
             # Faster and more exact path, no need to approximate anything
-            weight_norm = weight.norm(p=2, dim=0).clamp_min(self._eps)
+            weight_norm = weight.norm(p=2, dim=0).clamp_min(self.eps)
             division_factor = torch.max(
                 torch.ones_like(weight_norm),
-                weight_norm / self._spectral_normalization_bound,
+                weight_norm / self.spectral_normalization_bound,
             )
 
             return weight / division_factor
@@ -407,7 +407,7 @@ class LinearSpectralNormalizer(nn.Module):
         if self.training:
             self._power_method(
                 weight_matrix=weight_matrix,
-                spectral_normalization_iteration=self._spectral_normalization_iteration,
+                spectral_normalization_iteration=self.spectral_normalization_iteration,
             )
 
         # See above on why we need to clone
@@ -416,7 +416,7 @@ class LinearSpectralNormalizer(nn.Module):
 
         sigma = u @ weight_matrix @ v
         division_factor = torch.max(
-            torch.ones_like(sigma), sigma / self._spectral_normalization_bound
+            torch.ones_like(sigma), sigma / self.spectral_normalization_bound
         )
 
         return weight / division_factor
@@ -426,10 +426,10 @@ class LinearSpectralNormalizer(nn.Module):
         return value
 
     def _reshape_weight_to_matrix(self, weight: torch.Tensor) -> torch.Tensor:
-        if self._dim > 0:
+        if self.dim > 0:
             # Permute self.dim to front
             weight = weight.permute(
-                self._dim, *(dim for dim in range(weight.dim()) if dim != self._dim)
+                self.dim, *(dim for dim in range(weight.dim()) if dim != self.dim)
             )
 
         weight_matrix = weight.flatten(start_dim=1)
@@ -437,7 +437,7 @@ class LinearSpectralNormalizer(nn.Module):
         return weight_matrix
 
     @torch.no_grad()
-    def _power_method(
+    def power_method(
         self, weight_matrix: torch.Tensor, spectral_normalization_iteration: int
     ) -> None:
         # See original note at torch/nn/utils/spectral_norm.py
@@ -481,10 +481,10 @@ class LinearSpectralNormalizer(nn.Module):
             # where u and v are the first left and right (unit) singular vectors,
             # respectively. This power iteration produces approximations of u and v.
             self._u = F.normalize(
-                weight_matrix @ self._v, dim=0, eps=self._eps, out=self._u
+                weight_matrix @ self._v, dim=0, eps=self.eps, out=self._u
             )
             self._v = F.normalize(
-                weight_matrix.T @ self._u, dim=0, eps=self._eps, out=self._v
+                weight_matrix.T @ self._u, dim=0, eps=self.eps, out=self._v
             )
 
 
@@ -515,26 +515,26 @@ class Conv2dSpectralNormalizer(nn.Module):
             msg = f"Invalid weight shape: expected ndim = 4, received ndim = {ndim}"
             raise ValueError(msg)
 
-        self._spectral_normalization_iteration = spectral_normalization_iteration
-        self._spectral_normalization_bound = spectral_normalization_bound
-        self._eps = eps
+        self.spectral_normalization_iteration = spectral_normalization_iteration
+        self.spectral_normalization_bound = spectral_normalization_bound
+        self.eps = eps
 
         self.stride = module.stride
         self.dilation = module.dilation
-        self._groups = module.groups
+        self.groups = module.groups
         self.output_channels = module.out_channels
         self.kernel_size = module.kernel_size
-        self._device = weight.device
+        self.device = weight.device
         self.weight_shape = weight.shape
 
         self.register_buffer("_u", nn.UninitializedBuffer())
         self.register_buffer("_v", nn.UninitializedBuffer())
 
-        self._load_hook = self._register_load_state_dict_pre_hook(self._lazy_load_hook)
-        self._module_input_shape_hook = module.register_forward_pre_hook(
+        self.load_hook = self._register_load_state_dict_pre_hook(self._lazy_load_hook)
+        self.module_input_shape_hook = module.register_forward_pre_hook(
             Conv2dSpectralNormalizer._module_set_input_shape, with_kwargs=True
         )
-        self._initialize_hook = self.register_forward_pre_hook(
+        self.initialize_hook = self.register_forward_pre_hook(
             Conv2dSpectralNormalizer._infer_attributes, with_kwargs=True
         )
 
@@ -542,7 +542,7 @@ class Conv2dSpectralNormalizer(nn.Module):
         if self.training:
             self._power_method(
                 weight=weight,
-                spectral_normalization_iteration=self._spectral_normalization_iteration,
+                spectral_normalization_iteration=self.spectral_normalization_iteration,
             )
 
         # See above on why we need to clone
@@ -561,7 +561,7 @@ class Conv2dSpectralNormalizer(nn.Module):
             bias=None,
             stride=self.stride,
             dilation=self.dilation,
-            groups=self._groups,
+            groups=self.groups,
         )
 
         # Estimate largest singular value
@@ -569,8 +569,8 @@ class Conv2dSpectralNormalizer(nn.Module):
 
         # Calculate factor to divide weight by; pay attention to numerical stability
         division_factor = torch.max(
-            torch.ones_like(sigma), sigma / self._spectral_normalization_bound
-        ).clamp_min(self._eps)
+            torch.ones_like(sigma), sigma / self.spectral_normalization_bound
+        ).clamp_min(self.eps)
 
         return weight / division_factor
 
@@ -795,12 +795,12 @@ class Conv2dSpectralNormalizer(nn.Module):
                 stride=self.stride,
                 padding=self.per_side_width_height_padding,
                 output_padding=self.output_padding,
-                groups=self._groups,
+                groups=self.groups,
                 dilation=self.dilation,
             )
 
             self._v = F.normalize(
-                input=v_shaped.view(-1), dim=0, eps=self._eps, out=self._v
+                input=v_shaped.view(-1), dim=0, eps=self.eps, out=self._v
             )
 
             v_padded = F.pad(
@@ -813,11 +813,11 @@ class Conv2dSpectralNormalizer(nn.Module):
                 bias=None,
                 stride=self.stride,
                 dilation=self.dilation,
-                groups=self._groups,
+                groups=self.groups,
             )
 
             self._u = F.normalize(
-                input=u_shaped.view(-1), dim=0, eps=self._eps, out=self._u
+                input=u_shaped.view(-1), dim=0, eps=self.eps, out=self._u
             )
 
 
@@ -959,7 +959,7 @@ class SNGPWrapper(DistributionalWrapper):
         self._gp_kernel_scale = gp_kernel_scale
         self._gp_output_bias = gp_output_bias
         self._gp_random_feature_type = gp_random_feature_type
-        self._use_input_normalized_gp = use_input_normalized_gp
+        self.use_input_normalized_gp = use_input_normalized_gp
         self._gp_cov_momentum = gp_cov_momentum
         self._gp_cov_ridge_penalty = gp_cov_ridge_penalty
         self._gp_input_dim = gp_input_dim
@@ -993,7 +993,7 @@ class SNGPWrapper(DistributionalWrapper):
             gp_kernel_scale=self._gp_kernel_scale,
             gp_output_bias=self._gp_output_bias,
             gp_random_feature_type=self._gp_random_feature_type,
-            use_input_normalized_gp=self._use_input_normalized_gp,
+            use_input_normalized_gp=self.use_input_normalized_gp,
             gp_cov_momentum=self._gp_cov_momentum,
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
             likelihood=self._likelihood,
@@ -1089,7 +1089,7 @@ class SNGPWrapper(DistributionalWrapper):
             self._gp_random_feature_type = gp_random_feature_type
 
         if use_input_normalized_gp is not None:
-            self._use_input_normalized_gp = use_input_normalized_gp
+            self.use_input_normalized_gp = use_input_normalized_gp
 
         if gp_cov_momentum is not None:
             self._gp_cov_momentum = gp_cov_momentum
@@ -1129,7 +1129,7 @@ class SNGPWrapper(DistributionalWrapper):
             gp_kernel_scale=self._gp_kernel_scale,
             gp_output_bias=self._gp_output_bias,
             gp_random_feature_type=self._gp_random_feature_type,
-            use_input_normalized_gp=self._use_input_normalized_gp,
+            use_input_normalized_gp=self.use_input_normalized_gp,
             gp_cov_momentum=self._gp_cov_momentum,
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
             likelihood=self._likelihood,
