@@ -970,8 +970,6 @@ class SNGPWrapper(DistributionalWrapper):
 
         self._likelihood = likelihood
 
-        classifier = nn.Sequential()
-
         if self._gp_input_dim > 0:
             random_projection = nn.Linear(
                 in_features=self.num_features,
@@ -982,9 +980,10 @@ class SNGPWrapper(DistributionalWrapper):
             random_projection.weight.requires_grad_(False)
             num_gp_features = self._gp_input_dim
 
-            classifier.append(random_projection)
+            self._random_projection = random_projection
         else:
             num_gp_features = self.num_features
+            self._random_projection = None
 
         gp_output_layer = GPOutputLayer(
             num_features=num_gp_features,
@@ -999,9 +998,7 @@ class SNGPWrapper(DistributionalWrapper):
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
             likelihood=self._likelihood,
         )
-        classifier.append(gp_output_layer)
-
-        self._classifier = classifier
+        self._classifier = gp_output_layer
 
         if use_spectral_normalization:
             LSN = partial(
@@ -1052,8 +1049,14 @@ class SNGPWrapper(DistributionalWrapper):
                     target_module=SNBN,
                 )
 
+    def _classifier_fn(self, x, y=None):
+        x = self._random_projection(x)
+        x = self._classifier(x, y)
+
+        return x
+
     def get_classifier(self):
-        return self._classifier
+        return self._classifier_fn
 
     def reset_classifier(
         self,
@@ -1102,7 +1105,6 @@ class SNGPWrapper(DistributionalWrapper):
 
         # Resets global pooling in `self.classifier`
         self.model.reset_classifier(*args, **kwargs)
-        classifier = nn.Sequential()
 
         if self._gp_input_dim > 0:
             random_projection = nn.Linear(
@@ -1114,9 +1116,10 @@ class SNGPWrapper(DistributionalWrapper):
             random_projection.weight.requires_grad_(False)
             num_gp_features = self._gp_input_dim
 
-            classifier.append(random_projection)
+            self._random_projection = random_projection
         else:
             num_gp_features = self.num_features
+            self._random_projection = None
 
         gp_output_layer = GPOutputLayer(
             num_features=num_gp_features,
@@ -1131,9 +1134,25 @@ class SNGPWrapper(DistributionalWrapper):
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
             likelihood=self._likelihood,
         )
-        classifier.append(gp_output_layer)
 
-        self._classifier = classifier
+        self._classifier = gp_output_layer
 
     def reset_covariance_matrix(self):
-        self._classifier[-1].reset_covariance_matrix()
+        self._classifier.reset_covariance_matrix()
+
+    def forward(self, x, y=None):
+        x = self.forward_features(x)
+        x = self.forward_head(x, y)
+
+        return x
+
+    def forward_head(self, x, y=None, *, pre_logits: bool = False):
+        # Always get pre_logits
+        features = self.model.forward_head(x, pre_logits=True)
+
+        if pre_logits:
+            return features
+
+        out = self.get_classifier()(features, y)
+
+        return out
