@@ -379,7 +379,7 @@ def main():
         weight_paths=args.weight_paths,
         num_hidden_features=args.num_hidden_features,
         num_mc_samples=args.num_mc_samples,
-        rank=args.rank,
+        matrix_rank=args.matrix_rank,
         use_sampling=args.use_sampling,
         temperature=args.temperature,
         use_low_rank_cov=args.use_low_rank_cov,

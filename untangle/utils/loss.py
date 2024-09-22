@@ -18,7 +18,11 @@ def create_loss_fn(args, num_batches):
     if args.loss == "cross-entropy":
         train_loss_fn = nn.CrossEntropyLoss()
     elif args.loss == "bma-cross-entropy":
-        train_loss_fn = BMACrossEntropyLoss()
+        train_loss_fn = BMACrossEntropyLoss(
+            predictive=args.predictive,
+            use_correction=args.use_correction,
+            num_mc_samples=args.num_mc_samples,
+        )
     elif args.loss == "edl":
         train_loss_fn = EDLLoss(
             num_batches=num_batches,
@@ -36,7 +40,10 @@ def create_loss_fn(args, num_batches):
         train_loss_fn = SigmoidNLLLoss()
     elif args.loss == "regularized-predictive-nll":
         train_loss_fn = RegularizedPredictiveNLLLoss(
-            predictive=args.predictive, regularization_factor=args.regularization_factor
+            predictive=args.predictive,
+            use_correction=args.use_correction,
+            num_mc_samples=args.num_mc_samples,
+            regularization_factor=args.regularization_factor,
         )
     elif args.loss == "unnormalized-predictive-nll":
         train_loss_fn = UnnormalizedPredictiveNLLLoss(predictive=args.predictive)

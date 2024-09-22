@@ -196,7 +196,7 @@ group.add_argument(
     help="Number of Monte Carlo samples in the uncertainty method",
 )
 group.add_argument(
-    "--rank",
+    "--matrix-rank",
     default=15,
     type=int,
     help="Rank of low-rank covariance matrix part in the HET method",

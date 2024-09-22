@@ -1,4 +1,4 @@
-"""Regularized predictive NLL loss for multiclass classification."""
+"""Unnormalized predictive NLL loss for multiclass classification."""
 
 import torch.nn.functional as F
 from torch import nn
@@ -10,7 +10,7 @@ from untangle.utils.predictive import PREDICTIVE_DICT
 
 
 class UnnormalizedPredictiveNLLLoss(nn.Module):
-    """Regularized predictive NLL loss."""
+    """Unnormalized predictive NLL loss."""
 
     def __init__(self, predictive):
         super().__init__()

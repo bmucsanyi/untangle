@@ -1,34 +1,52 @@
 """Cross-entropy loss combined with Bayesian Model Averaging."""
 
+import torch
 import torch.nn.functional as F
 from torch import nn
 
+from untangle.utils.predictive import get_predictive
+
 
 class BMACrossEntropyLoss(nn.Module):
-    """Implements Cross-entropy loss combined with Bayesian Model Averaging.
+    """Implements Cross-entropy loss combined with Bayesian Model Averaging."""
 
-    This class extends nn.Module to provide a loss function that combines
-    cross-entropy with Bayesian Model Averaging (BMA). It's designed to work
-    with logits from multiple models or samples.
-
-    The loss is computed by first applying softmax to the input logits,
-    averaging the probabilities, and then computing the negative log-likelihood
-    loss.
-
-    Example:
-        >>> loss_fn = BMACrossEntropyLoss()
-        >>> logits = torch.randn(10, 5, 3)  # [batch_size, num_models, num_classes]
-        >>> targets = torch.randint(0, 3, (10,))
-        >>> loss = loss_fn(logits, targets)
-    """
-
-    def __init__(self):
+    def __init__(self, predictive, use_correction, num_mc_samples):
         super().__init__()
 
-        self.ce_loss = nn.NLLLoss()
+        if not predictive.startswith("softmax") or predictive.endswith("mc"):
+            msg = "Invalid predictive provided"
+            raise ValueError(msg)
+
+        self.predictive_str = predictive
+
+        if not predictive.endswith("mc"):
+            self.predictive = get_predictive(predictive, use_correction, num_mc_samples)
+            self.loss = nn.NLLLoss()
+        else:
+            self.loss = nn.CrossEntropyLoss()
+
         self.eps = 1e-10
+        self.num_mc_samples = num_mc_samples
 
     def forward(self, logits, targets):
-        log_probs = F.softmax(logits, dim=-1).mean(dim=1).add(self.eps).log()  # [B, C]
+        if len(logits) == 2:
+            mean, var = logits
 
-        return self.ce_loss(log_probs, targets)
+            if self.predictive_str.endswith("mc"):
+                logits = (
+                    var.sqrt()
+                    * torch.randn(
+                        var.shape[0],
+                        self.num_mc_samples,
+                        var.shape[1],
+                        device=var.device,
+                    )
+                    + mean
+                )
+            else:
+                logits = self.predictive(logits, return_logits=True)
+                return self.loss(logits, targets)
+
+        logits = logits[0]
+        log_probs = F.softmax(logits, dim=-1).mean(dim=1).add(self.eps).log()  # [B, C]
+        return self.loss(log_probs, targets)

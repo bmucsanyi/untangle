@@ -81,7 +81,7 @@ def wrap_model(
     weight_paths,
     num_hidden_features,
     num_mc_samples,
-    rank,
+    matrix_rank,
     use_sampling,
     temperature,
     use_low_rank_cov,
@@ -118,7 +118,7 @@ def wrap_model(
     elif model_wrapper_name == "het":
         wrapped_model = HETWrapper(
             model=model,
-            matrix_rank=rank,
+            matrix_rank=matrix_rank,
             num_mc_samples=num_mc_samples,
             temperature=temperature,
             use_sampling=use_sampling,
@@ -127,7 +127,7 @@ def wrap_model(
         kwargs = {
             "model": model,
             "loss_function": loss_function,
-            "rank": rank,
+            "rank": matrix_rank,
             "predictive_fn": predictive_fn,
             "use_eigval_prior": use_eigval_prior,
         }
