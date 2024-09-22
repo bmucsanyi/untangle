@@ -17,7 +17,7 @@ class HETHead(nn.Module):
         self,
         matrix_rank,
         num_mc_samples,
-        num_features,
+        num_classes,
         temperature,
         classifier,
         use_sampling,
@@ -26,15 +26,15 @@ class HETHead(nn.Module):
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
         self._use_sampling = use_sampling
-        self._num_features = num_features
+        self._num_classes = num_classes
 
         if self._matrix_rank > 0:
             self._low_rank_cov_layer = nn.Linear(
-                in_features=self._num_features,
-                out_features=self._num_features * self._matrix_rank,
+                in_features=self._num_classes,
+                out_features=self._num_classes * self._matrix_rank,
             )
         self._diagonal_var_layer = nn.Linear(
-            in_features=self._num_features, out_features=self._num_features
+            in_features=self._num_classes, out_features=self._num_classes
         )
         self._min_scale_monte_carlo = 1e-3
 
@@ -45,7 +45,7 @@ class HETHead(nn.Module):
         logits = self._classifier(features)  # [B, C]
 
         # Shape variables
-        B, C = features.shape
+        B, C = logits.shape
         S = self._num_mc_samples
         R = self._matrix_rank
 
@@ -107,7 +107,7 @@ class HETWrapper(DistributionalWrapper):
         self._classifier = HETHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_classes,
+            num_classes=self.num_classes,
             temperature=self._temperature,
             classifier=self.model.get_classifier(),
             use_sampling=self._use_sampling,
@@ -141,7 +141,7 @@ class HETWrapper(DistributionalWrapper):
         self._classifier = HETHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_classes,
+            num_classes=self.num_classes,
             temperature=self._temperature,
             classifier=self.model.get_classifier(),
             use_sampling=self._use_sampling,
