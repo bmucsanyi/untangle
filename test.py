@@ -1307,7 +1307,7 @@ def handle_alpha(alpha, converted_inference_res):
     )
 
     jsd = entropies_of_bma - expected_entropies
-    converted_inference_res["dirichlet_jensen_shannon_divergence"] = jsd
+    converted_inference_res["dirichlet_jensen_shannon_divergences"] = jsd
 
 
 def handle_bma(bma, converted_inference_res, prefix):
