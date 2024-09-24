@@ -197,11 +197,11 @@ def dirichlet_predictive(params: torch.Tensor) -> torch.Tensor:
     nan_count = torch.sum(is_nan, dim=1, keepdim=True)
     predictives = torch.where(
         torch.any(is_nan, dim=1, keepdim=True),
-        torch.zeros(predictives.shape),
+        torch.zeros(predictives.shape, device=predictives.device),
         predictives,
     )
     predictives = torch.where(
-        is_nan, torch.ones(predictives.shape) / nan_count, predictives
+        is_nan, torch.ones_like(predictives) / nan_count, predictives
     )
 
     return predictives
@@ -284,7 +284,7 @@ def get_mom_beta_approximation(
     M1 = gaussian_pushforward_mean(means, vars, link_function)
     M2 = gaussian_pushforward_second_moment(means, vars, link_function)
 
-    beta_params = torch.ones((*means.shape, 2))
+    beta_params = torch.ones((*means.shape, 2), device=means.device)
     L = (M1 - M2) / (M2 - M1**2)
     beta_params[..., 0] = M1 * L
     beta_params[..., 1] = (1 - M1) * L
@@ -297,7 +297,7 @@ def get_mom_dirichlet_approximation(
     M1 = gaussian_pushforward_mean(means, vars, link_function)
     M2 = gaussian_pushforward_second_moment(means, vars, link_function)
     S1 = torch.sum(M1, dim=-1, keepdim=True)
-    S = torch.maximum(S1, torch.ones(S1.shape))
+    S = torch.maximum(S1, torch.ones(S1.shape, device=S1.device))
     LP = torch.mean(torch.log((M1 * S - M2) / (M2 - M1**2)), dim=-1, keepdim=True)
     P = torch.exp(LP)
     return P * M1 / S
