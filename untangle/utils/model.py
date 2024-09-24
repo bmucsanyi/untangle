@@ -10,6 +10,7 @@ from untangle.models import (
     resnet_50,
     resnet_c_preact_26,
     resnet_fixup_50,
+    simple_convnet_3_32,
     simple_convnet_3_256,
     wide_resnet_c_26_10,
     wide_resnet_c_fixup_26_10,
@@ -37,6 +38,7 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
     "wide_resnet_c_preact_26_10": wide_resnet_c_preact_26_10,
     "resnet_c_preact_26": resnet_c_preact_26,
     "simple_convnet_3_256": simple_convnet_3_256,
+    "simple_convnet_3_32": simple_convnet_3_32,
 }
 
 
@@ -82,6 +84,7 @@ def wrap_model(
     num_hidden_features,
     num_mc_samples,
     matrix_rank,
+    mask_regex,
     use_sampling,
     temperature,
     use_low_rank_cov,
@@ -130,6 +133,7 @@ def wrap_model(
             "rank": matrix_rank,
             "predictive_fn": predictive_fn,
             "use_eigval_prior": use_eigval_prior,
+            "mask_regex": mask_regex,
         }
         if use_sampling:
             kwargs["num_mc_samples"] = num_mc_samples
@@ -205,6 +209,15 @@ def load_checkpoint(
     if checkpoint_path.exists():
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
         state_dict = checkpoint["state_dict"]
+
+        tmp_state_dict = {}
+        for k, v in state_dict:
+            if k.startswith("module."):
+                tmp_state_dict[k[7:]] = v
+            else:
+                tmp_state_dict[k] = v
+
+        state_dict = tmp_state_dict
 
         if verbose:
             logger.info(f"Loaded state_dict from checkpoint '{checkpoint_path}'.")
