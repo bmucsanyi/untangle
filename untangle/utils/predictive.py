@@ -21,7 +21,7 @@ def softmax_laplace_bridge(
     return_logits: bool = False,
 ) -> torch.Tensor:
     """Softmax + Laplace bridge predictive."""
-    params = get_laplace_bridge_approximation(mean, var, use_correction)
+    params = get_laplace_bridge_approximation(mean, var, use_correction=use_correction)
     pred = dirichlet_predictive(params)
 
     return pred.add(1e-10).log() if return_logits else pred
