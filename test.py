@@ -51,7 +51,6 @@ def evaluate_bulk(
     amp_autocast,
     key_prefix,
     is_upstream_dataset,
-    is_test_dataset,
     is_soft_dataset,
     args,
 ):
@@ -71,7 +70,6 @@ def evaluate_bulk(
                 amp_autocast=amp_autocast,
                 key_prefix="",
                 is_upstream_dataset=is_upstream_dataset,
-                is_test_dataset=is_test_dataset,
                 is_soft_dataset=is_soft_dataset,
                 args=args,
             )
@@ -156,7 +154,6 @@ def evaluate(
     amp_autocast,
     key_prefix,
     is_upstream_dataset,
-    is_test_dataset,
     is_soft_dataset,
     args,
 ):
@@ -174,25 +171,19 @@ def evaluate(
 
     metrics = times
 
-    if is_test_dataset:
-        metrics = evaluate_on_tasks(
-            estimates=estimates,
-            log_probs=log_probs,
-            targets=targets,
-            metrics=metrics,
-            is_soft_dataset=is_soft_dataset,
-            args=args,
-        )
-    else:
-        metrics = evaluate_on_auroc_hard_bma_correctness(
-            model=model,
-            targets=targets,
-        )
+    metrics = evaluate_on_tasks(
+        estimates=estimates,
+        log_probs=log_probs,
+        targets=targets,
+        metrics=metrics,
+        is_soft_dataset=is_soft_dataset,
+        args=args,
+    )
 
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
 
-    if is_upstream_dataset and is_test_dataset:
+    if is_upstream_dataset:
         save_upstream_dict(
             estimates=estimates,
             targets=targets,
@@ -203,7 +194,7 @@ def evaluate(
             args=args,
         )
 
-    if not is_upstream_dataset and is_test_dataset:
+    if not is_upstream_dataset:
         upstream_dict = torch.load(
             data_dir / f"upstream_dict_{os.environ.get('SLURM_JOBID')}.pt",
             weights_only=True,
@@ -338,30 +329,6 @@ def concatenate_values(upstream_dict, downstream_dict, keys_to_exclude=None):
     return result
 
 
-def evaluate_on_auroc_hard_bma_correctness(
-    model,
-    targets,
-):
-    if not isinstance(model, EDLWrapper | PostNetWrapper):
-        return {
-            "hard_bma_accuracy_original": targets[
-                "mc_gt_hard_bma_correctnesses_original"
-            ]
-            .float()
-            .mean()
-            .item()
-        }
-
-    return {
-        "hard_bma_accuracy_original": targets[
-            "dirichlet_gt_hard_bma_correctnesses_original"
-        ]
-        .float()
-        .mean()
-        .item()
-    }
-
-
 def evaluate_on_tasks(
     estimates,
     log_probs,
@@ -430,8 +397,9 @@ def evaluate_on_correctness_prediction(
     key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     prefixes = []
-    if "mc_entropies_of_bma" in estimates:
-        prefixes.append("mc")
+    if "mc_10_entropies_of_bma" in estimates:
+        for i in [10, 100, 1000]:
+            prefixes.append(f"mc_{i}")  # noqa: PERF401
     if "dirichlet_entropies_of_bma" in estimates:
         prefixes.append("dirichlet")
     if "link_normcdf_output_entropies_of_bma" in estimates:
@@ -507,8 +475,9 @@ def evaluate_on_abstained_prediction(
     key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     prefixes = []
-    if "mc_entropies_of_bma" in estimates:
-        prefixes.append("mc")
+    if "mc_10_entropies_of_bma" in estimates:
+        for i in [10, 100, 1000]:
+            prefixes.append(f"mc_{i}")  # noqa: PERF401
     if "dirichlet_entropies_of_bma" in estimates:
         prefixes.append("dirichlet")
     if "link_normcdf_output_entropies_of_bma" in estimates:
@@ -668,8 +637,9 @@ def evaluate_on_proper_scoring_and_calibration(
     gt_hard_labels = targets["gt_hard_labels"]
 
     prefixes = []
-    if "mc_entropies_of_bma" in estimates:
-        prefixes.append("mc")
+    if "mc_10_entropies_of_bma" in estimates:
+        for i in [10, 100, 1000]:
+            prefixes.append(f"mc_{i}")  # noqa: PERF401
     if "dirichlet_entropies_of_bma" in estimates:
         prefixes.append("dirichlet")
     if "link_normcdf_output_entropies_of_bma" in estimates:
@@ -825,8 +795,9 @@ def evaluate_on_correlation_of_decomposition(
     key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
 
     prefixes = []
-    if "mc_entropies_of_bma" in estimates:
-        prefixes.append("mc")
+    if "mc_10_entropies_of_bma" in estimates:
+        for i in [10, 100, 1000]:
+            prefixes.append(f"mc_{i}")  # noqa: PERF401
     if "dirichlet_entropies_of_bma" in estimates:
         prefixes.append("dirichlet")
     if "link_normcdf_output_entropies_of_bma" in estimates:
@@ -1053,8 +1024,9 @@ def forward_deep_ensemble_on_loader(
 
 def calc_correctnesses(estimates, log_probs, targets, is_soft):
     prefixes = []
-    if "mc_entropies_of_bma" in estimates:
-        prefixes.append("mc")
+    if "mc_10_entropies_of_bma" in estimates:
+        for i in [10, 100, 1000]:
+            prefixes.append(f"mc_{i}")  # noqa: PERF401
     if "dirichlet_entropies_of_bma" in estimates:
         prefixes.append("dirichlet")
     if "link_normcdf_output_entropies_of_bma" in estimates:
@@ -1166,16 +1138,19 @@ def get_bundle(
     )
 
     if not isinstance(model, EDLWrapper | PostNetWrapper):
-        log_bmas = torch.empty(num_samples, model.num_classes, device=storage_device)
-        log_probs["mc_log_bmas"] = log_bmas
-        expected_entropies = torch.empty(num_samples, device=storage_device)
-        estimates["mc_expected_entropies"] = expected_entropies
-        entropies_of_bma = torch.empty(num_samples, device=storage_device)
-        estimates["mc_entropies_of_bma"] = entropies_of_bma
-        one_minus_max_probs_of_bma = torch.empty(num_samples, device=storage_device)
-        estimates["mc_one_minus_max_probs_of_bma"] = one_minus_max_probs_of_bma
-        jensen_shannon_divergences = torch.empty(num_samples, device=storage_device)
-        estimates["mc_jensen_shannon_divergences"] = jensen_shannon_divergences
+        for i in [10, 100, 1000]:
+            log_bmas = torch.zeros(
+                num_samples, model.num_classes, device=storage_device
+            )
+            log_probs[f"mc_{i}_log_bmas"] = log_bmas
+            expected_entropies = torch.zeros(num_samples, device=storage_device)
+            estimates[f"mc_{i}_expected_entropies"] = expected_entropies
+            entropies_of_bma = torch.zeros(num_samples, device=storage_device)
+            estimates[f"mc_{i}_entropies_of_bma"] = entropies_of_bma
+            one_minus_max_probs_of_bma = torch.zeros(num_samples, device=storage_device)
+            estimates[f"mc_{i}_one_minus_max_probs_of_bma"] = one_minus_max_probs_of_bma
+            jensen_shannon_divergences = torch.zeros(num_samples, device=storage_device)
+            estimates[f"mc_{i}_jensen_shannon_divergences"] = jensen_shannon_divergences
 
     if isinstance(model, EDLWrapper | PostNetWrapper) or (
         is_distributional and link != "softmax"
@@ -1257,7 +1232,8 @@ def get_bundle(
     return estimates, log_probs, targets, times
 
 
-def handle_samples(logits, converted_inference_res, act_fn):
+def handle_samples(logits, converted_inference_res, act_fn, num_samples):
+    i = num_samples
     min_real = torch.finfo(logits.dtype).min
     if logits.dim() == 2:  # [B, C]
         logits = logits.unsqueeze(dim=1)  # [B, 1, C]
@@ -1266,21 +1242,21 @@ def handle_samples(logits, converted_inference_res, act_fn):
 
     bmas = probs.mean(dim=1)  # [B, C]
     log_bmas = bmas.log().clamp(min=min_real)  # [B, C]
-    converted_inference_res["mc_log_bmas"] = log_bmas
+    converted_inference_res[f"mc_{i}_log_bmas"] = log_bmas
 
     expected_entropies = entropy(probs).mean(dim=-1)
-    converted_inference_res["mc_expected_entropies"] = expected_entropies
+    converted_inference_res[f"mc_{i}_expected_entropies"] = expected_entropies
 
     entropies_of_bma = entropy(bmas)
-    converted_inference_res["mc_entropies_of_bma"] = entropies_of_bma
+    converted_inference_res[f"mc_{i}_entropies_of_bma"] = entropies_of_bma
 
     one_minus_max_probs_of_bma = 1 - bmas.max(dim=-1)[0]
-    converted_inference_res["mc_one_minus_max_probs_of_bma"] = (
+    converted_inference_res[f"mc_{i}_one_minus_max_probs_of_bma"] = (
         one_minus_max_probs_of_bma
     )
 
     jsds = entropies_of_bma - expected_entropies
-    converted_inference_res["mc_jensen_shannon_divergences"] = jsds
+    converted_inference_res[f"mc_{i}_jensen_shannon_divergences"] = jsds
 
 
 def handle_alpha(alpha, converted_inference_res):
@@ -1350,9 +1326,15 @@ def convert_inference_res(inference_res, time_forward, args):
             )
 
             if suffix.endswith("mc"):
-                bma, samples = predictive_fn(mean, var, return_samples=True)  # [B, C]
-                act_fn = get_activation(predictive_name)
-                handle_samples(samples, converted_inference_res, act_fn)
+                for i in [10, 100, 1000]:
+                    mc_predictive_fn = get_predictive(
+                        predictive_name, args.use_correction, i
+                    )
+                    bma, samples = mc_predictive_fn(
+                        mean, var, return_samples=True
+                    )  # [B, C]
+                    act_fn = get_activation(predictive_name)
+                    handle_samples(samples, converted_inference_res, act_fn, i)
             else:
                 bma = predictive_fn(mean, var)
                 handle_bma(bma, converted_inference_res, suffix)
@@ -1363,7 +1345,8 @@ def convert_inference_res(inference_res, time_forward, args):
     elif len(inference_res) == 1 and inference_res[0].ndim == 3:
         samples = inference_res[0]
         act_fn = get_activation(args.predictive)
-        handle_samples(samples, converted_inference_res, act_fn)
+        for i in [10, 100, 1000]:
+            handle_samples(samples, converted_inference_res, act_fn, i)
     elif len(inference_res) == 1 and inference_res[0].ndim == 2:
         alpha = inference_res[0]
         handle_alpha(alpha, converted_inference_res)

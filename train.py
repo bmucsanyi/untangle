@@ -512,7 +512,6 @@ def evaluate_on_test_sets(
         amp_autocast=amp_autocast,
         key_prefix="id_test",
         is_upstream_dataset=True,
-        is_test_dataset=True,
         is_soft_dataset="soft" in args.dataset_id,
         args=args,
     )
@@ -528,7 +527,6 @@ def evaluate_on_test_sets(
         amp_autocast=amp_autocast,
         key_prefix="ood_test",
         is_upstream_dataset=False,
-        is_test_dataset=True,
         is_soft_dataset="soft" in args.dataset_id,
         args=args,
     )

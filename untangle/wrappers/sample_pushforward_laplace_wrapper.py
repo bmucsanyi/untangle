@@ -134,7 +134,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         self.loss_function = loss_function
         self.use_eigval_prior = use_eigval_prior
         self.predictive_fn = predictive_fn
-        self.num_mc_samples = num_mc_samples
+        self._num_mc_samples = num_mc_samples
         self._loss_and_grad = None
 
         if mask_regex is not None:
@@ -308,7 +308,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
             lambda_k = self.quad_root_terms.lambda_k
 
             # TODO(bmucsanyi): batch this if it's too slow
-            for i in range(self.num_mc_samples):
+            for i in range(self._num_mc_samples):
                 sample_dim = (
                     self.theta_0_vec.shape[0] if self.use_eigval_prior else self.rank
                 )
@@ -329,7 +329,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
                 lin_pred = self.linearized_prediction(
                     map_pred=map_pred,
                     theta=theta,
-                    retain_graph=i < self.num_mc_samples - 1,
+                    retain_graph=i < self._num_mc_samples - 1,
                 )
                 lin_preds.append(lin_pred)
 
