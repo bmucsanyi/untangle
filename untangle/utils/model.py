@@ -58,10 +58,9 @@ def load_model_checkpoint(
                 k = k[7:]
 
             if k.startswith("model."):
-                k = k[7:]
-                tmp_state_dict[k[7:]] = v
-            else:
-                tmp_state_dict[k] = v
+                k = k[6:]
+
+            tmp_state_dict[k] = v
 
         state_dict = tmp_state_dict
 
