@@ -42,7 +42,49 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
 }
 
 
-def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs, verbose):
+def load_model_checkpoint(
+    model: torch.nn.Module,
+    checkpoint_path: str,
+    verbose: bool,
+) -> dict[str, Any]:
+    if checkpoint_path.exists():
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        state_dict = checkpoint["state_dict"]
+
+        tmp_state_dict = {}
+        for k, v in state_dict.items():
+            # TODO(bmucsanyi): Fix distributed saving
+            if k.startswith("module."):
+                k = k[7:]
+
+            if k.startswith("model."):
+                k = k[7:]
+                tmp_state_dict[k[7:]] = v
+            else:
+                tmp_state_dict[k] = v
+
+        state_dict = tmp_state_dict
+
+        if verbose:
+            logger.info(f"Loaded state_dict from checkpoint '{checkpoint_path}'.")
+    else:
+        msg = f"No checkpoint found at '{checkpoint_path}'"
+        raise FileNotFoundError(msg)
+
+    incompatible_keys = model.load_state_dict(state_dict, strict=True)
+
+    return incompatible_keys
+
+
+def create_model(
+    model_name,
+    pretrained,
+    num_classes,
+    in_chans,
+    model_kwargs,
+    verbose,
+    model_checkpoint_path,
+):
     prefix, model_name = model_name.split("/")
 
     if prefix == "timm":
@@ -67,6 +109,9 @@ def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs, ve
     else:
         msg = f"Invalid prefix '{prefix}' provided."
         raise ValueError(msg)
+
+    if model_checkpoint_path:
+        load_model_checkpoint(model, model_checkpoint_path, verbose=verbose)
 
     num_params = sum(param.numel() for param in model.parameters())
 

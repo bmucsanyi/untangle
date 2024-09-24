@@ -406,6 +406,12 @@ group.add_argument(
     help="Initialize model from this checkpoint",
 )
 group.add_argument(
+    "--initial-model-checkpoint-path",
+    type=Path,
+    default=None,
+    help="Initialize base model from this checkpoint",
+)
+group.add_argument(
     "--num-classes",
     type=int,
     default=None,

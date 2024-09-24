@@ -370,6 +370,7 @@ def main():
         in_chans=data_config["input_size"][0],
         model_kwargs=args.model_kwargs,
         verbose=args.rank == 0,
+        model_checkpoint_path=args.initial_model_checkpoint_path,
     )
 
     model = wrap_model(
@@ -933,12 +934,7 @@ def validate(
         if target.ndim == 2:
             target = target[:, -1]
 
-        loss = (
-            -prob[torch.arange(target.shape[0]), target]
-            .log()
-            .clamp(torch.finfo(prob.dtype).min)
-            .mean()
-        )
+        loss = -prob[torch.arange(target.shape[0]), target].clamp(1e-22).log().mean()
         top_1 = accuracy(prob, target)[0]
 
         if args.distributed:
