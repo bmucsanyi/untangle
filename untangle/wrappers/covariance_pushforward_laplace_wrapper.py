@@ -1,9 +1,9 @@
 """Low-rank Laplace approximation with covariance pushfwd."""
 
 import logging
+import re
 import time
 from dataclasses import dataclass
-from functools import cached_property
 from math import sqrt
 from warnings import warn
 
@@ -93,7 +93,7 @@ class Quadratic:
             Note that `nabla2_q` is independent from `theta`
             """
             vec_torch = torch.from_numpy(vec).type(self.dtype).to(self.device)
-            mv = self.quadratic.nabla2_q(theta=None, vec=vec_torch)
+            mv = self.nabla2_q(theta=None, vec=vec_torch)
             return mv.detach().cpu().numpy()
 
         return LinearOperator((self.D, self.D), matvec=matvec)
@@ -102,7 +102,7 @@ class Quadratic:
         """Return the eigenvalues and eigenvectors of the curvature matrix."""
         # Use largest eigenvalues of the quadratic's Hessian
         # Extract curvature linear operator and approximate eigenvectors
-        curvop = self.quadratic.get_scipy_linop()
+        curvop = self.get_scipy_linop()
         eigvals, eigvecs = eigsh(curvop, k=k)
 
         # Convert to PyTorch tensors and reverse order
@@ -123,6 +123,7 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         loss_function,
         rank,
         predictive_fn,
+        mask_regex,
         *,
         use_eigval_prior=False,
     ):
@@ -132,6 +133,10 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         self.loss_function = loss_function
         self.use_eigval_prior = use_eigval_prior
         self.predictive_fn = predictive_fn
+        self._loss_and_grad = None
+
+        if mask_regex is not None:
+            self.apply_parameter_mask(mask_regex=mask_regex)
 
         # Model parameters
         self.theta_0_list = [
@@ -141,7 +146,13 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         self.prior_precision = 1.0
         self.quadratic = None
         self.quad_root_terms = None
-        self.is_initialized = False
+        self._regularizer_diag_hessian_0 = None
+
+    def apply_parameter_mask(self, mask_regex):
+        if mask_regex is not None:
+            for param_name, param in self.model.named_parameters():
+                if re.match(mask_regex, param_name):
+                    param.requires_grad = False
 
     def perform_laplace_approximation(self, train_loader, val_loader):
         self.train_loader = train_loader
@@ -153,11 +164,10 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
             theta_0=self.theta_0_vec,
         )
 
-        self.prior_precision = self._optimize_prior_precision_cv(val_loader)
         self.quad_root_terms = self.get_quad_root_terms(
             len(self.train_loader.dataset), rank_k=self.rank
         )
-        self.is_initialized = True
+        self.prior_precision = self._optimize_prior_precision_cv(val_loader)
 
     @property
     def prior_precision(self):
@@ -165,8 +175,7 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
 
     @prior_precision.setter
     def prior_precision(self, value):
-        # Invalidate the cached_property without computing it
-        self.__dict__.pop("_regularizer_diag_hessian_0", None)
+        self._regularizer_diag_hessian_0 = None
         self._prior_precision = value
 
     @staticmethod
@@ -186,14 +195,12 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         grid_size=50,
     ):
         interval = torch.logspace(log_prior_prec_min, log_prior_prec_max, grid_size)
-        self._laplace_model.prior_precision = self._gridsearch(
+        self.prior_precision = self._gridsearch(
             interval=interval,
             val_loader=val_loader,
         )
 
-        logger.info(
-            f"Optimized prior precision is {self._laplace_model.prior_precision}."
-        )
+        logger.info(f"Optimized prior precision is {self.prior_precision}.")
 
     def _gridsearch(
         self,
@@ -205,7 +212,7 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         for prior_prec in interval:
             logger.info(f"Trying {prior_prec}...")
             start_time = time.perf_counter()
-            self._laplace_model.prior_precision = prior_prec
+            self.prior_precision = prior_prec
 
             try:
                 out_dist, targets = self._validate(
@@ -229,7 +236,7 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
     @torch.no_grad()
     def _validate(self, val_loader):
         self.model.eval()
-        device = self.device
+        device = next(self.model.parameters()).device
         output_means = []
         targets = []
 
@@ -278,39 +285,77 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         lambda_k = 1 / torch.sqrt(eigvals_k)
         return QuadRootTerms(U_k=U_k, lambda_k=lambda_k, mul=mul)
 
-    def forward(self, x):
-        if not self.is_initialized:
-            msg = (
-                "Please use the `perform_laplace_approximation` method "
-                "before `forward`."
-            )
-            raise ValueError(msg)
+    @staticmethod
+    def create_basis_tensor(batch_size, vector_size, i):
+        # Create the i-th canonical basis vector
+        e_i = torch.zeros(vector_size)
+        e_i[i] = 1.0
 
-        param_list = [param for param in self.model.parameters() if param.requires_grad]
+        # Create a 3D tensor with the basis vector on the diagonal
+        result = torch.zeros(batch_size, vector_size, vector_size)
+        result[:, range(vector_size), range(vector_size)] = e_i
+
+        return result
+
+    def forward(self, x):
+        param_list = self.theta_0_list
+
+        # w ~ N(0, 1)
+        # mul * w + U_K @ D @ U_K^T @ w ~ N(0, AA^T)
+        # where A = mul * I + U_K @ D @ U_K^T
+        # => S = AA^T = (mul * I + U_K @ D @ U_K^T) @ (mul * I + U_K @ D @ U_K^T)
+        #             = mul**2 * I + 2 * mul * U_K @ D @ U_K^T + U_K @ D^2 @ U_K^T
+        # => JSJ^T = mul**2 * JJ^T {1}
+        #            + 2 * mul * (J @ U_K @ sqrt(D)) (J @ U_K @ sqrt(D))^T {2}
+        #            + (J @ U_K @ D) (J @ U_K @ D)^T {3}
 
         with torch.enable_grad():
             y = self.model(x)  # [B, C]
-            a = torch.zeros((self.model.num_classes,), dtype=y.dtype, device=y.device)
-            for i in range(self.model.num_classes):
-                e_i = torch.zeros_like(y)
-                e_i[i] = 1.0
-                J_i = vjp(y=y, x=param_list, v=e_i, retain_graph=True)
-                a[i] = self.quad_root_terms.mul**2 * self.square_sum(J_i)
+
+            if self.use_eigval_prior:
+                a = torch.zeros(
+                    (y.shape[0], self.model.num_classes), dtype=y.dtype, device=y.device
+                )
+                for b in range(y.shape[0]):
+                    y_b = y[b]
+                    for i in range(self.model.num_classes):
+                        e_bi = torch.zeros_like(y_b)
+                        e_bi[i] = 1.0
+                        J_bi = vjp(y=y_b, x=param_list, v=e_bi, retain_graph=True)
+                        a[b, i] = self.quad_root_terms.mul**2 * self.square_sum(J_bi)
+
+                sqrt_abs_d = self.quad_root_terms.d.abs().sqrt()
+                sign_d = self.quad_root_terms.d.sign()
+                u = vector_to_parameter_list(
+                    (sign_d * sqrt_abs_d).unsqueeze(dim=1) * self.quad_root_terms.U_k.T,
+                    self.theta_0_list,
+                )
+
+                B = jvp(
+                    y=y, x=param_list, v=u, is_grads_batched=True, retain_graph=True
+                )[0]
+                b = 2 * self.quad_root_terms.mul * B.square().sum(dim=0)
+
+                v = vector_to_parameter_list(
+                    self.quad_root_terms.d.unsqueeze(dim=1)
+                    * self.quad_root_terms.U_k.T,
+                    self.theta_0_list,
+                )
+                C = jvp(y=y, x=param_list, v=v, is_grads_batched=True)[0]
+                c = self.quad_root_terms.mul * C.square().sum(dim=0)
+
+                return y, a + b + c
 
             u = vector_to_parameter_list(
-                self.quad_root_terms.d.sqrt().unsqueeze(dim=1)
-                * self.quad_root_terms.U_k.T
+                self.quad_root_terms.mul
+                * self.quad_root_terms.lambda_k.unsqueeze(dim=1)
+                * self.quad_root_terms.U_k.T,
+                self.theta_0_list,
             )
-            B = jvp(y=y, x=param_list, v=u, is_grads_batched=True, retain_graph=True)[0]
-            b = 2 * self.quad_root_terms.mul * B.square().sum(dim=0)
+            A = jvp(y=y, x=param_list, v=u, is_grads_batched=True, retain_graph=True)[0]
+            a = A.square().sum(dim=0)
 
-            v = vector_to_parameter_list(
-                self.quad_root_terms.d.unsqueeze(dim=1) * self.quad_root_terms.U_k.T
-            )
-            C = jvp(y=y, x=param_list, v=v, is_grads_batched=True)[0]
-            c = self.quad_root_terms.mul * C.square().sum(dim=0)
-
-            return y, a + b + c
+            return y, a
 
     @staticmethod
     def vector_to_parameter_list(vec, parameters):
@@ -372,16 +417,20 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         for a_param in a_list:
             res += a_param.square().sum()
 
-    @cached_property  # Compute only once
+        return res
+
     def get_loss_and_grad(self):
         """Computes the loss and gradient at `theta_0`."""
+        if self._loss_and_grad is not None:
+            return self._loss_and_grad
+
         # Initialize loss and gradient
         loss = 0.0
-        grad = torch.zeros_like(self.theta_0_vec).to(self.device)
+        device = next(self.model.parameters()).device
+        grad = torch.zeros_like(self.theta_0_vec).to(device)
 
         # Accumulate
         num_data = 0
-        device = self.device
 
         # Loop over mini-batches of data
         for inputs, targets in self.train_loader:
@@ -418,7 +467,8 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
             )
         grad = grad + parameters_to_vector(l2_grad).detach()
 
-        return loss, grad
+        self._loss_and_grad = loss, grad
+        return self._loss_and_grad
 
     def get_c_0(self):
         """Constant term in the quadratic.
@@ -426,7 +476,7 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         The constant term in the quadratic model is the loss at `theta_0` plus the
         L2 regularizer at `theta_0`.
         """
-        return self.get_loss_and_grad[0]
+        return self.get_loss_and_grad()[0]
 
     def get_g_0(self):
         """Gradient at `theta_0`.
@@ -434,10 +484,9 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         The gradient at `theta_0` is the gradient of the loss at `theta_0` plus the
         gradient of the L2 regularizer at `theta_0`.
         """
-        return self.get_loss_and_grad[1]
+        return self.get_loss_and_grad()[1]
 
-    @cached_property  # Compute only once
-    def _regularizer_diag_hessian_0(self):
+    def regularizer_diag_hessian_0(self):
         """The diagonal of the L2 regularizer's Hessian.
 
         The L2 regularizer is given by
@@ -449,6 +498,9 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         check which gradients are not `None`. These are replaced with
         `self.prior_precision` and the others with `0.0` (each with the correct shape).
         """
+        if self._regularizer_diag_hessian_0 is not None:
+            return self._regularizer_diag_hessian_0
+
         with torch.enable_grad():
             l2_grad = torch.autograd.grad(
                 self.calc_l2_loss_0(),
@@ -456,23 +508,24 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
                 allow_unused=True,
             )
 
-        Hess_diag = []
+        hess_diag = []
         for p, g in zip(self.theta_0_list, l2_grad, strict=True):
             if g is None:
                 # `p` does not appear in l2-loss --> entries in Hessian are zero
-                Hess_diag.append(torch.zeros_like(p))
+                hess_diag.append(torch.zeros_like(p))
             else:
                 # `p` does appear in l2-loss --> entries in Hessian are
                 # `prior_precision`
-                Hess_diag.append(self.prior_precision * torch.ones_like(p))
+                hess_diag.append(self.prior_precision * torch.ones_like(p))
 
-        Hess_diag = parameters_to_vector(Hess_diag)
+        hess_diag = parameters_to_vector(hess_diag)
 
         # Sanity check and return diagonal of the Hessian
-        if Hess_diag.shape != self.theta_0_vec.shape:
+        if hess_diag.shape != self.theta_0_vec.shape:
             raise ValueError
 
-        return Hess_diag
+        self._regularizer_diag_hessian_0 = hess_diag
+        return self._regularizer_diag_hessian_0
 
     def get_B_0v(self, vec):
         """Matrix vector product with the curvature matrix at `theta_0`.
@@ -492,11 +545,11 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         # ------------------------------------------------------------------------------
 
         # Initialize Hv
-        B_0v = torch.zeros_like(self.theta_0_vec).to(self.device)
+        device = next(self.model.parameters()).device
+        B_0v = torch.zeros_like(self.theta_0_vec).to(device)
 
         # Accumulate
         num_data = 0
-        device = self.device
         # Loop over mini-batches of data
         for inputs, targets in self.train_loader:
             inputs = inputs.to(device)
@@ -523,7 +576,7 @@ class CovariancePushforwardLaplaceWrapper(DistributionalWrapper):
         # ------------------------------------------------------------------------------
         # (ii) Vector product with Hessian of L2 loss
         # ------------------------------------------------------------------------------
-        B_0v += self._regularizer_diag_hessian_0 * vec  # element-wise product!
+        B_0v += self.regularizer_diag_hessian_0() * vec  # element-wise product!
 
         return B_0v
 
@@ -661,17 +714,22 @@ def vector_to_parameter_list(vec, parameters):
         msg = f"`vec` should be a torch.Tensor, not {type(vec)}"
         raise TypeError(msg)
 
+    is_batched = vec.ndim == 2
+
     # Put slices of `vec` into `params_list`
     params_list = []
     pointer = 0
     for param in parameters:
         num_param = param.numel()
-        params_list.append(vec[pointer : pointer + num_param].view_as(param).data)
+        param_shape = (vec.shape[0], *param.shape) if is_batched else param.shape
+        params_list.append(
+            vec[..., pointer : pointer + num_param].view(param_shape).data
+        )
         pointer += num_param
 
     # Make sure all entries of the vector have been used (i.e. that `vec` and
     # `parameters` have the same number of elements)
-    if pointer != len(vec):
+    if pointer != vec.shape[-1]:
         warn("Not all entries of `vec` have been used.", stacklevel=1)
 
     return params_list

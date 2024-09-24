@@ -380,6 +380,7 @@ def main():
         num_hidden_features=args.num_hidden_features,
         num_mc_samples=args.num_mc_samples,
         matrix_rank=args.matrix_rank,
+        mask_regex=args.mask_regex,
         use_sampling=args.use_sampling,
         temperature=args.temperature,
         use_low_rank_cov=args.use_low_rank_cov,

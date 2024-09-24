@@ -1,9 +1,9 @@
 """Low-rank Laplace approximation with covariance pushfwd."""
 
 import logging
+import re
 import time
 from dataclasses import dataclass
-from functools import cached_property
 from math import sqrt
 from warnings import warn
 
@@ -93,7 +93,7 @@ class Quadratic:
             Note that `nabla2_q` is independent from `theta`
             """
             vec_torch = torch.from_numpy(vec).type(self.dtype).to(self.device)
-            mv = self.quadratic.nabla2_q(theta=None, vec=vec_torch)
+            mv = self.nabla2_q(theta=None, vec=vec_torch)
             return mv.detach().cpu().numpy()
 
         return LinearOperator((self.D, self.D), matvec=matvec)
@@ -102,7 +102,7 @@ class Quadratic:
         """Return the eigenvalues and eigenvectors of the curvature matrix."""
         # Use largest eigenvalues of the quadratic's Hessian
         # Extract curvature linear operator and approximate eigenvectors
-        curvop = self.quadratic.get_scipy_linop()
+        curvop = self.get_scipy_linop()
         eigvals, eigvecs = eigsh(curvop, k=k)
 
         # Convert to PyTorch tensors and reverse order
@@ -124,6 +124,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         rank,
         predictive_fn,
         num_mc_samples,
+        mask_regex,
         *,
         use_eigval_prior=False,
     ):
@@ -134,6 +135,10 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         self.use_eigval_prior = use_eigval_prior
         self.predictive_fn = predictive_fn
         self.num_mc_samples = num_mc_samples
+        self._loss_and_grad = None
+
+        if mask_regex is not None:
+            self.apply_parameter_mask(mask_regex=mask_regex)
 
         # Model parameters
         self.theta_0_list = [
@@ -143,7 +148,13 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         self.prior_precision = 1.0
         self.quadratic = None
         self.quad_root_terms = None
-        self.is_initialized = False
+        self._regularizer_diag_hessian_0 = None
+
+    def apply_parameter_mask(self, mask_regex):
+        if mask_regex is not None:
+            for param_name, param in self.model.named_parameters():
+                if re.match(mask_regex, param_name):
+                    param.requires_grad = False
 
     def perform_laplace_approximation(self, train_loader, val_loader):
         self.train_loader = train_loader
@@ -155,11 +166,10 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
             theta_0=self.theta_0_vec,
         )
 
-        self.prior_precision = self._optimize_prior_precision_cv(val_loader)
         self.quad_root_terms = self.get_quad_root_terms(
             len(self.train_loader.dataset), rank_k=self.rank
         )
-        self.is_initialized = True
+        self.prior_precision = self._optimize_prior_precision_cv(val_loader)
 
     @property
     def prior_precision(self):
@@ -167,8 +177,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
 
     @prior_precision.setter
     def prior_precision(self, value):
-        # Invalidate the cached_property without computing it
-        self.__dict__.pop("_regularizer_diag_hessian_0", None)
+        self._regularizer_diag_hessian_0 = None
         self._prior_precision = value
 
     @staticmethod
@@ -188,14 +197,12 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         grid_size=50,
     ):
         interval = torch.logspace(log_prior_prec_min, log_prior_prec_max, grid_size)
-        self._laplace_model.prior_precision = self._gridsearch(
+        self.prior_precision = self._gridsearch(
             interval=interval,
             val_loader=val_loader,
         )
 
-        logger.info(
-            f"Optimized prior precision is {self._laplace_model.prior_precision}."
-        )
+        logger.info(f"Optimized prior precision is {self.prior_precision}.")
 
     def _gridsearch(
         self,
@@ -207,7 +214,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         for prior_prec in interval:
             logger.info(f"Trying {prior_prec}...")
             start_time = time.perf_counter()
-            self._laplace_model.prior_precision = prior_prec
+            self.prior_precision = prior_prec
 
             try:
                 out_dist, targets = self._validate(
@@ -231,7 +238,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
     @torch.no_grad()
     def _validate(self, val_loader):
         self.model.eval()
-        device = self.device
+        device = next(self.model.parameters()).device
         output_means = []
         targets = []
 
@@ -282,12 +289,6 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
 
     def linearized_prediction(self, map_pred, theta, retain_graph):
         """Linearizes the model in its parameters around its current parameters."""
-        if self.model.training:
-            warn(
-                "Model is in training mode, i.e. outputs are not deterministic.",
-                stacklevel=1,
-            )
-
         theta_diff = theta - self.theta_0_vec.detach()
         theta_diff_params = vector_to_parameter_list(theta_diff, self.theta_0_list)
         jvp_res = jvp(
@@ -297,13 +298,6 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         return (map_pred + jvp_res).detach()
 
     def forward(self, x):
-        if not self.is_initialized:
-            msg = (
-                "Please use the `perform_laplace_approximation` method "
-                "before `forward`."
-            )
-            raise ValueError(msg)
-
         with torch.enable_grad():
             map_pred = self.model(x)  # [B, C]
             lin_preds = []
@@ -328,9 +322,9 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
                 lambda_k = self.quad_root_terms.lambda_k
 
                 if self.use_eigval_prior:
-                    theta = mul * (U_k @ lambda_k * randn) + self.theta_0_vec
-                else:
                     theta = mul * randn + U_k @ (d * (U_k.T @ randn)) + self.theta_0_vec
+                else:
+                    theta = mul * (U_k @ (lambda_k * randn)) + self.theta_0_vec
 
                 lin_pred = self.linearized_prediction(
                     map_pred=map_pred,
@@ -395,22 +389,18 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
 
         return l2_loss_0
 
-    @staticmethod
-    def square_sum(a_list):
-        res = 0.0
-        for a_param in a_list:
-            res += a_param.square().sum()
-
-    @cached_property  # Compute only once
     def get_loss_and_grad(self):
         """Computes the loss and gradient at `theta_0`."""
+        if self._loss_and_grad is not None:
+            return self._loss_and_grad
+
         # Initialize loss and gradient
         loss = 0.0
-        grad = torch.zeros_like(self.theta_0_vec).to(self.device)
+        device = next(self.model.parameters()).device
+        grad = torch.zeros_like(self.theta_0_vec).to(device)
 
         # Accumulate
         num_data = 0
-        device = self.device
 
         # Loop over mini-batches of data
         for inputs, targets in self.train_loader:
@@ -447,7 +437,8 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
             )
         grad = grad + parameters_to_vector(l2_grad).detach()
 
-        return loss, grad
+        self._loss_and_grad = loss, grad
+        return self._loss_and_grad
 
     def get_c_0(self):
         """Constant term in the quadratic.
@@ -455,7 +446,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         The constant term in the quadratic model is the loss at `theta_0` plus the
         L2 regularizer at `theta_0`.
         """
-        return self.get_loss_and_grad[0]
+        return self.get_loss_and_grad()[0]
 
     def get_g_0(self):
         """Gradient at `theta_0`.
@@ -463,10 +454,9 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         The gradient at `theta_0` is the gradient of the loss at `theta_0` plus the
         gradient of the L2 regularizer at `theta_0`.
         """
-        return self.get_loss_and_grad[1]
+        return self.get_loss_and_grad()[1]
 
-    @cached_property  # Compute only once
-    def _regularizer_diag_hessian_0(self):
+    def regularizer_diag_hessian_0(self):
         """The diagonal of the L2 regularizer's Hessian.
 
         The L2 regularizer is given by
@@ -478,6 +468,9 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         check which gradients are not `None`. These are replaced with
         `self.prior_precision` and the others with `0.0` (each with the correct shape).
         """
+        if self._regularizer_diag_hessian_0 is not None:
+            return self._regularizer_diag_hessian_0
+
         with torch.enable_grad():
             l2_grad = torch.autograd.grad(
                 self.calc_l2_loss_0(),
@@ -485,23 +478,24 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
                 allow_unused=True,
             )
 
-        Hess_diag = []
+        hess_diag = []
         for p, g in zip(self.theta_0_list, l2_grad, strict=True):
             if g is None:
                 # `p` does not appear in l2-loss --> entries in Hessian are zero
-                Hess_diag.append(torch.zeros_like(p))
+                hess_diag.append(torch.zeros_like(p))
             else:
                 # `p` does appear in l2-loss --> entries in Hessian are
                 # `prior_precision`
-                Hess_diag.append(self.prior_precision * torch.ones_like(p))
+                hess_diag.append(self.prior_precision * torch.ones_like(p))
 
-        Hess_diag = parameters_to_vector(Hess_diag)
+        hess_diag = parameters_to_vector(hess_diag)
 
         # Sanity check and return diagonal of the Hessian
-        if Hess_diag.shape != self.theta_0_vec.shape:
+        if hess_diag.shape != self.theta_0_vec.shape:
             raise ValueError
 
-        return Hess_diag
+        self._regularizer_diag_hessian_0 = hess_diag
+        return self._regularizer_diag_hessian_0
 
     def get_B_0v(self, vec):
         """Matrix vector product with the curvature matrix at `theta_0`.
@@ -521,11 +515,11 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         # ------------------------------------------------------------------------------
 
         # Initialize Hv
-        B_0v = torch.zeros_like(self.theta_0_vec).to(self.device)
+        device = next(self.model.parameters()).device
+        B_0v = torch.zeros_like(self.theta_0_vec).to(device)
 
         # Accumulate
         num_data = 0
-        device = self.device
         # Loop over mini-batches of data
         for inputs, targets in self.train_loader:
             inputs = inputs.to(device)
@@ -552,7 +546,7 @@ class SamplePushforwardLaplaceWrapper(DistributionalWrapper):
         # ------------------------------------------------------------------------------
         # (ii) Vector product with Hessian of L2 loss
         # ------------------------------------------------------------------------------
-        B_0v += self._regularizer_diag_hessian_0 * vec  # element-wise product!
+        B_0v += self.regularizer_diag_hessian_0() * vec  # element-wise product!
 
         return B_0v
 
@@ -690,12 +684,17 @@ def vector_to_parameter_list(vec, parameters):
         msg = f"`vec` should be a torch.Tensor, not {type(vec)}"
         raise TypeError(msg)
 
+    is_batched = vec.ndim == 2
+
     # Put slices of `vec` into `params_list`
     params_list = []
     pointer = 0
     for param in parameters:
         num_param = param.numel()
-        params_list.append(vec[pointer : pointer + num_param].view_as(param).data)
+        param_shape = (vec.shape[0], *param.shape) if is_batched else param.shape
+        params_list.append(
+            vec[..., pointer : pointer + num_param].view(param_shape).data
+        )
         pointer += num_param
 
     # Make sure all entries of the vector have been used (i.e. that `vec` and

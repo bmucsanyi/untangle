@@ -202,6 +202,12 @@ group.add_argument(
     help="Rank of low-rank covariance matrix part in the HET method",
 )
 group.add_argument(
+    "--mask-regex",
+    default=None,
+    type=str,
+    help="Mask regex for Laplace",
+)
+group.add_argument(
     "--use-sampling",
     action="store_true",
     help="Whether to sample instead of returning logit means and vars",
