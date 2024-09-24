@@ -25,7 +25,7 @@ class NormCDFNLLLoss(nn.Module):
         )
 
         # Sum along the class dimension
-        loss = loss.sum(dim=1)
+        loss = loss.mean(dim=1)
 
         # Mean over the batch
         return loss.mean()
