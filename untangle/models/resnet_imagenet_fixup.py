@@ -291,6 +291,8 @@ class ResNetFixup(nn.Module):
         self.num_classes = num_classes
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
+        nn.init.constant_(self.fc.weight, 0)
+        nn.init.constant_(self.fc.bias, 0)
 
     def forward_features(self, x):
         x = self.conv1(x)
