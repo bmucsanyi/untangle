@@ -161,7 +161,7 @@ def probit_predictive(
         if return_logits:
             return logits
 
-        predictives = torch.sigmoid(logits)
+        predictives = F.sigmoid(logits)
     else:
         msg = "Invalid output function"
         raise NotImplementedError(msg)
