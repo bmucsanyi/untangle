@@ -928,7 +928,7 @@ def validate(
                 prob = act_fn(output).mean(dim=1)
             elif len(output) == 1 and output[0].ndim == 2:
                 output = output[0]
-                prob = output / output.mean(dim=-1, keepdim=True)
+                prob = output / output.sum(dim=-1, keepdim=True)
 
         if target.ndim == 2:
             target = target[:, -1]
