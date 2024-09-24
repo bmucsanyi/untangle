@@ -374,6 +374,7 @@ def main():
         time=args.time,
         log_path=args.log_path,
         constraint=args.constraint,
+        exclude=args.exclude,
     )
     slurm_job.submit()
 
