@@ -15,6 +15,18 @@ def simple_convnet_3_256(num_classes=10, in_chans=3):
     return model
 
 
+def simple_convnet_3_32(num_classes=10, in_chans=3):
+    """Constructs a SimpleConvnet-3-32 model."""
+    model = SimpleConvNet(
+        num_classes=num_classes,
+        in_chans=in_chans,
+        hidden_dim=32,
+        num_blocks=3,
+    )
+
+    return model
+
+
 class Lambda(nn.Module):
     """Lambda module wrapper that executes `fn` on input `x`."""
 

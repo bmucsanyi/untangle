@@ -212,6 +212,7 @@ def load_checkpoint(
 
         tmp_state_dict = {}
         for k, v in state_dict:
+            # TODO(bmucsanyi): Fix distributed saving
             if k.startswith("module."):
                 tmp_state_dict[k[7:]] = v
             else:
