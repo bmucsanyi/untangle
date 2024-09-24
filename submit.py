@@ -84,6 +84,12 @@ parser.add_argument(
     default=None,
     help="Target specific nodes that fulfill the constraint",
 )
+parser.add_argument(
+    "--exclude",
+    type=str,
+    default=None,
+    help="Exclude specific nodes",
+)
 
 
 class SlurmJob:
@@ -119,6 +125,7 @@ class SlurmJob:
         time: str,
         log_path: Path,
         constraint: str | None,
+        exclude: str | None,
     ):
         """SlurmJob constructor that stores (and check some of the) parameters.
 
@@ -148,6 +155,7 @@ class SlurmJob:
                 error file are stored in the working directory.
             constraint: With this parameter, you can target specific nodes that fulfill
                 a certain constraint.
+            exclude: This parameter allows to exclude certain nodes.
 
         Raises:
             ValueError: Either both mem_per_cpu and mem are specified or neither.
@@ -184,6 +192,7 @@ class SlurmJob:
         self._time = time
         self._log_path = log_path
         self._constraint = constraint
+        self._exclude = exclude
 
         self._output_file_path = self._create_file_paths()
 
@@ -277,6 +286,9 @@ class SlurmJob:
 
         if self._constraint is not None:
             sbatch_str += f"\n#SBATCH --constraint={self._constraint}"
+
+        if self._exclude is not None:
+            sbatch_str += f"\n#SBATCH --exclude={self._exclude}"
 
         return sbatch_str
 
