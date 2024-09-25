@@ -50,7 +50,7 @@ def softmax_mc(
 
     prob_mean = logit_samples.softmax(dim=-1).mean(dim=0)
 
-    return prob_mean, logit_samples if return_samples else prob_mean
+    return (prob_mean, logit_samples) if return_samples else prob_mean
 
 
 def logit_link_normcdf_output(
