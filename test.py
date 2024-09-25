@@ -1178,10 +1178,16 @@ def get_bundle(
             )
             log_probs[f"{suffix}_log_bmas"] = log_bmas
             entropies_of_bma = torch.empty(num_samples, device=storage_device)
-            estimates[f"{suffix}_entropies_of_bma"] = entropies_of_bma
+            estimates[f"{suffix}_expected_entropies"] = expected_entropies
             one_minus_max_probs_of_bma = torch.empty(num_samples, device=storage_device)
+            estimates[f"{suffix}_entropies_of_bma"] = entropies_of_bma
+            expected_entropies = torch.empty(num_samples, device=storage_device)
             estimates[f"{suffix}_one_minus_max_probs_of_bma"] = (
                 one_minus_max_probs_of_bma
+            )
+            jensen_shannon_divergences = torch.empty(num_samples, device=storage_device)
+            estimates[f"{suffix}_jensen_shannon_divergences"] = (
+                jensen_shannon_divergences
             )
 
     if isinstance(model, DeepEnsembleWrapper):
