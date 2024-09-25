@@ -42,17 +42,13 @@ def softmax_mc(
     *,
     return_samples: bool = False,
 ) -> torch.Tensor:
-    logit_samples = (
-        torch.randn(
-            mean.shape[0],
-            num_mc_samples,
-            mean.shape[1],
-            dtype=mean.dtype,
-            device=mean.device,
-        )
-        * var.sqrt()
-        + mean
-    )
+    logit_samples = torch.randn(
+        mean.shape[0],
+        num_mc_samples,
+        mean.shape[1],
+        dtype=mean.dtype,
+        device=mean.device,
+    ) * var.sqrt().unsqueeze(1) + mean.unsqueeze(1)
 
     prob_mean = logit_samples.softmax(dim=-1).mean(dim=1)
 
@@ -90,17 +86,13 @@ def logit_link_mc(
     *,
     return_samples: bool = False,
 ) -> torch.Tensor:
-    logit_samples = (
-        torch.randn(
-            mean.shape[0],
-            num_mc_samples,
-            mean.shape[1],
-            dtype=mean.dtype,
-            device=mean.device,
-        )
-        * var.sqrt()
-        + mean
-    )
+    logit_samples = torch.randn(
+        mean.shape[0],
+        num_mc_samples,
+        mean.shape[1],
+        dtype=mean.dtype,
+        device=mean.device,
+    ) * var.sqrt().unsqueeze(1) + mean.unsqueeze(1)
     prob = F.sigmoid(logit_samples)
     prob = prob / prob.sum(dim=-1, keepdim=True)
 
@@ -140,17 +132,13 @@ def probit_link_mc(
     *,
     return_samples: bool = False,
 ) -> torch.Tensor:
-    logit_samples = (
-        torch.randn(
-            mean.shape[0],
-            num_mc_samples,
-            mean.shape[1],
-            dtype=mean.dtype,
-            device=mean.device,
-        )
-        * var.sqrt()
-        + mean
-    )
+    logit_samples = torch.randn(
+        mean.shape[0],
+        num_mc_samples,
+        mean.shape[1],
+        dtype=mean.dtype,
+        device=mean.device,
+    ) * var.sqrt().unsqueeze(1) + mean.unsqueeze(1)
     prob = ndtr(logit_samples.double()).float()
     prob = prob / prob.sum(dim=-1, keepdim=True)
 
