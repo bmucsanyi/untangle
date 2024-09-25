@@ -316,6 +316,13 @@ def diag_hessian_normalized_sigmoid(logit, target):
     return y * q * (1 - q) + p * (1 - 3 * q + 2 * q**2) - (p * (1 - q)) ** 2
 
 
+def diag_hessian_softmax(logit, target):
+    del target
+    prob = logit.softmax(dim=-1)  # [B, C]
+
+    return prob * (1 - prob)  # [B, C]
+
+
 def diag_hessian_normalized_normcdf(logit, target):
     q = ndtr(logit)
     s = q.sum(dim=-1, keepdim=True)
@@ -330,13 +337,6 @@ def diag_hessian_normalized_normcdf(logit, target):
     y.scatter_(1, z, 1)
 
     return theta * (1 / s - y / q) + phi**2 * (y / q**2 - 1 / s**2)
-
-
-def diag_hessian_softmax(logit, target):
-    del target
-    prob = logit.softmax(dim=-1)  # [B, C]
-
-    return prob * (1 - prob)  # [B, C]
 
 
 PREDICTIVE_DICT = {

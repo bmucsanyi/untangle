@@ -153,14 +153,14 @@ class GPOutputLayer(nn.Module):
 
             return gp_outputs  # [B, C]
 
-        if self._likelihood == "gaussian":
-            gp_vars = (
-                self._gp_cov_layers[0](gp_features)
-                .unsqueeze(1)
-                .repeat(1, gp_outputs.shape[-1])
-            )
-        else:
-            with torch.no_grad():
+        with torch.no_grad():
+            if self._likelihood == "gaussian":
+                gp_vars = (
+                    self._gp_cov_layers[0](gp_features)
+                    .unsqueeze(1)
+                    .repeat(1, gp_outputs.shape[-1])
+                )
+            else:
                 gp_vars = torch.zeros_like(gp_outputs)
                 for i, cov_layer in enumerate(self._gp_cov_layers):
                     gp_vars[:, i] = cov_layer(gp_features)
@@ -248,9 +248,8 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         This function is useful for resetting the model's covariance matrix at the
         beginning of a new epoch.
         """
-        self._precision_matrix.copy_(
-            self._ridge_penalty * torch.eye(self._gp_feature_dim)
-        )
+        gp_feature_dim = self._precision_matrix.shape[0]
+        self._precision_matrix.copy_(torch.zeros((gp_feature_dim, gp_feature_dim)))
 
     def forward(self, gp_features):
         """Minibatch updates the GP's posterior precision matrix estimate.
@@ -330,7 +329,9 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         # Compute covariance matrix update only when `update_covariance = True`.
         if self.update_covariance:
-            covariance_matrix_updated = torch.linalg.inv(precision_matrix)
+            covariance_matrix_updated = torch.linalg.inv(
+                self._ridge_penalty * torch.eye(self._gp_feature_dim) + precision_matrix
+            )
         else:
             covariance_matrix_updated = covariance_matrix
 
