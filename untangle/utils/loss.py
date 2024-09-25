@@ -9,6 +9,7 @@ from untangle.losses import (
     RegularizedPredictiveNLLLoss,
     RegularizedUCELoss,
     SigmoidNLLLoss,
+    SoftmaxPredictiveNLLLoss,
     UnnormalizedPredictiveNLLLoss,
 )
 
@@ -47,6 +48,8 @@ def create_loss_fn(args, num_batches):
         )
     elif args.loss == "unnormalized-predictive-nll":
         train_loss_fn = UnnormalizedPredictiveNLLLoss(predictive=args.predictive)
+    elif args.loss == "softmax-predictive-nll":
+        train_loss_fn = SoftmaxPredictiveNLLLoss(predictive=args.predictive)
     else:
         msg = f"--loss {args.loss} is not implemented"
         raise NotImplementedError(msg)

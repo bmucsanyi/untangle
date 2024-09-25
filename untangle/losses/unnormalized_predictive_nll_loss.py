@@ -1,8 +1,6 @@
 """Unnormalized predictive NLL loss for multiclass classification."""
 
-import torch.nn.functional as F
 from torch import nn
-from torch.special import ndtr
 
 from untangle.losses.normcdf_nll_loss import NormCDFNLLLoss
 from untangle.losses.sigmoid_nll_loss import SigmoidNLLLoss
@@ -20,7 +18,6 @@ class UnnormalizedPredictiveNLLLoss(nn.Module):
             raise ValueError(msg)
 
         self._predictive = PREDICTIVE_DICT[predictive]
-        self._activation = ndtr if predictive.startswith("probit") else F.sigmoid
         self._loss = (
             NormCDFNLLLoss() if predictive.startswith("probit") else SigmoidNLLLoss()
         )
