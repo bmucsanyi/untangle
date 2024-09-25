@@ -30,8 +30,8 @@ class RegularizedPredictiveNLLLoss(nn.Module):
             -preds[torch.arange(0, preds.shape[-1]), targets]
             .log()
             .clamp(torch.finfo(preds.dtype).min)
-        ).mean() + self._regularization_factor * self._activation(logits).sum(
-            dim=-1
-        ).sub(1).square().mean()
+        ).mean() + self._regularization_factor * self._activation(
+            logits.double()
+        ).float().sum(dim=-1).sub(1).square().mean()
 
         return loss

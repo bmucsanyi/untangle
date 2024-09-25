@@ -133,7 +133,7 @@ def probit_link_mc(
         * var.sqrt()
         + mean
     )
-    prob = ndtr(logit_samples)
+    prob = ndtr(logit_samples.double()).float()
     prob = prob / prob.sum(dim=-1, keepdim=True)
 
     prob_mean = prob.mean(dim=0)
@@ -260,7 +260,7 @@ def gaussian_pushforward_mean(
     if return_logits:
         return logits
 
-    return ndtr(logits)
+    return ndtr(logits.double()).float()
 
 
 def gaussian_pushforward_second_moment(
@@ -324,7 +324,7 @@ def diag_hessian_softmax(logit, target):
 
 
 def diag_hessian_normalized_normcdf(logit, target):
-    q = ndtr(logit)
+    q = ndtr(logit.double()).float()
     s = q.sum(dim=-1, keepdim=True)
     normal = Normal(0, 1)
     phi = normal.log_prob(logit).exp()  # Norm pdf
