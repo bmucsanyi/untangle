@@ -1295,7 +1295,9 @@ def handle_bma(bma, converted_inference_res, prefix):
     converted_inference_res[f"{prefix}_entropies_of_bma"] = entropies_of_bma
 
     one_minus_max_probs_of_bma = 1 - bma.max(dim=-1)[0]
-    converted_inference_res[f"{prefix}_max_probs_of_bma"] = one_minus_max_probs_of_bma
+    converted_inference_res[f"{prefix}_one_minus_max_probs_of_bma"] = (
+        one_minus_max_probs_of_bma
+    )
 
 
 def convert_inference_res(inference_res, time_forward, args):
