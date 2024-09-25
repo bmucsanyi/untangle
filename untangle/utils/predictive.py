@@ -94,7 +94,7 @@ def logit_link_mc(
 
     prob_mean = prob.mean(dim=0)
 
-    return prob_mean, logit_samples if return_samples else prob_mean
+    return (prob_mean, logit_samples) if return_samples else prob_mean
 
 
 def probit_link_normcdf_output(
@@ -138,7 +138,7 @@ def probit_link_mc(
 
     prob_mean = prob.mean(dim=0)
 
-    return prob_mean, logit_samples if return_samples else prob_mean
+    return (prob_mean, logit_samples) if return_samples else prob_mean
 
 
 def probit_predictive(
