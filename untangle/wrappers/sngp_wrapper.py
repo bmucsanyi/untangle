@@ -320,12 +320,12 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         return precision_matrix_new
 
     def _update_feature_covariance_matrix(self):
-        """Computes the feature covariance if self.update_covariance=True.
+        """Computes the feature covariance if self._update_covariance=True.
 
         GP layer computes the covariance matrix of the random feature coefficient
         by inverting the precision matrix. Since this inversion op is expensive,
         we will invoke it only when there is new update to the precision matrix
-        (where self.update_covariance will be flipped to `True`.).
+        (where self._update_covariance will be flipped to `True`.).
 
         Returns:
         The updated covariance_matrix.
@@ -433,7 +433,7 @@ class LinearSpectralNormalizer(nn.Module):
 
     def _reshape_weight_to_matrix(self, weight: torch.Tensor) -> torch.Tensor:
         if self._dim > 0:
-            # Permute self.dim to front
+            # Permute self._dim to front
             weight = weight.permute(
                 self._dim, *(dim for dim in range(weight.dim()) if dim != self._dim)
             )
@@ -530,17 +530,16 @@ class Conv2dSpectralNormalizer(nn.Module):
         self._groups = module.groups
         self.output_channels = module.out_channels
         self.kernel_size = module.kernel_size
-        self._device = weight.device
         self.weight_shape = weight.shape
 
         self.register_buffer("_u", nn.UninitializedBuffer())
         self.register_buffer("_v", nn.UninitializedBuffer())
 
-        self._load_hook = self._register_load_state_dict_pre_hook(self._lazy_load_hook)
-        self._module_input_shape_hook = module.register_forward_pre_hook(
+        self.load_hook = self._register_load_state_dict_pre_hook(self._lazy_load_hook)
+        self.module_input_shape_hook = module.register_forward_pre_hook(
             Conv2dSpectralNormalizer._module_set_input_shape, with_kwargs=True
         )
-        self._initialize_hook = self.register_forward_pre_hook(
+        self.initialize_hook = self.register_forward_pre_hook(
             Conv2dSpectralNormalizer._infer_attributes, with_kwargs=True
         )
 
