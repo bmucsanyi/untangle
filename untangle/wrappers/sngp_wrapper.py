@@ -150,11 +150,11 @@ class GPOutputLayer(nn.Module):
                 self._gp_cov_layers[0].update(gp_features)
             else:  # self._likelihood == "softmax"
                 multipliers = diag_hessian_softmax(gp_outputs)
-                with torch.no_grad():
-                    for cov_layer, multiplier in zip(
-                        self._gp_cov_layers, multipliers.T, strict=True
-                    ):
-                        cov_layer.update(gp_features, multiplier)
+
+                for cov_layer, multiplier in zip(
+                    self._gp_cov_layers, multipliers.T, strict=True
+                ):
+                    cov_layer.update(gp_features, multiplier)
 
             return gp_outputs  # [B, C]
 
@@ -253,9 +253,8 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         This function is useful for resetting the model's covariance matrix at the
         beginning of a new epoch.
         """
-        self._precision_matrix.copy_(
-            self._ridge_penalty * torch.eye(self._gp_feature_dim)
-        )
+        gp_feature_dim = self._precision_matrix.shape[0]
+        self._precision_matrix.copy_(torch.zeros((gp_feature_dim, gp_feature_dim)))
 
     def forward(self, gp_features):
         """Minibatch updates the GP's posterior precision matrix estimate.
@@ -283,6 +282,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         return gp_var
 
+    @torch.no_grad()
     def update(self, gp_features, multiplier=1):
         # Computes the updated feature precision matrix.
         precision_matrix_updated = self._update_feature_precision_matrix(
