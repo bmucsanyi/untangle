@@ -129,7 +129,6 @@ class DUQWrapper(SpecialWrapper):
             num_hidden_features=self._num_hidden_features,
         )
 
-    @torch.jit.ignore
     def get_classifier(self):
         return self._classifier
 

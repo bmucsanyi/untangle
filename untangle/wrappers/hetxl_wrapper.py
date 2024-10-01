@@ -101,7 +101,6 @@ class HETXLWrapper(DistributionalWrapper):
             use_het=self._use_het,
         )
 
-    @torch.jit.ignore
     def get_classifier(self):
         return self._classifier
 

@@ -1,6 +1,5 @@
 """Shallow ensemble implementation as a wrapper class."""
 
-import torch
 from torch import Tensor, nn
 
 from untangle.wrappers.model_wrapper import DistributionalWrapper
@@ -40,7 +39,6 @@ class ShallowEnsembleWrapper(DistributionalWrapper):
             num_classes=self.num_classes,
         )
 
-    @torch.jit.ignore
     def get_classifier(self):
         return self._classifier
 
