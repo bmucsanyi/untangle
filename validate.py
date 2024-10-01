@@ -181,7 +181,7 @@ def evaluate(
     if is_upstream_dataset and is_test_dataset and output_dir is not None:
         # Save ingredients to disk
         max_num_indices = len(targets["gt_hard_labels"])
-        num_indices = min(max_num_indices, args.max_num_id_ood_eval_samples // 2)
+        num_indices = min(max_num_indices, args.max_num_id_ood_test_samples // 2)
         path_indices = data_dir / f"{num_indices}_indices_out_of_{max_num_indices}.pt"
 
         if path_indices.exists():

@@ -124,10 +124,10 @@ group.add_argument(
     help="Fraction of training set to use during training",
 )
 group.add_argument(
-    "--max-num-id-ood-eval-samples",
+    "--max-num-id-ood-test-samples",
     type=int,
     default=100000,
-    help="Maximum number of samples in concatenated ID + OOD eval dataset",
+    help="Maximum number of samples in concatenated ID + OOD test dataset",
 )
 group.add_argument(
     "--max-num-id-ood-train-samples",
@@ -183,7 +183,7 @@ group.add_argument(
 group.add_argument(
     "--storage-device",
     type=str,
-    default="cpu",
+    default="cuda",
     help="Storage device during evaluation",
 )
 group.add_argument(
@@ -253,7 +253,7 @@ group.add_argument(
 group.add_argument(
     "--use-filterwise-dropout",
     action="store_true",
-    help="whether to use filterwise dropout in the MC-Dropout method",
+    help="Whether to use filterwise dropout in the MC-Dropout method",
 )
 group.add_argument(
     "--num-mc-samples",
@@ -352,7 +352,7 @@ group.add_argument(
     "--num-heads",
     type=int,
     default=10,
-    help="Number of output heads in the shallow ensemble method",
+    help="Number of output heads in the Shallow Ensemble method",
 )
 group.add_argument(
     "--likelihood",
@@ -380,7 +380,7 @@ group.add_argument(
 group.add_argument(
     "--use-spectral-normalized-batch-norm",
     action="store_true",
-    help="Whether to use spectral normalization in batch norm",
+    help="Whether to use spectral normalization for batch norm",
 )
 group.add_argument(
     "--use-tight-norm-for-pointwise-convs",
@@ -485,7 +485,7 @@ group.add_argument(
 group.add_argument(
     "--color-jitter",
     type=float,
-    default=0.4,
+    default=0.0,
     help="Color jitter factor for ImageNet",
 )
 group.add_argument(
@@ -608,9 +608,8 @@ group.add_argument("--model-kwargs", default={}, type=kwargs)
 group = parser.add_argument_group("Scripting")
 group.add_argument(
     "--compile",
-    type=str,
-    default=None,
-    help="Enable compilation with specified backend",
+    action="store_true",
+    help="Whether to compile the model backbone",
 )
 
 # Optimizer parameters
@@ -658,7 +657,7 @@ group.add_argument(
 group.add_argument(
     "--epochs",
     type=int,
-    default=128,
+    default=90,
     help="Number of epochs to train",
 )
 
@@ -674,13 +673,13 @@ group.add_argument(
     "--edl-start-epoch",
     type=int,
     default=1,
-    help="start epoch for the EDL flatness regularizer",
+    help="Start epoch for the EDL flatness regularizer",
 )
 group.add_argument(
     "--edl-scaler",
     type=float,
     default=1.0,
-    help="scaler for the EDL flatness regularizer",
+    help="Scaler for the EDL flatness regularizer",
 )
 group.add_argument(
     "--edl-activation",
@@ -701,23 +700,23 @@ group.add_argument(
 group.add_argument(
     "--checkpoint-history",
     type=int,
-    default=5,
+    default=3,
     help="Number of checkpoints to keep",
 )
 group.add_argument(
     "--num-workers",
     type=int,
     default=12,
-    help="How many training processes to use",
+    help="How many training worker processes to use",
 )
 group.add_argument(
     "--num-eval-workers",
     type=int,
     default=12,
-    help="How many eval processes to use",
+    help="How many eval worker processes to use",
 )
 group.add_argument(
-    "--amp", action="store_true", help="Use Native AMP for mixed precision training"
+    "--amp", action="store_true", help="Use native AMP for mixed precision training"
 )
 group.add_argument(
     "--amp-dtype",
@@ -738,7 +737,7 @@ group.add_argument(
 group.add_argument(
     "--eval-metric",
     type=str,
-    default="id_eval_one_minus_expected_max_probs_auroc_hard_bma_correctness",
+    default="id_eval_one_minus_max_probs_of_bma_auroc_hard_bma_correctness",
     help="Metric to track for early stopping/checkpoint saving",
 )
 group.add_argument(
