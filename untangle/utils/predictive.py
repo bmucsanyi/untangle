@@ -309,17 +309,17 @@ def get_mom_dirichlet_approximation(
     return P * M1 / S
 
 
+@torch.compile
 def diag_hessian_normalized_sigmoid(logit, target):
-    q = F.sigmoid(logit)
+    q = torch.sigmoid(logit)
     p = q / q.sum(dim=-1, keepdim=True)
 
-    n_batch = logit.shape[0]
-    n_classes = logit.shape[1]
-    z = target.unsqueeze(1)
-    y = torch.zeros(n_batch, n_classes, device=logit.device)
-    y.scatter_(1, z, 1)
+    y = F.one_hot(target, num_classes=logit.shape[1]).to(logit.dtype)
 
-    return y * q * (1 - q) + p * (1 - 3 * q + 2 * q**2) - (p * (1 - q)) ** 2
+    q_complement = 1 - q
+    pq_complement = p * q_complement
+
+    return y * q * q_complement + p * (1 - 3 * q + 2 * q**2) - pq_complement**2
 
 
 def diag_hessian_softmax(logit, target):
@@ -329,6 +329,7 @@ def diag_hessian_softmax(logit, target):
     return prob * (1 - prob)  # [B, C]
 
 
+@torch.compile
 def diag_hessian_normalized_normcdf(logit, target):
     q = ndtr(logit.double()).float()
     s = q.sum(dim=-1, keepdim=True)
@@ -336,11 +337,7 @@ def diag_hessian_normalized_normcdf(logit, target):
     phi = normal.log_prob(logit).exp()  # Norm pdf
     theta = -logit * phi  # Norm pdf derivative
 
-    n_batch = logit.shape[0]
-    n_classes = logit.shape[1]
-    z = target.unsqueeze(1)
-    y = torch.zeros(n_batch, n_classes, device=logit.device)
-    y.scatter_(1, z, 1)
+    y = F.one_hot(target, num_classes=logit.shape[1]).to(logit.dtype)
 
     return theta * (1 / s - y / q) + phi**2 * (y / q**2 - 1 / s**2)
 
