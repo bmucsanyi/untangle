@@ -131,11 +131,11 @@ def setup_wrapper(model, train_loader):
 def verify_eval_metric(args):
     if not (
         args.eval_metric.startswith("id_eval_")
-        and args.eval_metric.endswith("_auroc_hard_bma_correctness")
+        and args.eval_metric.endswith("_auroc_hard_bma_correctness_original")
     ):
         msg = (
             "Invalid eval metric name specified: must be "
-            "'id_eval_<estimator>_auroc_hard_bma_correctness'"
+            "'id_eval_<estimator>_auroc_hard_bma_correctness_original'"
         )
         raise ValueError(msg)
 
