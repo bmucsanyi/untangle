@@ -933,10 +933,13 @@ def validate(
         if target.ndim == 2:
             target = target[:, -1]
 
-        loglikelihood = (
-            prob[torch.arange(target.shape[0]), target].log().clamp(1e-22).mean()
+        log_likelihood = (
+            prob[torch.arange(target.shape[0]), target]
+            .log()
+            .clamp(torch.finfo(prob.dtype).min)
+            .mean()
         )
-        loss = -loglikelihood
+        loss = -log_likelihood
         top_1 = accuracy(prob, target)[0]
 
         if args.distributed:
