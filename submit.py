@@ -27,13 +27,13 @@ parser.add_argument(
 parser.add_argument(
     "--simg-path",
     type=Path,
-    default=Path("/mnt/lustre/work/oh/owl569/repos/untangle/untangle.simg"),
+    default=Path("/mnt/lustre/work/oh/owl569/repos/probit/untangle.simg"),
     help="Path to Singularity image",
 )
 parser.add_argument(
     "--repo-path",
     type=Path,
-    default=Path("/mnt/lustre/work/oh/owl569/repos/untangle"),
+    default=Path("/mnt/lustre/work/oh/owl569/repos/probit"),
     help="Path to repository",
 )
 parser.add_argument(
