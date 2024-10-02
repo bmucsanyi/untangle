@@ -145,25 +145,23 @@ class GPOutputLayer(nn.Module):
                     gp_outputs, targets
                 )  # [B, C]
 
-                with torch.no_grad():
-                    for cov_layer, multiplier in zip(
-                        self._gp_cov_layers, multipliers.T, strict=True
-                    ):
-                        cov_layer.update(gp_features, multiplier)
+                for cov_layer, multiplier in zip(
+                    self._gp_cov_layers, multipliers.T, strict=True
+                ):
+                    cov_layer.update(gp_features, multiplier)
 
             return gp_outputs  # [B, C]
 
-        with torch.no_grad():
-            if self._likelihood == "gaussian":
-                gp_vars = (
-                    self._gp_cov_layers[0](gp_features)
-                    .unsqueeze(1)
-                    .repeat(1, gp_outputs.shape[-1])
-                )
-            else:
-                gp_vars = torch.zeros_like(gp_outputs)
-                for i, cov_layer in enumerate(self._gp_cov_layers):
-                    gp_vars[:, i] = cov_layer(gp_features)
+        if self._likelihood == "gaussian":
+            gp_vars = (
+                self._gp_cov_layers[0](gp_features)
+                .unsqueeze(1)
+                .repeat(1, gp_outputs.shape[-1])
+            )
+        else:
+            gp_vars = torch.zeros_like(gp_outputs)
+            for i, cov_layer in enumerate(self._gp_cov_layers):
+                gp_vars[:, i] = cov_layer(gp_features)
 
         return gp_outputs, gp_vars
 
@@ -277,6 +275,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         return gp_var
 
+    @torch.no_grad()
     def update(self, gp_features, multiplier=1):  # [B, C], [B]
         # Computes the updated feature precision matrix.
         precision_matrix_updated = self._update_feature_precision_matrix(
