@@ -391,8 +391,8 @@ def evaluate_on_auroc_hard_bma_correctness(
         if estimator_name in args.eval_metric:
             estimate = -estimates[estimator_name]
 
-            gt_hard_bma_correctnesses = targets["gt_hard_bma_correctnesses"]
-            metrics[f"{estimator_name}_auroc_hard_bma_correctness"] = auroc(
+            gt_hard_bma_correctnesses = targets["gt_hard_bma_correctnesses_original"]
+            metrics[f"{estimator_name}_auroc_hard_bma_correctness_original"] = auroc(
                 gt_hard_bma_correctnesses, estimate
             ).item()
 
