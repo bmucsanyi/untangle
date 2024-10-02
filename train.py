@@ -26,7 +26,6 @@ from untangle.utils import (
     create_model,
     distribute_bn,
     get_activation,
-    get_likelihood,
     get_predictive,
     init_distributed_device,
     log_wandb,
@@ -411,7 +410,7 @@ def main():
             num_mc_samples=args.num_mc_samples,
         ),
         use_eigval_prior=args.use_eigval_prior,
-        likelihood=get_likelihood(args.predictive),
+        gp_likelihood=args.gp_likelihood,
         verbose=args.rank == 0,
     )
 

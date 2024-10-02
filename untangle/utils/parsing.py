@@ -269,6 +269,12 @@ group.add_argument(
     help="Number of random features in the SNGP method",
 )
 group.add_argument(
+    "--gp-likelihood",
+    type=str,
+    default="softmax",
+    help="Likelihood for SNGP",
+)
+group.add_argument(
     "--gp-kernel-scale",
     type=float,
     default=1.0,
@@ -557,12 +563,6 @@ group.add_argument(
     "--use-eigval-prior",
     action="store_true",
     help="Whether to use the eigenvalue prior in Laplace",
-)
-group.add_argument(
-    "--likelihood",
-    type=str,
-    default="softmax_mc",
-    help="Predictive for evaluation (and training for HET)",
 )
 
 # Misc

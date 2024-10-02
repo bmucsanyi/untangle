@@ -154,7 +154,7 @@ def wrap_model(
     loss_function,
     predictive_fn,
     use_eigval_prior,
-    likelihood,
+    gp_likelihood,
     verbose,
 ):
     if reset_classifier:
@@ -222,7 +222,7 @@ def wrap_model(
             gp_cov_momentum=gp_cov_momentum,
             gp_cov_ridge_penalty=gp_cov_ridge_penalty,
             gp_input_dim=gp_input_dim,
-            likelihood=likelihood,
+            likelihood=gp_likelihood,
         )
     else:
         msg = (
