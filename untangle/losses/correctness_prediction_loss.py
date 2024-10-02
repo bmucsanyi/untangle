@@ -21,12 +21,14 @@ class CorrectnessPredictionLoss(nn.Module):
     def __init__(
         self,
         lambda_uncertainty_loss,
+        detach_uncertainty_target,
         use_top5_correctness,
     ):
         super().__init__()
         self.task_loss = nn.CrossEntropyLoss(reduction="none")
         self.uncertainty_loss = nn.BCEWithLogitsLoss()
         self.lambda_uncertainty_loss = lambda_uncertainty_loss
+        self.detach_uncertainty_target = detach_uncertainty_target
         self.use_top5_correctness = use_top5_correctness
 
     def forward(
@@ -49,7 +51,14 @@ class CorrectnessPredictionLoss(nn.Module):
         else:
             correctness = prediction.argmax(dim=-1).eq(target).float()
 
-        uncertainty_loss = self.uncertainty_loss(correctness_prediction, correctness)
+        if self.detach_uncertainty_target:
+            correctness_target = correctness.detach()
+        else:
+            correctness_target = correctness
+
+        uncertainty_loss = self.uncertainty_loss(
+            correctness_prediction, correctness_target
+        )
         task_loss = task_loss_per_sample.mean()
 
         return task_loss + self.lambda_uncertainty_loss * uncertainty_loss

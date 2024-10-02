@@ -23,13 +23,15 @@ def create_loss_fn(args, num_batches):
         train_loss_fn = FBarCrossEntropyLoss()
     elif args.loss == "correctness-prediction":
         train_loss_fn = CorrectnessPredictionLoss(
-            args.lambda_uncertainty_loss, args.use_top5_correctness
+            args.lambda_uncertainty_loss,
+            args.detach_uncertainty_target,
+            args.use_top5_correctness,
         )
     elif args.loss == "duq":
         train_loss_fn = DUQLoss()
     elif args.loss == "loss-prediction":
         train_loss_fn = LossPredictionLoss(
-            args.lambda_uncertainty_loss, args.detach_task_loss
+            args.lambda_uncertainty_loss, args.detach_uncertainty_target
         )
     elif args.loss == "edl":
         train_loss_fn = EDLLoss(

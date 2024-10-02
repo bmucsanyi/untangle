@@ -429,7 +429,7 @@ group.add_argument(
     "--gp-cov-ridge-penalty",
     type=float,
     default=1.0,
-    help="Ridge penalty for the precision matrix before inverting it",
+    help="Ridge penalty for the GP precision matrix before inverting it",
 )
 group.add_argument(
     "--gp-input-dim",
@@ -524,7 +524,7 @@ group.add_argument(
     help="Whether to use top-5 correctness to train the correctness prediction method",
 )
 group.add_argument(
-    "--detach-task-loss",
+    "--detach-uncertainty-target",
     action="store_true",
     help=(
         "Whether to detach the task loss before calculating the uncertainty loss in "

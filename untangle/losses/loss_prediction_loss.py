@@ -15,14 +15,14 @@ class LossPredictionLoss(nn.Module):
     def __init__(
         self,
         lambda_uncertainty_loss,
-        detach_task_loss,
+        detach_uncertainty_target,
     ):
         super().__init__()
 
         self.task_loss = nn.CrossEntropyLoss(reduction="none")
         self.uncertainty_loss = nn.MSELoss()
         self.lambda_uncertainty_loss = lambda_uncertainty_loss
-        self.detach_task_loss = detach_task_loss
+        self.detach_uncertainty_target = detach_uncertainty_target
 
     def forward(
         self,
@@ -33,7 +33,7 @@ class LossPredictionLoss(nn.Module):
 
         task_loss_per_sample = self.task_loss(prediction, target)
 
-        if self.detach_task_loss:
+        if self.detach_uncertainty_target:
             task_loss_target = task_loss_per_sample.detach()
         else:
             task_loss_target = task_loss_per_sample
