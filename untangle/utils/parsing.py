@@ -441,12 +441,6 @@ group.add_argument(
     help="Ridge penalty for the GP precision matrix before inverting it",
 )
 group.add_argument(
-    "--gp-input-dim",
-    type=int,
-    default=128,
-    help="Input dimension to the GP (if > 0, use random projection)",
-)
-group.add_argument(
     "--latent-dim",
     type=int,
     default=6,
@@ -681,7 +675,7 @@ group.add_argument(
 group.add_argument(
     "--edl-start-epoch",
     type=int,
-    default=1,
+    default=0,
     help="Start epoch for the EDL flatness regularizer",
 )
 group.add_argument(

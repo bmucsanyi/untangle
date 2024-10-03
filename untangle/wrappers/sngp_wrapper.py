@@ -958,7 +958,6 @@ class SNGPWrapper(DistributionalWrapper):
         use_input_normalized_gp: bool,
         gp_cov_momentum: float,
         gp_cov_ridge_penalty: float,
-        gp_input_dim: int,
         likelihood: str,
     ):
         super().__init__(model)
@@ -971,7 +970,6 @@ class SNGPWrapper(DistributionalWrapper):
         self._use_input_normalized_gp = use_input_normalized_gp
         self._gp_cov_momentum = gp_cov_momentum
         self._gp_cov_ridge_penalty = gp_cov_ridge_penalty
-        self._gp_input_dim = gp_input_dim
 
         if likelihood not in {"gaussian", "softmax", "sigmoid", "normcdf"}:
             msg = f"Invalid likelihood '{likelihood}' provided"
@@ -979,21 +977,7 @@ class SNGPWrapper(DistributionalWrapper):
 
         self._likelihood = likelihood
 
-        classifier = nn.Sequential()
-
-        if self._gp_input_dim > 0:
-            random_projection = nn.Linear(
-                in_features=self.num_features,
-                out_features=self._gp_input_dim,
-                bias=False,
-            )
-            nn.init.normal_(random_projection.weight, mean=0, std=0.05)
-            random_projection.weight.requires_grad_(False)
-            num_gp_features = self._gp_input_dim
-
-            classifier.append(random_projection)
-        else:
-            num_gp_features = self.num_features
+        num_gp_features = self.num_features
 
         gp_output_layer = GPOutputLayer(
             num_features=num_gp_features,
@@ -1008,9 +992,8 @@ class SNGPWrapper(DistributionalWrapper):
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
             likelihood=self._likelihood,
         )
-        classifier.append(gp_output_layer)
 
-        self._classifier = classifier
+        self._classifier = gp_output_layer
 
         if use_spectral_normalization:
             LSN = partial(
@@ -1074,7 +1057,6 @@ class SNGPWrapper(DistributionalWrapper):
         use_input_normalized_gp: bool | None = None,
         gp_cov_momentum: float | None = None,
         gp_cov_ridge_penalty: float | None = None,
-        gp_input_dim: int | None = None,
         likelihood: str | None = None,
         *args,
         **kwargs,
@@ -1103,29 +1085,13 @@ class SNGPWrapper(DistributionalWrapper):
         if gp_cov_ridge_penalty is not None:
             self._gp_cov_ridge_penalty = gp_cov_ridge_penalty
 
-        if gp_input_dim is not None:
-            self._gp_input_dim = gp_input_dim
-
         if likelihood is not None:
             self._likelihood = likelihood
 
         # Resets global pooling in `self.classifier`
         self.model.reset_classifier(*args, **kwargs)
-        classifier = nn.Sequential()
 
-        if self._gp_input_dim > 0:
-            random_projection = nn.Linear(
-                in_features=self.num_features,
-                out_features=self._gp_input_dim,
-                bias=False,
-            )
-            nn.init.normal_(random_projection.weight, mean=0, std=0.05)
-            random_projection.weight.requires_grad_(False)
-            num_gp_features = self._gp_input_dim
-
-            classifier.append(random_projection)
-        else:
-            num_gp_features = self.num_features
+        num_gp_features = self.num_features
 
         gp_output_layer = GPOutputLayer(
             num_features=num_gp_features,
@@ -1140,9 +1106,8 @@ class SNGPWrapper(DistributionalWrapper):
             gp_cov_ridge_penalty=self._gp_cov_ridge_penalty,
             likelihood=self._likelihood,
         )
-        classifier.append(gp_output_layer)
 
-        self._classifier = classifier
+        self._classifier = gp_output_layer
 
     def reset_covariance_matrix(self):
         self._classifier[-1].reset_covariance_matrix()
