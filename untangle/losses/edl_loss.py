@@ -20,11 +20,11 @@ class EDLLoss(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.curr_batch = 1
+        self.curr_batch = 0
         self.curr_step = 0
         self.max_step = 10 * num_batches
         self.num_batches = num_batches
-        self.curr_epoch = 1
+        self.curr_epoch = 0
         self.start_epoch = start_epoch
         self.scaler = scaler
         self.register_buffer("uniform_alphas", torch.ones((num_classes,)))  # [C]
@@ -81,7 +81,7 @@ class EDLLoss(nn.Module):
             self.curr_step += 1
 
         self.curr_batch += 1
-        if self.curr_batch == self.num_batches:
+        if self.curr_batch == self.num_batches - 1:
             self.curr_epoch += 1
             self.curr_batch = 1
 
