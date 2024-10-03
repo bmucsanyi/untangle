@@ -207,7 +207,7 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
 
 
 class CorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
-    """This module takes a model as input and creates a risk prediction module."""
+    """This module takes a model and creates a correctness prediction module."""
 
     def __init__(
         self,
