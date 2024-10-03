@@ -4,6 +4,7 @@ import argparse
 import ast
 import logging
 import os
+from functools import partial
 from pathlib import Path
 
 from torch import nn
@@ -41,21 +42,20 @@ def module(string):
 
 
 def kwargs(string):
-    kw = {}
-    # Split the string on spaces to get each key-value pair
-    pairs = string.split(" ")
+    def parse_value(value, parsers):
+        for parser in parsers:
+            try:
+                return parser(value)
+            except ValueError:
+                continue
+        return value
 
-    for pair in pairs:
-        # Split each pair on "=" to separate keys and values
-        key, value = pair.split("=", 1)
-        try:
-            # Attempt to parse the value into a Python object
-            kw[key] = ast.literal_eval(value)
-        except ValueError:
-            # Keep the value as a string if parsing fails
-            kw[key] = value
-
-    return kw
+    parsers = [ast.literal_eval, module]
+    parse = partial(parse_value, parsers=parsers)
+    return {
+        key: parse(value)
+        for key, value in (pair.split("=", 1) for pair in string.split())
+    }
 
 
 parser = argparse.ArgumentParser(description="PyTorch training with uncertainty")
@@ -363,29 +363,38 @@ group.add_argument(
 group.add_argument(
     "--use-spectral-normalization",
     action="store_true",
-    help="Whether to use spectral normalization in the SNGP method",
+    help="Whether to use spectral normalization in the SNGP and DDU methods",
 )
 group.add_argument(
     "--spectral-normalization-iteration",
     type=int,
     default=1,
-    help="Number of iterations in the spectral normalization step of the SNGP method",
+    help=(
+        "Number of iterations in the spectral normalization step of the "
+        "SNGP and DDU methods"
+    ),
 )
 group.add_argument(
     "--spectral-normalization-bound",
     type=float,
     default=6,
-    help="Bound of the spectral norm in the SNGP method",
+    help="Bound of the spectral norm in the SNGP and DDU methods",
 )
 group.add_argument(
     "--use-spectral-normalized-batch-norm",
     action="store_true",
-    help="Whether to use spectral normalization for batch norm",
+    help=(
+        "Whether to use spectral normalization for batch norm in the "
+        "SNGP and DDU methods"
+    ),
 )
 group.add_argument(
     "--use-tight-norm-for-pointwise-convs",
     action="store_true",
-    help="Whether to use fully connected spectral normalization for pointwise convs",
+    help=(
+        "Whether to use fully connected spectral normalization for pointwise convs "
+        "in the SNGP and DDU methods"
+    ),
 )
 group.add_argument(
     "--num-random-features",
