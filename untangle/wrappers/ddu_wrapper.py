@@ -103,7 +103,7 @@ class DDUWrapper(TemperatureWrapper):
         if self.training:
             return logits
 
-        logits /= self.temperature
+        logits /= self._temperature
 
         if self._gmm_loc is None:
             logger.warning("GMM has not been fit yet; giving constant EU estimates.")
