@@ -405,6 +405,7 @@ def main():
         use_input_normalized_gp=args.use_input_normalized_gp,
         gp_cov_momentum=args.gp_cov_momentum,
         gp_cov_ridge_penalty=args.gp_cov_ridge_penalty,
+        gp_input_dim=args.gp_input_dim,
         latent_dim=args.latent_dim,
         num_density_components=args.num_density_components,
         use_batched_flow=args.use_batched_flow,

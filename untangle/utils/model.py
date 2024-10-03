@@ -120,6 +120,7 @@ def wrap_model(  # noqa: C901
     use_input_normalized_gp,
     gp_cov_momentum,
     gp_cov_ridge_penalty,
+    gp_input_dim,
     latent_dim,
     num_density_components,
     use_batched_flow,
@@ -264,6 +265,7 @@ def wrap_model(  # noqa: C901
             use_input_normalized_gp=use_input_normalized_gp,
             gp_cov_momentum=gp_cov_momentum,
             gp_cov_ridge_penalty=gp_cov_ridge_penalty,
+            gp_input_dim=gp_input_dim,
             likelihood=likelihood,
         )
     else:
