@@ -971,7 +971,7 @@ class SNGPWrapper(DistributionalWrapper):
         self._gp_cov_momentum = gp_cov_momentum
         self._gp_cov_ridge_penalty = gp_cov_ridge_penalty
 
-        if likelihood not in {"gaussian", "softmax", "sigmoid", "normcdf"}:
+        if likelihood not in {"gaussian", "softmax"}:
             msg = f"Invalid likelihood '{likelihood}' provided"
             raise ValueError(msg)
 
