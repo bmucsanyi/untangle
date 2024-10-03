@@ -106,8 +106,7 @@ class DDUWrapper(TemperatureWrapper):
         logits /= self._temperature
 
         if self._gmm_loc is None:
-            logger.warning("GMM has not been fit yet; giving constant EU estimates.")
-
+            # GMM has not been fit yet; giving constant EU estimates
             gmm_log_density = torch.ones((x.shape[0],))
         else:
             if self._gmm is None:
