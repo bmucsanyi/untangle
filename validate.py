@@ -43,7 +43,7 @@ from untangle.wrappers import (
 logger = logging.getLogger(__name__)
 
 
-def evaluate_bulk(
+def evaluate_on_ood_uniform_test_loaders(
     model,
     loaders,
     device,
@@ -51,8 +51,6 @@ def evaluate_bulk(
     amp_autocast,
     key_prefix,
     output_dir,
-    is_upstream_dataset,
-    is_test_dataset,
     is_soft_dataset,
     args,
 ):
@@ -73,8 +71,8 @@ def evaluate_bulk(
                 amp_autocast=amp_autocast,
                 key_prefix="",
                 output_dir=output_dir,
-                is_upstream_dataset=is_upstream_dataset,
-                is_test_dataset=is_test_dataset,
+                is_upstream_dataset=False,
+                is_test_dataset=True,
                 is_soft_dataset=is_soft_dataset,
                 args=args,
             )
@@ -86,10 +84,60 @@ def evaluate_bulk(
                 f"Finished evaluating {name} - {ood_transform_type}. "
                 f"Took {time_eval:.2f} seconds."
             )
-        add_average(metrics[name])
+        add_average_metric_value(metrics[name])
 
     # Summarize results
-    flattened_metrics = flatten(results=metrics, key_prefix=key_prefix)
+    flattened_metrics = flatten_ood_uniform_metrics(
+        results=metrics, key_prefix=key_prefix
+    )
+
+    return flattened_metrics
+
+
+def evaluate_on_ood_varied_test_loaders(
+    model,
+    loaders,
+    device,
+    storage_device,
+    amp_autocast,
+    key_prefix,
+    output_dir,
+    is_soft_dataset,
+    args,
+):
+    metrics = {}
+
+    for name, loader in loaders.items():
+        metrics[name] = {}
+        logger.info(f"Evaluating {name} - varied...")
+        time_eval_start = time.perf_counter()
+
+        metrics[name] = evaluate(
+            model=model,
+            loader=loader,
+            loader_name=f"{name}_varied",
+            device=device,
+            storage_device=storage_device,
+            amp_autocast=amp_autocast,
+            key_prefix="",
+            output_dir=output_dir,
+            is_upstream_dataset=False,
+            is_test_dataset=True,
+            is_soft_dataset=is_soft_dataset,
+            args=args,
+        )
+
+        time_eval_end = time.perf_counter()
+        time_eval = time_eval_end - time_eval_start
+
+        logger.info(
+            f"Finished evaluating {name} - varied. " f"Took {time_eval:.2f} seconds."
+        )
+
+    # Summarize results
+    flattened_metrics = flatten_ood_varied_metrics(
+        results=metrics, key_prefix=key_prefix
+    )
 
     # Remove tmp file
     upstream_dict_path = Path(f"data/upstream_dict_{os.environ.get('SLURM_JOBID')}.pt")
@@ -98,20 +146,20 @@ def evaluate_bulk(
     return flattened_metrics
 
 
-def add_average(results):
+def add_average_metric_value(metrics):
     # Summarize results
     avg_results = {}
-    first_loader_results = results[next(iter(results.keys()))]
+    first_loader_results = metrics[next(iter(metrics.keys()))]
     for key in first_loader_results:
         if isinstance(first_loader_results[key], Number):
             result_vector = torch.tensor([
-                loader_result[key] for _, loader_result in results.items()
+                loader_result[key] for _, loader_result in metrics.items()
             ])
             avg_results[key] = result_vector.mean().item()
-    results["avg"] = avg_results
+    metrics["avg"] = avg_results
 
 
-def flatten(results, key_prefix):
+def flatten_ood_uniform_metrics(results, key_prefix):
     # Flatten output
     flattened_results = {}
     for name, results_subset in results.items():
@@ -120,6 +168,16 @@ def flatten(results, key_prefix):
                 flattened_results[f"{key_prefix}_{name}_{ood_transform_type}_{key}"] = (
                     value
                 )
+
+    return flattened_results
+
+
+def flatten_ood_varied_metrics(results, key_prefix):
+    # Flatten output
+    flattened_results = {}
+    for name, results_subset in results.items():
+        for key, value in results_subset.items():
+            flattened_results[f"{key_prefix}_{name}_varied_{key}"] = value
 
     return flattened_results
 
@@ -155,7 +213,7 @@ def evaluate(
 
     if is_test_dataset:
         ood_prefix = "id" if is_upstream_dataset else "ood"
-        save_prefix = f"{ood_prefix}_test_{loader_name.replace('/', '_')}_"
+        save_prefix = f"{ood_prefix}_test_{loader_name}_"
 
         metrics = evaluate_on_tasks(
             model=model,
@@ -321,7 +379,7 @@ def evaluate(
 
         ood_prefix = "id" if is_upstream_dataset else "ood"
         save_prefix = (
-            f"{ood_prefix}_test_{loader_name.replace('/', '_')}_mixed_"
+            f"{ood_prefix}_test_{loader_name}_mixed_"
             f"{args.dataset_id.replace('/', '_')}_"
         )
 

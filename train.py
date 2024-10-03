@@ -39,7 +39,11 @@ from untangle.wrappers import (
     SWAGWrapper,
     TemperatureWrapper,
 )
-from validate import evaluate, evaluate_bulk
+from validate import (
+    evaluate,
+    evaluate_on_ood_uniform_test_loaders,
+    evaluate_on_ood_varied_test_loaders,
+)
 
 # TODO(bmucsanyi): Remove Namespace from safe globals once the old checkpoints are not
 # used
@@ -292,9 +296,10 @@ def test(
     optimizer,
     train_loader,
     hard_id_eval_loader,
-    mixed_s2_eval_loader,
+    varied_s2_eval_loader,
     id_test_loader,
-    ood_test_loaders,
+    ood_uniform_test_loaders,
+    ood_varied_test_loaders,
     saver,
     amp_autocast,
     device,
@@ -316,14 +321,15 @@ def test(
         model=model,
         train_loader=train_loader,
         hard_id_eval_loader=hard_id_eval_loader,
-        mixed_s2_eval_loader=mixed_s2_eval_loader,
+        varied_s2_eval_loader=varied_s2_eval_loader,
         args=args,
     )
 
     best_test_metrics = evaluate_on_test_sets(
         model=model,
         id_test_loader=id_test_loader,
-        ood_test_loaders=ood_test_loaders,
+        ood_uniform_test_loaders=ood_uniform_test_loaders,
+        ood_varied_test_loaders=ood_varied_test_loaders,
         device=device,
         storage_device=storage_device,
         amp_autocast=amp_autocast,
@@ -423,8 +429,9 @@ def main():
         id_eval_loader,
         hard_id_eval_loader,
         id_test_loader,
-        ood_test_loaders,
-        mixed_s2_eval_loader,
+        ood_uniform_test_loaders,
+        ood_varied_test_loaders,
+        varied_s2_eval_loader,
     ) = create_loaders(
         data_config=data_config,
         args=args,
@@ -489,9 +496,10 @@ def main():
                 optimizer,
                 train_loader,
                 hard_id_eval_loader,
-                mixed_s2_eval_loader,
+                varied_s2_eval_loader,
                 id_test_loader,
-                ood_test_loaders,
+                ood_uniform_test_loaders,
+                ood_varied_test_loaders,
                 saver,
                 amp_autocast,
                 device,
@@ -506,7 +514,8 @@ def main():
 def evaluate_on_test_sets(
     model,
     id_test_loader,
-    ood_test_loaders,
+    ood_uniform_test_loaders,
+    ood_varied_test_loaders,
     device,
     storage_device,
     amp_autocast,
@@ -532,16 +541,26 @@ def evaluate_on_test_sets(
     if discard_ood_test_sets:
         return best_test_metrics
 
-    best_test_metrics |= evaluate_bulk(
+    best_test_metrics |= evaluate_on_ood_uniform_test_loaders(
         model=model,
-        loaders=ood_test_loaders,
+        loaders=ood_uniform_test_loaders,
         device=device,
         storage_device=storage_device,
         amp_autocast=amp_autocast,
         key_prefix="ood_test",
         output_dir=output_dir,
-        is_upstream_dataset=False,
-        is_test_dataset=True,
+        is_soft_dataset="soft" in args.dataset_id,
+        args=args,
+    )
+
+    best_test_metrics |= evaluate_on_ood_varied_test_loaders(
+        model=model,
+        loaders=ood_varied_test_loaders,
+        device=device,
+        storage_device=storage_device,
+        amp_autocast=amp_autocast,
+        key_prefix="ood_test",
+        output_dir=output_dir,
         is_soft_dataset="soft" in args.dataset_id,
         args=args,
     )
@@ -634,7 +653,7 @@ def create_datasets(args, data_config):
         convert_soft_labels_to_hard=True,
     )
 
-    mixed_s2_eval_dataset = create_dataset(
+    varied_s2_eval_dataset = create_dataset(
         name=args.dataset_id,
         root=args.data_dir_id,
         label_root=args.soft_imagenet_label_dir,
@@ -661,7 +680,8 @@ def create_datasets(args, data_config):
 
     dataset_locations_ood_test = {}
     for severity in args.severities:
-        dataset_locations_ood_test[f"{args.dataset_id}S{severity}"] = args.data_dir_id
+        dataset_name = args.dataset_id.replace("/", "_")
+        dataset_locations_ood_test[f"{dataset_name}S{severity}"] = args.data_dir_id
 
     id_test_dataset = create_dataset(
         name=args.dataset_id,
@@ -688,13 +708,13 @@ def create_datasets(args, data_config):
         convert_soft_labels_to_hard=False,
     )
 
-    ood_test_datasets = {}
+    ood_uniform_test_datasets = {}
     for name, location in dataset_locations_ood_test.items():
-        ood_test_datasets[name] = {}
+        ood_uniform_test_datasets[name] = {}
 
         for ood_transform_type in args.ood_transforms_test:
-            ood_test_datasets[name][ood_transform_type] = create_dataset(
-                name=name[:-2],
+            ood_uniform_test_datasets[name][ood_transform_type] = create_dataset(
+                name=args.dataset_id,
                 root=location,
                 label_root=args.soft_imagenet_label_dir,
                 split=args.test_split,
@@ -718,13 +738,43 @@ def create_datasets(args, data_config):
                 convert_soft_labels_to_hard=False,
             )
 
+    ood_varied_test_datasets = {}
+    for name, location in dataset_locations_ood_test.items():
+        ood_varied_test_datasets[name] = {}
+
+        ood_varied_test_datasets[name] = create_dataset(
+            name=args.dataset_id,
+            root=location,
+            label_root=args.soft_imagenet_label_dir,
+            split=args.test_split,
+            download=args.dataset_download,
+            seed=args.seed,
+            subset=1.0,
+            input_size=data_config["input_size"],
+            padding=args.padding,
+            is_training_dataset=False,
+            use_prefetcher=args.prefetcher,
+            scale=args.scale,
+            ratio=args.ratio,
+            hflip=args.hflip,
+            color_jitter=args.color_jitter,
+            interpolation=data_config["interpolation"],
+            mean=data_config["mean"],
+            std=data_config["std"],
+            crop_pct=data_config["crop_pct"],
+            ood_transform_type=args.ood_transforms_test,
+            severity=int(name[-1]),
+            convert_soft_labels_to_hard=False,
+        )
+
     return (
         train_dataset,
         id_eval_dataset,
         hard_id_eval_dataset,
         id_test_dataset,
-        ood_test_datasets,
-        mixed_s2_eval_dataset,
+        ood_uniform_test_datasets,
+        ood_varied_test_datasets,
+        varied_s2_eval_dataset,
     )
 
 
@@ -734,8 +784,9 @@ def create_loaders(args, data_config, device):
         id_eval_dataset,
         hard_id_eval_dataset,
         id_test_dataset,
-        ood_test_datasets,
-        mixed_s2_eval_dataset,
+        ood_uniform_test_datasets,
+        ood_varied_test_datasets,
+        varied_s2_eval_dataset,
     ) = create_datasets(args, data_config)
 
     train_loader = create_loader(
@@ -777,8 +828,8 @@ def create_loaders(args, data_config, device):
         device=device,
     )
 
-    mixed_s2_eval_loader = create_loader(
-        dataset=mixed_s2_eval_dataset,
+    varied_s2_eval_loader = create_loader(
+        dataset=varied_s2_eval_dataset,
         batch_size=args.validation_batch_size or args.batch_size,
         is_training_dataset=False,
         use_prefetcher=args.prefetcher,
@@ -803,12 +854,12 @@ def create_loaders(args, data_config, device):
         device=device,
     )
 
-    ood_test_loaders = {}
-    for name, dataset_subset in ood_test_datasets.items():
-        ood_test_loaders[name] = {}
+    ood_uniform_test_loaders = {}
+    for name, dataset_subset in ood_uniform_test_datasets.items():
+        ood_uniform_test_loaders[name] = {}
 
         for ood_transform_type, dataset in dataset_subset.items():
-            ood_test_loaders[name][ood_transform_type] = create_loader(
+            ood_uniform_test_loaders[name][ood_transform_type] = create_loader(
                 dataset=dataset,
                 batch_size=args.validation_batch_size or args.batch_size,
                 is_training_dataset=False,
@@ -821,13 +872,29 @@ def create_loaders(args, data_config, device):
                 device=device,
             )
 
+    ood_varied_test_loaders = {}
+    for name, dataset in ood_varied_test_datasets.items():
+        ood_varied_test_loaders[name] = create_loader(
+            dataset=dataset,
+            batch_size=args.validation_batch_size or args.batch_size,
+            is_training_dataset=False,
+            use_prefetcher=args.prefetcher,
+            mean=data_config["mean"],
+            std=data_config["std"],
+            num_workers=args.num_eval_workers,
+            pin_memory=args.pin_memory,
+            persistent_workers=False,
+            device=device,
+        )
+
     return (
         train_loader,
         id_eval_loader,
         hard_id_eval_loader,
         id_test_loader,
-        ood_test_loaders,
-        mixed_s2_eval_loader,
+        ood_uniform_test_loaders,
+        ood_varied_test_loaders,
+        varied_s2_eval_loader,
     )
 
 
@@ -937,7 +1004,7 @@ def train_one_epoch(
 
 
 def update_post_hoc_method(
-    model, train_loader, hard_id_eval_loader, mixed_s2_eval_loader, args
+    model, train_loader, hard_id_eval_loader, varied_s2_eval_loader, args
 ):
     if isinstance(model, LaplaceWrapper):
         if hard_id_eval_loader is None:
@@ -945,7 +1012,7 @@ def update_post_hoc_method(
             raise ValueError(msg)
         model.perform_laplace_approximation(train_loader, hard_id_eval_loader)
     elif isinstance(model, MahalanobisWrapper):
-        if hard_id_eval_loader is None or mixed_s2_eval_loader is None:
+        if hard_id_eval_loader is None or varied_s2_eval_loader is None:
             msg = (
                 "For the Mahalanobis method, the ID and OOD eval loaders have to be "
                 "specified."
@@ -954,12 +1021,13 @@ def update_post_hoc_method(
         model.train_logistic_regressor(
             train_loader,
             hard_id_eval_loader,
-            mixed_s2_eval_loader,
+            varied_s2_eval_loader,
             args.max_num_covariance_samples,
             args.max_num_id_ood_train_samples,
         )
     elif isinstance(model, DDUWrapper):
         model.fit_gmm(train_loader, args.max_num_id_train_samples)
+        model.set_temperature_loader(hard_id_eval_loader)
     elif isinstance(model, TemperatureWrapper) and args.use_temperature_scaling:
         model.set_temperature_loader(hard_id_eval_loader)
     elif isinstance(model, SWAGWrapper):
