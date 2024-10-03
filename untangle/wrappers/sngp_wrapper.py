@@ -170,7 +170,11 @@ class GPOutputLayer(nn.Module):
                 for i, cov_layer in enumerate(self._gp_cov_layers):
                     gp_vars[:, i] = cov_layer(gp_features)
 
-        return {"logit": self.monte_carlo_sample_logits(gp_outputs, gp_vars)}
+        return {
+            "logit": self.monte_carlo_sample_logits(
+                logits=gp_outputs, vars=gp_vars, num_samples=self._num_mc_samples
+            )
+        }
 
     @staticmethod
     def _orthogonal_random_features_initializer(tensor, std):
