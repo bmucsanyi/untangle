@@ -186,6 +186,17 @@ def setup_scheduler(optimizer, train_loader, args):
     return lr_scheduler, num_epochs
 
 
+@torch.no_grad()
+def initialize_lazy_modules(model, amp_autocast, data_config, device, args):
+    dummy_input = torch.randn(
+        args.batch_size,
+        *tuple(data_config["input_size"]),
+    ).to(device)
+
+    with amp_autocast():
+        model(dummy_input)
+
+
 def train(
     num_epochs,
     model,
@@ -359,6 +370,7 @@ def main():
 
     set_random_seed(args.seed)
     data_config = resolve_data_config(vars(args))
+    amp_autocast, loss_scaler = setup_amp(device, args)
 
     model = create_model(
         model_name=args.model_name,
@@ -425,11 +437,7 @@ def main():
             raise ValueError(msg)
 
         # Initialize LazyModules in model before switching memory format
-        dummy_input = torch.randn(
-            args.batch_size,
-            *tuple(data_config["input_size"]),
-        ).to(device)
-        model(dummy_input)
+        initialize_lazy_modules(model, amp_autocast, data_config, device, args)
 
         model.to(memory_format=torch.channels_last)
 
@@ -438,7 +446,6 @@ def main():
         model,
         **optimizer_kwargs(args=args),
     )
-    amp_autocast, loss_scaler = setup_amp(device, args)
     setup_compile(model, args)
 
     (
