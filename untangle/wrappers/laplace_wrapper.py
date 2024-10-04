@@ -40,7 +40,7 @@ class LaplaceWrapper(DistributionalWrapper):
 
         self._load_model()
 
-    def perform_laplace_approximation(self, train_loader, val_loader):
+    def perform_laplace_approximation(self, train_loader, val_loader, args):
         with torch.enable_grad():
             self._laplace_model = Laplace(
                 self.model,
@@ -55,6 +55,7 @@ class LaplaceWrapper(DistributionalWrapper):
         logger.info("Starting prior precision optimization.")
         self._optimize_prior_precision_cv(
             val_loader=val_loader,
+            args=args,
         )
         logger.info("Prior precision optimization done.")
 
@@ -99,6 +100,7 @@ class LaplaceWrapper(DistributionalWrapper):
     def _optimize_prior_precision_cv(
         self,
         val_loader,
+        args,
         log_prior_prec_min=-1,
         log_prior_prec_max=2,
         grid_size=100,
@@ -107,6 +109,7 @@ class LaplaceWrapper(DistributionalWrapper):
         self._laplace_model.prior_precision = self._gridsearch(
             interval=interval,
             val_loader=val_loader,
+            args=args,
         )
 
         logger.info(
@@ -117,6 +120,7 @@ class LaplaceWrapper(DistributionalWrapper):
         self,
         interval,
         val_loader,
+        args,
     ):
         results = []
         prior_precs = []
@@ -126,9 +130,7 @@ class LaplaceWrapper(DistributionalWrapper):
             self._laplace_model.prior_precision = prior_prec
 
             try:
-                out_dist, targets = self._validate(
-                    val_loader=val_loader,
-                )
+                out_dist, targets = self._validate(val_loader=val_loader, args=args)
                 result = self._get_ece(out_dist, targets).item()
                 accuracy = out_dist.argmax(dim=-1).eq(targets).float().mean()
             except RuntimeError as error:
@@ -145,15 +147,15 @@ class LaplaceWrapper(DistributionalWrapper):
         return prior_precs[np.argmin(results)]
 
     @torch.no_grad()
-    def _validate(self, val_loader):
+    def _validate(self, val_loader, args):
         self.model.eval()
         device = self._laplace_model._device  # noqa: SLF001
         output_means = []
         targets = []
 
         for input, target in val_loader:
-            input = input.to(device)
-            target = target.to(device)
+            if not args.prefetcher:
+                input, target = input.to(device), target.to(device)
 
             feature = self.model.forward_head(
                 self.model.forward_features(input), pre_logits=True

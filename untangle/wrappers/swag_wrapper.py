@@ -69,11 +69,13 @@ class SWAGWrapper(DistributionalWrapper):
         msg = f"forward_head cannot be called directly for {type(self)}"
         raise ValueError(msg)
 
-    def get_mc_samples(self, train_loader, num_mc_samples):
+    def get_mc_samples(self, train_loader, num_mc_samples, args):
         logger.info("Starting MC sampling the SWAG weights.")
         for i in range(num_mc_samples):
             time_start = time.perf_counter()
-            self._sample_and_store_params(train_loader=train_loader, fraction=0.1)
+            self._sample_and_store_params(
+                train_loader=train_loader, fraction=0.1, args=args
+            )
             time_end = time.perf_counter()
             logger.info(
                 f"Sample {i + 1}/{num_mc_samples} took "
@@ -208,7 +210,7 @@ class SWAGWrapper(DistributionalWrapper):
         return self._sampled_params_swag.shape[0]
 
     @torch.no_grad()
-    def _sample_and_store_params(self, train_loader, fraction):
+    def _sample_and_store_params(self, train_loader, fraction, args):
         mean_list = []
         sq_mean_list = []
 
@@ -244,7 +246,9 @@ class SWAGWrapper(DistributionalWrapper):
             [self._sampled_params_swag, sample.unsqueeze(dim=0)], dim=0
         )
         self._unflatten_and_set_params(sample)
-        self._set_and_store_bn_stats(train_loader=train_loader, fraction=fraction)
+        self._set_and_store_bn_stats(
+            train_loader=train_loader, fraction=fraction, args=args
+        )
 
     def _set_model(self, model_index):
         if model_index >= self.num_models or model_index < 0:
@@ -321,7 +325,7 @@ class SWAGWrapper(DistributionalWrapper):
         return flag[0]
 
     @torch.no_grad()
-    def _set_and_store_bn_stats(self, train_loader, fraction=None):
+    def _set_and_store_bn_stats(self, train_loader, fraction, args):
         """Updates and saves the BatchNorm buffers using a `fraction` of `loader`."""
         device = next(self.model.parameters()).device
 
@@ -340,7 +344,12 @@ class SWAGWrapper(DistributionalWrapper):
 
         num_inputs = 0
         for input, _ in train_loader:
-            input = input.to(device)
+            if not args.prefetcher:
+                input = input.to(device)
+
+            if args.channels_last:
+                input = input.contiguous(memory_format=torch.channels_last)
+
             batch_size = input.shape[0]
 
             momentum = batch_size / (num_inputs + batch_size)

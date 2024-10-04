@@ -744,6 +744,11 @@ group.add_argument(
     help="Use fast prefetcher",
 )
 group.add_argument(
+    "--channels-last",
+    action="store_true",
+    help="Use channels_last memory layout",
+)
+group.add_argument(
     "--eval-metric",
     type=str,
     default="id_eval_one_minus_max_probs_of_bma_auroc_hard_bma_correctness",

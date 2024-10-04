@@ -94,11 +94,14 @@ class MahalanobisWrapper(SpecialWrapper):
         train_loader,
         id_loader,
         ood_loader,
-        max_num_training_samples=None,
-        max_num_id_ood_samples=None,
+        max_num_training_samples,
+        max_num_id_ood_samples,
+        args,
     ):
         self._calculate_gaussian_parameters(
-            train_loader=train_loader, max_num_training_samples=max_num_training_samples
+            train_loader=train_loader,
+            max_num_training_samples=max_num_training_samples,
+            args=args,
         )
 
         num_id_samples = len(id_loader.dataset)
@@ -112,14 +115,14 @@ class MahalanobisWrapper(SpecialWrapper):
             )
 
         # Get Mahalanobis scores for in-distribution data
-        mahalanobis_scores_id = self._calculate_noisy_mahalanobis_scores_dataloader(
-            dataloader=id_loader, max_num_samples=max_num_id_ood_samples
+        mahalanobis_scores_id = self._calculate_noisy_mahalanobis_scores_loader(
+            loader=id_loader, max_num_samples=max_num_id_ood_samples, args=args
         )
         labels_id = torch.zeros(mahalanobis_scores_id.shape[0])
 
         # Get Mahalanobis scores for out-of-distribution data
-        mahalanobis_scores_ood = self._calculate_noisy_mahalanobis_scores_dataloader(
-            dataloader=ood_loader, max_num_samples=max_num_id_ood_samples
+        mahalanobis_scores_ood = self._calculate_noisy_mahalanobis_scores_loader(
+            loader=ood_loader, max_num_samples=max_num_id_ood_samples, args=args
         )
         labels_ood = torch.ones(mahalanobis_scores_ood.shape[0])
 
@@ -205,21 +208,24 @@ class MahalanobisWrapper(SpecialWrapper):
 
         return noisy_mahalanobis_scores.cpu()  # [B, L]
 
-    def _calculate_noisy_mahalanobis_scores_dataloader(
-        self, dataloader, max_num_samples
-    ):
-        """Compute Mahalanobis confidence score on input dataloader."""
+    def _calculate_noisy_mahalanobis_scores_loader(self, loader, max_num_samples, args):
+        """Compute Mahalanobis confidence score on input loader."""
         mahalanobis_scores = torch.empty(0)
 
         num_samples = 0
         device = next(self.model.parameters()).device
-        for inputs, _ in dataloader:
+        for inputs, _ in loader:
             if num_samples + inputs.shape[0] > max_num_samples:
                 overhead = num_samples + inputs.shape[0] - max_num_samples
                 modified_batch_size = inputs.shape[0] - overhead
                 inputs = inputs[:modified_batch_size]
 
-            inputs = inputs.to(device)
+            if not args.prefetcher:
+                inputs = inputs.to(device)
+
+            if args.channels_last:
+                inputs = inputs.contiguous(memory_format=torch.channels_last)
+
             noisy_mahalanobis_scores = self._calculate_noisy_mahalanobis_scores(
                 inputs
             )  # [B, L]
@@ -278,7 +284,9 @@ class MahalanobisWrapper(SpecialWrapper):
         self._logistic_regressor.coef_ = self.logistic_regressor_coef.numpy()
         self._logistic_regressor.intercept_ = self._logistic_regressor_intercept.numpy()
 
-    def _calculate_gaussian_parameters(self, train_loader, max_num_training_samples):
+    def _calculate_gaussian_parameters(
+        self, train_loader, max_num_training_samples, args
+    ):
         if max_num_training_samples is None:
             max_num_training_samples = len(train_loader.dataset)
 
@@ -302,7 +310,14 @@ class MahalanobisWrapper(SpecialWrapper):
                 inputs = inputs[:modified_batch_size]
                 targets = targets[:modified_batch_size]
 
-            inputs = inputs.to(device)
+            if not args.prefetcher:
+                inputs = inputs.to(device)
+            else:
+                targets = targets.cpu()
+
+            if args.channels_last:
+                inputs = inputs.contiguous(memory_format=torch.channels_last)
+
             self._feature_list.clear()
             self.model(inputs)
             feature_list = self._feature_list
@@ -311,9 +326,7 @@ class MahalanobisWrapper(SpecialWrapper):
             for layer_idx, feature in enumerate(feature_list):
                 feature = feature.detach().cpu()
                 for class_idx in range(num_classes):
-                    class_features = feature[
-                        targets.cpu() == class_idx
-                    ]  # [N_{LC}, D_L]
+                    class_features = feature[targets == class_idx]  # [N_{LC}, D_L]
                     if class_features.shape[0] > 0:
                         features_per_class_per_layer[layer_idx][class_idx].append(
                             class_features

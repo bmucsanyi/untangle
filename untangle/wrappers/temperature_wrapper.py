@@ -36,7 +36,7 @@ class TemperatureWrapper(SpecialWrapper):
             return out
         return {"logit": out}
 
-    def set_temperature_loader(self, val_loader):
+    def set_temperature_loader(self, val_loader, args):
         device = next(self.model.parameters()).device
 
         # First: collect all the logits and labels for the validation set
@@ -44,7 +44,12 @@ class TemperatureWrapper(SpecialWrapper):
         labels_list = []
         with torch.no_grad():
             for input, label in val_loader:
-                input = input.to(device)
+                if not args.prefetcher:
+                    input, label = input.to(device), label.to(device)
+
+                if args.channels_last:
+                    input = input.contiguous(memory_format=torch.channels_last)
+
                 logits = self.model(input)
                 logits_list.append(logits)
                 labels_list.append(label)

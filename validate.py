@@ -1982,8 +1982,10 @@ def forward_general_model_on_loader(
         indices = slice(current_ind, current_ind + input.shape[0])
 
         if not args.prefetcher:
-            input = input.to(device)
-            label = label.to(device)
+            input, label = input.to(device), label.to(device)
+
+        if args.channels_last:
+            input = input.contiguous(memory_format=torch.channels_last)
 
         if is_soft_dataset:
             hard_label = label[:, -1]

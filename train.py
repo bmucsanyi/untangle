@@ -72,7 +72,7 @@ def setup_devices(args):
 def setup_compile(model, args):
     if args.compile:
         if args.method_name == "deep_ensemble":
-            msg = "Compile not supported for deep ensembles"
+            msg = "torch.compile is not supported for deep ensembles"
             raise ValueError(msg)
         model.model = torch.compile(model.model, backend=args.compile)
 
@@ -87,6 +87,9 @@ def setup_amp(device, args):
         if args.amp_dtype not in {"float16", "bfloat16"}:
             msg = f"Invalid amp_dtype={args.amp_dtype} provided"
             raise ValueError(msg)
+
+        if args.method_name == "laplace":
+            msg = "AMP is not supported for the Laplace method"
 
         amp_dtype = torch.bfloat16 if args.amp_dtype == "bfloat16" else torch.float16
 
@@ -415,6 +418,13 @@ def main():
 
     # Move model to device
     model.to(device=device)
+
+    if args.channels_last:
+        if args.method_name == "laplace":
+            msg = "--channels-last not supported for Laplace"
+            raise ValueError(msg)
+
+        model.to(memory_format=torch.channels_last)
 
     setup_learning_rate(args)
     optimizer = create_optimizer_v2(
@@ -947,6 +957,9 @@ def train_one_epoch(
         if not args.prefetcher:
             input, target = input.to(device), target.to(device)
 
+        if args.channels_last:
+            input = input.contiguous(memory_format=torch.channels_last)
+
         if isinstance(model, DUQWrapper):
             input, target = model.prepare_data(input, target)
 
@@ -1010,7 +1023,7 @@ def update_post_hoc_method(
         if hard_id_eval_loader is None:
             msg = "For Laplace approximation, the ID eval loader has to be specified."
             raise ValueError(msg)
-        model.perform_laplace_approximation(train_loader, hard_id_eval_loader)
+        model.perform_laplace_approximation(train_loader, hard_id_eval_loader, args)
     elif isinstance(model, MahalanobisWrapper):
         if hard_id_eval_loader is None or varied_s2_eval_loader is None:
             msg = (
@@ -1024,15 +1037,16 @@ def update_post_hoc_method(
             varied_s2_eval_loader,
             args.max_num_covariance_samples,
             args.max_num_id_ood_train_samples,
+            args,
         )
     elif isinstance(model, DDUWrapper):
-        model.fit_gmm(train_loader, args.max_num_id_train_samples)
-        model.set_temperature_loader(hard_id_eval_loader)
+        model.fit_gmm(train_loader, args.max_num_id_train_samples, args)
+        model.set_temperature_loader(hard_id_eval_loader, args)
     elif isinstance(model, TemperatureWrapper) and args.use_temperature_scaling:
-        model.set_temperature_loader(hard_id_eval_loader)
+        model.set_temperature_loader(hard_id_eval_loader, args)
     elif isinstance(model, SWAGWrapper):
         model.get_mc_samples(
-            train_loader=train_loader, num_mc_samples=args.num_mc_samples
+            train_loader=train_loader, num_mc_samples=args.num_mc_samples, args=args
         )
 
 

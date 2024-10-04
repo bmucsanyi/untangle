@@ -125,13 +125,15 @@ class DDUWrapper(TemperatureWrapper):
             "gmm_neg_log_density": -gmm_log_density,
         }
 
-    def fit_gmm(self, train_loader, max_num_training_samples):
+    def fit_gmm(self, train_loader, max_num_training_samples, args):
         features, labels = self._get_features(
-            train_loader=train_loader, max_num_training_samples=max_num_training_samples
+            train_loader=train_loader,
+            max_num_training_samples=max_num_training_samples,
+            args=args,
         )
         self._get_gmm(features=features, labels=labels)
 
-    def _get_features(self, train_loader, max_num_training_samples):
+    def _get_features(self, train_loader, max_num_training_samples, args):
         batch_size = train_loader.batch_size
         dataset_size = len(train_loader.dataset)
         drop_last = train_loader.drop_last
@@ -164,7 +166,13 @@ class DDUWrapper(TemperatureWrapper):
                 input = input[:actual_batch_size]
                 label = label[:actual_batch_size]
 
-                input = input.to(device)
+                if not args.prefetcher:
+                    input = input.to(device)
+                else:
+                    label = label.cpu()
+
+                if args.channels_last:
+                    input = input.contiguous(memory_format=torch.channels_last)
 
                 feature = self.model.forward_head(
                     self.model.forward_features(input), pre_logits=True
@@ -173,7 +181,7 @@ class DDUWrapper(TemperatureWrapper):
                 end = current_num_samples + actual_batch_size
 
                 features[current_num_samples:end] = feature.detach().cpu()
-                labels[current_num_samples:end] = label.detach().cpu()
+                labels[current_num_samples:end] = label
 
                 current_num_samples += actual_batch_size
 
