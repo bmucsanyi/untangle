@@ -2179,6 +2179,9 @@ def forward_deep_ensemble_on_loader(
             if not args.prefetcher:
                 input = input.to(device)
 
+            if args.channels_last:
+                input = input.contiguous(memory_format=torch.channels_last)
+
             time_forward_start = time.perf_counter()
             with amp_autocast():
                 inference_dict = model(input)
@@ -2200,8 +2203,8 @@ def forward_deep_ensemble_on_loader(
     time_forwards_sum = time_forwards.sum(dim=-1)
 
     current_ind = 0
-    for i, (input, label) in enumerate(loader):
-        batch_size = input.shape[0]
+    for i, (_, label) in enumerate(loader):
+        batch_size = label.shape[0]
         indices = slice(current_ind, current_ind + batch_size)
 
         inference_dict = {
