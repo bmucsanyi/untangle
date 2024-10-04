@@ -424,6 +424,13 @@ def main():
             msg = "--channels-last not supported for Laplace"
             raise ValueError(msg)
 
+        # Initialize LazyModules in model before switching memory format
+        dummy_input = torch.randn(
+            args.batch_size,
+            *tuple(data_config["input_size"]),
+        ).to(device)
+        model(dummy_input)
+
         model.to(memory_format=torch.channels_last)
 
     setup_learning_rate(args)
