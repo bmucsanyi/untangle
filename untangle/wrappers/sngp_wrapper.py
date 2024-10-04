@@ -811,7 +811,7 @@ class Conv2dSpectralNormalizer(nn.Module):
             )
 
             self._v = F.normalize(
-                input=v_shaped.view(-1), dim=0, eps=self._eps, out=self._v
+                input=v_shaped.contiguous().view(-1), dim=0, eps=self._eps, out=self._v
             )
 
             v_padded = F.pad(
@@ -828,7 +828,7 @@ class Conv2dSpectralNormalizer(nn.Module):
             )
 
             self._u = F.normalize(
-                input=u_shaped.view(-1), dim=0, eps=self._eps, out=self._u
+                input=u_shaped.contiguous().view(-1), dim=0, eps=self._eps, out=self._u
             )
 
 
