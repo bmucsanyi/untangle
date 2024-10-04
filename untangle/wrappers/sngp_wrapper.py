@@ -576,7 +576,7 @@ class Conv2dSpectralNormalizer(nn.Module):
         )
 
         # Estimate largest singular value
-        sigma = weight_v.view(-1) @ u.view(-1)
+        sigma = weight_v.contiguous().view(-1) @ u.view(-1)
 
         # Calculate factor to divide weight by; pay attention to numerical stability
         division_factor = torch.max(
