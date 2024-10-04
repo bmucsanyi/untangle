@@ -130,9 +130,9 @@ def setup_learning_rate(args):
         )
 
 
-def setup_wrapper(model, train_loader):
+def setup_wrapper(model, train_loader, args):
     if isinstance(model, PostNetWrapper):
-        model.calculate_sample_counts(train_loader)
+        model.calculate_sample_counts(train_loader, args)
 
 
 def verify_eval_metric(args):
@@ -462,7 +462,7 @@ def main():
         device=device,
     )
 
-    setup_wrapper(model, train_loader)
+    setup_wrapper(model, train_loader, args)
 
     train_loss_fn = create_loss_fn(args=args, num_batches=len(train_loader))
     train_loss_fn = train_loss_fn.to(device=device)
