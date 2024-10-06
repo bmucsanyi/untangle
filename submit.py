@@ -42,7 +42,7 @@ parser.add_argument(
     default=Path("/mnt/lustre/work/oh/owl569/datasets"),
     help="Root path of datasets",
 )
-parser.add_argument("--job-name", type=str, default="untangle", help="Job name")
+parser.add_argument("--job-name", type=str, default=None, help="Job name")
 parser.add_argument(
     "--partition",
     type=str,
@@ -122,7 +122,7 @@ class SlurmJob:
     def __init__(
         self,
         cmd_str: str,
-        job_name: str,
+        job_name: str | None,
         partition: str,
         cpus_per_task: int,
         mem_per_cpu: str | None,
@@ -134,13 +134,13 @@ class SlurmJob:
         exclude: str | None,
         mail_type: str | None,
         mail_user: str | None,
-    ):
+    ) -> None:
         """SlurmJob constructor that stores (and check some of the) parameters.
 
         Args:
             cmd_str: The command line string for executing the actual program code
                 (and potential setup code), e.g., `"python train.py <ARGS>"`.
-            job_name: Name of the Slurm job.
+            job_name: Name of the Slurm job. If None, it becomes the sweep ID.
             partition: This setting specifies the partition. For a complete
                 list of available partitions, execute the Slurm command
                 `sinfo -s`. Examples:
@@ -209,7 +209,7 @@ class SlurmJob:
 
         self._output_file_path = self._create_file_paths()
 
-    def submit(self):
+    def submit(self) -> None:
         """Submits the job to Slurm.
 
         Creates a temporary bash script, executes it, and finally deletes it. Note that
@@ -237,7 +237,7 @@ class SlurmJob:
             bash_file_path.unlink()
 
     @staticmethod
-    def _check_job_name(job_name):
+    def _check_job_name(job_name: str) -> None:
         """Validates the job name.
 
         The job name must only contain letters, numbers, underscores, and hyphens.
@@ -249,7 +249,7 @@ class SlurmJob:
             raise ValueError(msg)
 
     @staticmethod
-    def _check_memory_format(mem):
+    def _check_memory_format(mem: str) -> None:
         """Validates the format of `mem` or `mem_per_cpu`.
 
         For example, `"13.4M"` (for 13.4 megabytes) or `"8G"` (for 8 gigabytes) are
@@ -262,7 +262,7 @@ class SlurmJob:
             raise ValueError(msg)
 
     @staticmethod
-    def _check_time_format(time):
+    def _check_time_format(time: str) -> None:
         """Ensures that `time` has the right format D-HH:MM:SS."""
         time_format = r"^(\d{1})-(\d{2}):(\d{2}):(\d{2})$"
 
@@ -270,15 +270,23 @@ class SlurmJob:
             msg = "Time not in format D-HH:MM:SS"
             raise ValueError(msg)
 
-    def _create_file_paths(self):
-        """Creates absolute output and error file paths based on `self.job_name`."""
+    def _create_file_paths(self) -> Path:
+        """Creates absolute output and error file paths based on `self.job_name`.
+
+        Returns:
+            The resolved path for the output file.
+        """
         # `%j` is a placeholder for the job-id and will be filled in by Slurm
         output_path = self._log_path / f"%j_{self._job_name}.out"
 
         return output_path.resolve()
 
-    def _create_sbatch_str(self):
-        """Creates the configuration string that contains the `SBATCH` commands."""
+    def _create_sbatch_str(self) -> str:
+        """Creates the configuration string that contains the `SBATCH` commands.
+
+        Returns:
+            A string containing all the SBATCH commands for job configuration.
+        """
         mem_option = (
             f"--mem={self._mem}"
             if self._mem is not None
@@ -310,21 +318,31 @@ class SlurmJob:
         return sbatch_str
 
     @staticmethod
-    def _create_scontrol_str():
+    def _create_scontrol_str() -> str:
         """Creates the `scontrol` string.
 
         The returned command prints important information to the output file.
+
+        Returns:
+            The scontrol command string.
         """
         return "scontrol show job $SLURM_JOB_ID"
 
-    def _create_cmd_str(self):
-        """Create the command line string for executing the actual program."""
+    def _create_cmd_str(self) -> str:
+        """Create the command line string for executing the actual program.
+
+        Returns:
+            The command line string to execute the program.
+        """
         return self._cmd_str
 
-    def _create_bash_str(self):
+    def _create_bash_str(self) -> str:
         """Creates one string that represents the content of the bash file.
 
         The function joins the components defined in the above methods.
+
+        Returns:
+            A string containing the full content of the bash script.
         """
         bash_str = (
             f"#!/bin/bash\n\n{self._create_sbatch_str()}\n\n"
@@ -333,12 +351,24 @@ class SlurmJob:
         return bash_str
 
     @staticmethod
-    def _sbatch_exists():
-        """Check whether the `sbatch` command is available."""
+    def _sbatch_exists() -> bool:
+        """Check whether the `sbatch` command is available.
+
+        Returns:
+            bool: True if the `sbatch` command is available, False otherwise.
+        """
         return which("sbatch") is not None
 
 
-def get_cmd_str(args):
+def get_cmd_str(args: argparse.Namespace) -> str:
+    """Generates the command string for the Slurm job.
+
+    Args:
+        args: The parsed command-line arguments.
+
+    Returns:
+        The full command string to be executed in the Slurm job.
+    """
     setup_str = ""
     if args.partition == "2080-galvani":
         # Copy over data
@@ -374,9 +404,13 @@ def get_cmd_str(args):
     return cmd_str
 
 
-def main():
+def main() -> None:
+    """Main function to set up and submit the Slurm job."""
     args = parser.parse_args()
     cmd_str = get_cmd_str(args)
+
+    if args.job_name is None:
+        args.job_name = getattr(args, "sweep-id")
 
     slurm_job = SlurmJob(
         cmd_str=cmd_str,
