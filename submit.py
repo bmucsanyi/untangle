@@ -242,7 +242,7 @@ class SlurmJob:
 
         The job name must only contain letters, numbers, underscores, and hyphens.
         """
-        job_name_format = r"^[a-zA-Z1-9_-]+$"
+        job_name_format = r"^[a-zA-Z0-9_-]+$"
 
         if not re.match(job_name_format, job_name):
             msg = f"Job name '{job_name}' has incorrect format"
