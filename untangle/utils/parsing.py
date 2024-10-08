@@ -691,7 +691,7 @@ group.add_argument(
 group.add_argument(
     "--edl-start-epoch",
     type=int,
-    default=1,
+    default=0,
     help="Start epoch for the EDL flatness regularizer",
 )
 group.add_argument(
