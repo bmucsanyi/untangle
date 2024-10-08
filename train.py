@@ -1,15 +1,22 @@
 """Copyright 2020 Ross Wightman and 2024 Bálint Mucsányi."""
 
+import argparse
 import datetime
 import logging
 import time
 from argparse import Namespace
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import torch
 from timm.optim import create_optimizer_v2
 from timm.scheduler import create_scheduler_v2
+from timm.scheduler.scheduler import Scheduler
+from torch import Tensor, nn
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader, Dataset
 
 from untangle.utils import (
     AverageMeter,
@@ -29,6 +36,7 @@ from untangle.utils import (
     setup_logging,
     wrap_model,
 )
+from untangle.utils.loader import PrefetchLoader
 from untangle.wrappers import (
     DDUWrapper,
     DUQWrapper,
@@ -51,7 +59,33 @@ torch.serialization.add_safe_globals([Namespace])
 logger = logging.getLogger(__name__)
 
 
-def setup_devices(args):
+def min_accuracy(dataset_name: str) -> float:
+    """Specifies the minimum accuracy the model needs for it to be logged as 'best'.
+
+    Args:
+        dataset_name: The dataset's name the model is being trained on.
+
+    Returns:
+        The minimum accuracy as a float in [0.0, 1.0].
+    """
+    if dataset_name.endswith("imagenet"):
+        return 0.7
+    if dataset_name.endswith("cifar10"):
+        return 0.9
+
+    return 0.0
+
+
+def setup_devices(args: argparse.Namespace) -> tuple[torch.device, torch.device]:
+    """Sets up the training and storage devices.
+
+    Args:
+        args: The command-line arguments.
+
+    Returns:
+        A tuple containing the device to use for training and the device
+        to use for storing evaluation metrics.
+    """
     if torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
@@ -69,7 +103,16 @@ def setup_devices(args):
     return device, storage_device
 
 
-def setup_compile(model, args):
+def setup_compile(model: nn.Module, args: argparse.Namespace) -> None:
+    """Sets up model compilation if enabled.
+
+    Args:
+        model: The model to be compiled.
+        args: The command-line arguments.
+
+    Raises:
+        ValueError: If compilation is enabled for deep ensembles.
+    """
     if args.compile:
         if args.method_name == "deep_ensemble":
             msg = "torch.compile is not supported for deep ensembles"
@@ -77,7 +120,23 @@ def setup_compile(model, args):
         model.model = torch.compile(model.model, backend=args.compile)
 
 
-def setup_amp(device, args):
+def setup_amp(
+    device: torch.device, args: argparse.Namespace
+) -> tuple[Callable, NativeScaler | None]:
+    """Sets up automatic mixed precision (AMP) for training.
+
+    Args:
+        device: The device to use for training.
+        args: The command-line arguments.
+
+    Returns:
+        A tuple containing the autocast function to use and the loss scaler
+        to use, if applicable.
+
+    Raises:
+        ValueError: If an invalid amp_dtype is provided or if AMP is not
+            supported for the Laplace method.
+    """
     # Setup automatic mixed-precision (AMP) loss scaling and op casting
     amp_autocast = DefaultContext()  # Do nothing
     loss_scaler = None
@@ -109,7 +168,12 @@ def setup_amp(device, args):
     return amp_autocast, loss_scaler
 
 
-def setup_learning_rate(args):
+def setup_learning_rate(args: argparse.Namespace) -> None:
+    """Sets up the learning rate based on the batch size and optimizer.
+
+    Args:
+        args: The command-line arguments.
+    """
     if args.lr is None:
         global_batch_size = args.batch_size * args.accumulation_steps
         batch_ratio = global_batch_size / 256
@@ -130,12 +194,33 @@ def setup_learning_rate(args):
         )
 
 
-def setup_wrapper(model, train_loader, args):
+def setup_wrapper(
+    model: nn.Module,
+    train_loader: DataLoader | PrefetchLoader,
+) -> None:
+    """Sets up the model wrapper with additional calculations if needed.
+
+    Args:
+        model: The wrapped model.
+        train_loader: The data loader for the training set.
+        args: The command-line arguments.
+    """
     if isinstance(model, PostNetWrapper):
-        model.calculate_sample_counts(train_loader, args)
+        model.calculate_sample_counts(train_loader)
 
 
-def verify_eval_metric(args):
+def verify_eval_metric(args: argparse.Namespace) -> str:
+    """Verifies that the evaluation metric is valid.
+
+    Args:
+        args: The command-line arguments.
+
+    Returns:
+        The verified evaluation metric.
+
+    Raises:
+        ValueError: If an invalid evaluation metric is specified.
+    """
     if not (
         args.eval_metric.startswith("id_eval_")
         and args.eval_metric.endswith("_auroc_hard_bma_correctness_original")
@@ -149,7 +234,16 @@ def verify_eval_metric(args):
     return args.eval_metric
 
 
-def setup_output_dir(data_config, args):
+def setup_output_dir(data_config: dict[str, Any], args: argparse.Namespace) -> Path:
+    """Sets up the output directory for checkpoints and logs.
+
+    Args:
+        data_config: The data configuration.
+        args: The command-line arguments.
+
+    Returns:
+        The path to the output directory.
+    """
     experiment_name = "-".join([
         datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S-%f"),
         args.model_name.replace("/", "_"),
@@ -163,7 +257,22 @@ def setup_output_dir(data_config, args):
     return output_dir
 
 
-def setup_scheduler(optimizer, train_loader, args):
+def setup_scheduler(
+    optimizer: Optimizer,
+    train_loader: DataLoader | PrefetchLoader,
+    args: argparse.Namespace,
+) -> tuple[Scheduler | None, int]:
+    """Sets up the learning rate scheduler.
+
+    Args:
+        optimizer: The optimizer to use.
+        train_loader: The data loader for the training set.
+        args: The command-line arguments.
+
+    Returns:
+        A tuple containing the learning rate scheduler and the number of
+        epochs to train for.
+    """
     lr_scheduler = None
     num_epochs = 0
 
@@ -187,7 +296,22 @@ def setup_scheduler(optimizer, train_loader, args):
 
 
 @torch.no_grad()
-def initialize_lazy_modules(model, amp_autocast, data_config, device, args):
+def initialize_lazy_modules(
+    model: nn.Module,
+    amp_autocast: Callable,
+    data_config: dict[str, Any],
+    device: torch.device,
+    args: argparse.Namespace,
+) -> None:
+    """Initializes lazy modules in the model.
+
+    Args:
+        model: The model to initialize.
+        amp_autocast: The autocast function to use.
+        data_config: The data configuration.
+        device: The device to use for initialization.
+        args: The command-line arguments.
+    """
     dummy_input = torch.randn(
         args.batch_size,
         *tuple(data_config["input_size"]),
@@ -198,24 +322,46 @@ def initialize_lazy_modules(model, amp_autocast, data_config, device, args):
 
 
 def train(
-    num_epochs,
-    model,
-    optimizer,
-    train_loss_fn,
-    lr_scheduler,
-    train_loader,
-    saver,
-    amp_autocast,
-    loss_scaler,
-    id_eval_loader,
-    eval_metric,
-    decreasing,
-    device,
-    storage_device,
-    output_dir,
-    args,
-):
-    best_eval_metric = float("inf") if args.decreasing else -float("inf")
+    num_epochs: int,
+    model: nn.Module,
+    optimizer: Optimizer,
+    train_loss_fn: Callable,
+    lr_scheduler: Scheduler | None,
+    train_loader: DataLoader | PrefetchLoader,
+    saver: CheckpointSaver,
+    amp_autocast: Callable,
+    loss_scaler: NativeScaler | None,
+    id_eval_loader: DataLoader | PrefetchLoader,
+    eval_metric: str,
+    device: torch.device,
+    storage_device: torch.device,
+    output_dir: Path,
+    args: argparse.Namespace,
+) -> tuple[float, int]:
+    """Trains the model for the specified number of epochs.
+
+    Args:
+        num_epochs: The number of epochs to train for.
+        model: The model to train.
+        optimizer: The optimizer to use.
+        train_loss_fn: The loss function to use during training.
+        lr_scheduler: The learning rate scheduler.
+        train_loader: The data loader for the training set.
+        saver: The checkpoint saver.
+        amp_autocast: The autocast function to use.
+        loss_scaler: The loss scaler to use.
+        id_eval_loader: The data loader for the in-distribution evaluation set.
+        eval_metric: The evaluation metric to use.
+        device: The device to use for training.
+        storage_device: The device to use for storing evaluation metrics.
+        output_dir: The path to the output directory.
+        args: The command-line arguments.
+
+    Returns:
+        A tuple containing the best evaluation metric achieved and the epoch
+        at which it was achieved.
+    """
+    best_eval_metric = -float("inf")
     best_eval_metrics = None
     best_epoch = None
 
@@ -238,7 +384,7 @@ def train(
             eval_metrics = evaluate(
                 model=model,
                 loader=id_eval_loader,
-                loader_name=args.dataset_id,
+                loader_name=args.dataset_id.replace("/", "_"),
                 device=device,
                 storage_device=storage_device,
                 amp_autocast=amp_autocast,
@@ -253,9 +399,13 @@ def train(
             logger.info(f"{accuracy_key}: {eval_metrics[accuracy_key]}")
             logger.info(f"{eval_metric}: {eval_metrics[eval_metric]}")
 
-            is_new_best = epoch >= args.best_save_start_epoch and (
-                (decreasing and eval_metrics[eval_metric] < best_eval_metric)
-                or ((not decreasing) and eval_metrics[eval_metric] > best_eval_metric)
+            if eval_metrics[accuracy_key] < min_accuracy(args.dataset):
+                # Random AUROC for poor models to meaningfully aid hyperparam sweep
+                eval_metrics[eval_metric] = 0.5
+
+            is_new_best = (
+                epoch >= args.best_save_start_epoch
+                and eval_metrics[eval_metric] > best_eval_metric
             )
 
             if is_new_best:
@@ -295,7 +445,13 @@ def train(
     return best_eval_metric, best_epoch
 
 
-def load_best_checkpoint(saver, model):
+def load_best_checkpoint(saver: CheckpointSaver, model: nn.Module) -> None:
+    """Loads the best checkpoint for the model.
+
+    Args:
+        saver: The checkpoint saver.
+        model: The model to load the checkpoint into.
+    """
     best_save_path = (
         saver.checkpoint_dir / f"{saver.checkpoint_prefix}_best.{saver.extension}"
     )
@@ -305,22 +461,44 @@ def load_best_checkpoint(saver, model):
 
 
 def test(
-    num_epochs,
-    model,
-    optimizer,
-    train_loader,
-    hard_id_eval_loader,
-    varied_s2_eval_loader,
-    id_test_loader,
-    ood_uniform_test_loaders,
-    ood_varied_test_loaders,
-    saver,
-    amp_autocast,
-    device,
-    storage_device,
-    output_dir,
-    args,
-):
+    num_epochs: int,
+    model: nn.Module,
+    optimizer: Optimizer,
+    train_loader: DataLoader | PrefetchLoader,
+    hard_id_eval_loader: DataLoader | PrefetchLoader,
+    varied_s2_eval_loader: DataLoader | PrefetchLoader,
+    id_test_loader: DataLoader | PrefetchLoader,
+    ood_uniform_test_loaders: dict[str, dict[str, DataLoader | PrefetchLoader]],
+    ood_varied_test_loaders: dict[str, DataLoader | PrefetchLoader],
+    saver: CheckpointSaver,
+    amp_autocast: Callable,
+    device: torch.device,
+    storage_device: torch.device,
+    output_dir: Path,
+    args: argparse.Namespace,
+) -> None:
+    """Performs final tests on the trained model.
+
+    Args:
+        num_epochs: The number of epochs the model was trained for.
+        model: The trained model.
+        optimizer: The optimizer used during training.
+        train_loader: The data loader for the training set.
+        hard_id_eval_loader: The data loader for the hard in-distribution
+            evaluation set.
+        varied_s2_eval_loader: The data loader for the varied S2 evaluation set.
+        id_test_loader: The data loader for the in-distribution test set.
+        ood_uniform_test_loaders: The data loaders for the uniform out-of-distribution
+            test sets.
+        ood_varied_test_loaders: The data loaders for the varied out-of-distribution
+            test sets.
+        saver: The checkpoint saver.
+        amp_autocast: The autocast function to use.
+        device: The device to use for testing.
+        storage_device: The device to use for storing evaluation metrics.
+        output_dir: The path to the output directory.
+        args: The command-line arguments.
+    """
     logger.info("Starting final tests.")
 
     if num_epochs > 0 and not isinstance(model, SWAGWrapper):
@@ -362,7 +540,8 @@ def test(
     logger.info(f"Tests took " f"{time_end_test - time_start_test} seconds.")
 
 
-def main():
+def main() -> None:
+    """Runs the main training and testing pipeline."""
     time_start_setup = time.perf_counter()
     args = parse_args()
     setup_logging(args)
@@ -462,7 +641,7 @@ def main():
         device=device,
     )
 
-    setup_wrapper(model, train_loader, args)
+    setup_wrapper(model, train_loader)
 
     train_loss_fn = create_loss_fn(args=args, num_batches=len(train_loader))
     train_loss_fn = train_loss_fn.to(device=device)
@@ -472,12 +651,11 @@ def main():
 
     output_dir = setup_output_dir(data_config, args)
 
-    decreasing = args.decreasing
     saver = CheckpointSaver(
         model=model,
         optimizer=optimizer,
         amp_scaler=loss_scaler,
-        decreasing=decreasing,
+        decreasing=False,
         max_history=args.checkpoint_history,
         checkpoint_dir=output_dir,
     )
@@ -490,22 +668,21 @@ def main():
     try:
         if num_epochs > 0:
             best_eval_metric, best_epoch = train(
-                num_epochs,
-                model,
-                optimizer,
-                train_loss_fn,
-                lr_scheduler,
-                train_loader,
-                saver,
-                amp_autocast,
-                loss_scaler,
-                id_eval_loader,
-                eval_metric,
-                decreasing,
-                device,
-                storage_device,
-                output_dir,
-                args,
+                num_epochs=num_epochs,
+                model=model,
+                optimizer=optimizer,
+                train_loss_fn=train_loss_fn,
+                lr_scheduler=lr_scheduler,
+                train_loader=train_loader,
+                saver=saver,
+                amp_autocast=amp_autocast,
+                loss_scaler=loss_scaler,
+                id_eval_loader=id_eval_loader,
+                eval_metric=eval_metric,
+                device=device,
+                storage_device=storage_device,
+                output_dir=output_dir,
+                args=args,
             )
 
             if not isinstance(model, SWAGWrapper):
@@ -515,42 +692,61 @@ def main():
 
         if args.evaluate_on_test_sets:
             test(
-                num_epochs,
-                model,
-                optimizer,
-                train_loader,
-                hard_id_eval_loader,
-                varied_s2_eval_loader,
-                id_test_loader,
-                ood_uniform_test_loaders,
-                ood_varied_test_loaders,
-                saver,
-                amp_autocast,
-                device,
-                storage_device,
-                output_dir,
-                args,
+                num_epochs=num_epochs,
+                model=model,
+                optimizer=optimizer,
+                train_loader=train_loader,
+                hard_id_eval_loader=hard_id_eval_loader,
+                varied_s2_eval_loader=varied_s2_eval_loader,
+                id_test_loader=id_test_loader,
+                ood_uniform_test_loaders=ood_uniform_test_loaders,
+                ood_varied_test_loaders=ood_varied_test_loaders,
+                saver=saver,
+                amp_autocast=amp_autocast,
+                device=device,
+                storage_device=storage_device,
+                output_dir=output_dir,
+                args=args,
             )
     except KeyboardInterrupt:
         pass
 
 
 def evaluate_on_test_sets(
-    model,
-    id_test_loader,
-    ood_uniform_test_loaders,
-    ood_varied_test_loaders,
-    device,
-    storage_device,
-    amp_autocast,
-    output_dir,
-    discard_ood_test_sets,
-    args,
-):
+    model: nn.Module,
+    id_test_loader: DataLoader | PrefetchLoader,
+    ood_uniform_test_loaders: dict[str, dict[str, DataLoader | PrefetchLoader]],
+    ood_varied_test_loaders: dict[str, DataLoader | PrefetchLoader],
+    device: torch.device,
+    storage_device: torch.device,
+    amp_autocast: Callable,
+    output_dir: Path,
+    discard_ood_test_sets: bool,
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    """Evaluates the model on various test sets.
+
+    Args:
+        model: The model to evaluate.
+        id_test_loader: The data loader for the in-distribution test set.
+        ood_uniform_test_loaders: The data loaders for the uniform out-of-distribution
+            test sets.
+        ood_varied_test_loaders: The data loaders for the varied out-of-distribution
+            test sets.
+        device: The device to use for evaluation.
+        storage_device: The device to use for storing evaluation metrics.
+        amp_autocast: The autocast function to use.
+        output_dir: The path to the output directory.
+        discard_ood_test_sets: Whether to discard out-of-distribution test sets.
+        args: The command-line arguments.
+
+    Returns:
+        A dictionary containing the best test metrics.
+    """
     best_test_metrics = evaluate(
         model=model,
         loader=id_test_loader,
-        loader_name=args.dataset_id,
+        loader_name=args.dataset_id.replace("/", "_"),
         device=device,
         storage_device=storage_device,
         amp_autocast=amp_autocast,
@@ -592,7 +788,38 @@ def evaluate_on_test_sets(
     return best_test_metrics
 
 
-def create_datasets(args, data_config):
+def create_datasets(
+    args: argparse.Namespace, data_config: dict[str, Any]
+) -> tuple[
+    Dataset,
+    Dataset,
+    Dataset,
+    Dataset,
+    dict[str, dict[str, Dataset]],
+    dict[str, Dataset],
+    Dataset,
+]:
+    """Creates datasets for training, evaluation, and testing.
+
+    Args:
+        args: The command-line arguments.
+        data_config: The data configuration.
+
+    Returns:
+        A tuple containing various datasets:
+        - The training dataset.
+        - The in-distribution (hard or soft) evaluation dataset.
+        - The in-distribution evaluation dataset that is enforced to have hard labels.
+        - The in-distribution (hard or soft) test dataset.
+        - The uniform out-of-distribution (hard or soft) test datasets. Each key of the
+            outer dict corresponds to one severity level. Each key of the inner dict
+            corresponds to one type of image perturbation.
+        - The varied out-of-distribution (hard or soft) test datasets. Each key of the
+            dict corresponds to one severity level. Each dataset samples the
+            perturbation types uniformly at random.
+        - The varied out-of-distribution (hard or soft) evaluation dataset
+            with severity level two.
+    """
     # Create the train dataset
     train_dataset = create_dataset(
         name=args.dataset,
@@ -802,7 +1029,40 @@ def create_datasets(args, data_config):
     )
 
 
-def create_loaders(args, data_config, device):
+def create_loaders(
+    args: argparse.Namespace, data_config: dict[str, Any], device: torch.device
+) -> tuple[
+    DataLoader | PrefetchLoader,
+    DataLoader | PrefetchLoader,
+    DataLoader | PrefetchLoader,
+    DataLoader | PrefetchLoader,
+    dict[str, dict[str, DataLoader | PrefetchLoader]],
+    dict[str, DataLoader | PrefetchLoader],
+    DataLoader | PrefetchLoader,
+]:
+    """Creates data loaders for training, evaluation, and testing.
+
+    Args:
+        args: The command-line arguments.
+        data_config: The data configuration.
+        device: The device to use for loading data.
+
+    Returns:
+        A tuple containing various data loaders:
+        - The training data loader.
+        - The in-distribution (hard or soft) evaluation data loader.
+        - The in-distribution evaluation data loader that is enforced to have hard
+            labels.
+        - The in-distribution (hard or soft) test data loader.
+        - The uniform out-of-distribution (hard or soft) test data loaders. Each key of
+            the outer dict corresponds to one severity level. Each key of the inner dict
+            corresponds to one type of image perturbation.
+        - The varied out-of-distribution (hard or soft) test data loaders. Each key of
+            the dict corresponds to one severity level. Each data loader samples the
+            perturbation types uniformly at random.
+        - The varied out-of-distribution (hard or soft) evaluation data loader
+            with severity level two.
+    """
     (
         train_dataset,
         id_eval_dataset,
@@ -923,17 +1183,34 @@ def create_loaders(args, data_config, device):
 
 
 def train_one_epoch(
-    epoch,
-    model,
-    loader,
-    optimizer,
-    loss_fn,
-    args,
-    device,
-    lr_scheduler,
-    amp_autocast,
-    loss_scaler,
-):
+    epoch: int,
+    model: nn.Module,
+    loader: DataLoader | PrefetchLoader,
+    optimizer: Optimizer,
+    loss_fn: Callable,
+    args: argparse.Namespace,
+    device: torch.device,
+    lr_scheduler: Scheduler | None,
+    amp_autocast: Callable,
+    loss_scaler: NativeScaler | None,
+) -> dict[str, float]:
+    """Trains the model for one epoch.
+
+    Args:
+        epoch: The current epoch number.
+        model: The model to train.
+        loader: The data loader for the training set.
+        optimizer: The optimizer to use.
+        loss_fn: The loss function to use.
+        args: The command-line arguments.
+        device: The device to use for training.
+        lr_scheduler: The learning rate scheduler.
+        amp_autocast: The autocast function to use.
+        loss_scaler: The loss scaler to use.
+
+    Returns:
+        A dictionary containing the average loss for the epoch.
+    """
     update_time_m = AverageMeter()
     losses_m = AverageMeter()
 
@@ -1031,48 +1308,83 @@ def train_one_epoch(
 
 
 def update_post_hoc_method(
-    model, train_loader, hard_id_eval_loader, varied_s2_eval_loader, args
-):
+    model: nn.Module,
+    train_loader: DataLoader | PrefetchLoader,
+    hard_id_eval_loader: DataLoader | PrefetchLoader,
+    varied_s2_eval_loader: DataLoader | PrefetchLoader,
+    args: argparse.Namespace,
+) -> None:
+    """Updates post-hoc methods if applicable.
+
+    Args:
+        model: The model to update.
+        train_loader: The data loader for the training set.
+        hard_id_eval_loader: The data loader for the hard in-distribution
+            evaluation set.
+        varied_s2_eval_loader: The data loader for the varied evaluation set of
+            severity level two.
+        args: The command-line arguments.
+
+    Raises:
+        ValueError: If the required data loaders are not specified for certain methods.
+    """
     if isinstance(model, LaplaceWrapper):
-        if hard_id_eval_loader is None:
-            msg = "For Laplace approximation, the ID eval loader has to be specified."
-            raise ValueError(msg)
-        model.perform_laplace_approximation(train_loader, hard_id_eval_loader, args)
+        model.perform_laplace_approximation(
+            train_loader=train_loader, val_loader=hard_id_eval_loader
+        )
     elif isinstance(model, MahalanobisWrapper):
-        if hard_id_eval_loader is None or varied_s2_eval_loader is None:
-            msg = (
-                "For the Mahalanobis method, the ID and OOD eval loaders have to be "
-                "specified."
-            )
-            raise ValueError(msg)
         model.train_logistic_regressor(
-            train_loader,
-            hard_id_eval_loader,
-            varied_s2_eval_loader,
-            args.max_num_covariance_samples,
-            args.max_num_id_ood_train_samples,
-            args,
+            train_loader=train_loader,
+            id_loader=hard_id_eval_loader,
+            ood_loader=varied_s2_eval_loader,
+            max_num_training_samples=args.max_num_covariance_samples,
+            max_num_id_ood_samples=args.max_num_id_ood_train_samples,
+            channels_last=args.channels_last,
         )
     elif isinstance(model, DDUWrapper):
-        model.fit_gmm(train_loader, args.max_num_id_train_samples, args)
-        model.set_temperature_loader(hard_id_eval_loader, args)
+        model.fit_gmm(
+            train_loader=train_loader,
+            max_num_training_samples=args.max_num_id_train_samples,
+            channels_last=args.channels_last,
+        )
+        model.set_temperature_loader(
+            val_loader=hard_id_eval_loader, channels_last=args.channels_last
+        )
     elif isinstance(model, TemperatureWrapper) and args.use_temperature_scaling:
-        model.set_temperature_loader(hard_id_eval_loader, args)
+        model.set_temperature_loader(
+            val_loader=hard_id_eval_loader, channels_last=args.channels_last
+        )
     elif isinstance(model, SWAGWrapper):
         model.get_mc_samples(
-            train_loader=train_loader, num_mc_samples=args.num_mc_samples, args=args
+            train_loader=train_loader,
+            num_mc_samples=args.num_mc_samples,
+            channels_last=args.channels_last,
         )
 
 
 def forward(
-    model,
-    input,
-    target,
-    loss_fn,
-    lambda_gradient_penalty,
-    amp_autocast,
-    accumulation_steps,
-):
+    model: nn.Module,
+    input: Tensor,
+    target: Tensor,
+    loss_fn: Callable,
+    lambda_gradient_penalty: float,
+    amp_autocast: Callable,
+    accumulation_steps: int,
+) -> Tensor:
+    """Performs a forward pass through the model.
+
+    Args:
+        model: The model to use.
+        input: The input data.
+        target: The target labels.
+        loss_fn: The loss function to use.
+        lambda_gradient_penalty: The gradient penalty coefficient.
+        amp_autocast: The autocast function to use.
+        accumulation_steps: The number of gradient accumulation steps.
+
+    Returns:
+        The calculated loss.
+    """
     with amp_autocast():
         output = model(input)
         loss = loss_fn(output, target)
@@ -1086,7 +1398,26 @@ def forward(
     return loss
 
 
-def backward(model, input, target, optimizer, loss_scaler, need_update, loss):
+def backward(
+    model: nn.Module,
+    input: Tensor,
+    target: Tensor,
+    optimizer: Optimizer,
+    loss_scaler: NativeScaler | None,
+    need_update: bool,
+    loss: Tensor,
+) -> None:
+    """Performs a backward pass and update the model parameters.
+
+    Args:
+        model: The model to update.
+        input: The input data.
+        target: The target labels.
+        optimizer: The optimizer to use.
+        loss_scaler: The loss scaler to use.
+        need_update: Whether to update the model parameters.
+        loss: The calculated loss.
+    """
     if loss_scaler is not None:
         loss_scaler(
             loss=loss,
