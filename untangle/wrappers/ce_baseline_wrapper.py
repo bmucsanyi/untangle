@@ -6,13 +6,14 @@ from untangle.wrappers.model_wrapper import DistributionalWrapper
 
 
 class CEBaselineWrapper(DistributionalWrapper):
-    """This module takes a model as input and keeps it as is.
+    """A wrapper class that maintains the input model as-is.
 
-    It only serves as connective tissue to the rest of the framework.
+    This module serves as a connector to the rest of the framework without modifying
+    the input model's behavior.
+
+    Args:
+        model: The neural network model to be wrapped.
     """
 
-    def __init__(
-        self,
-        model: nn.Module,
-    ):
+    def __init__(self, model: nn.Module) -> None:
         super().__init__(model)

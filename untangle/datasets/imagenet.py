@@ -11,13 +11,10 @@ class ImageNet(ImageFolder):
     """Minimal ImageNet 2012 Classification Dataset.
 
     Args:
-        root (string): Root directory of the ImageNet Dataset.
-        split (string, optional): The dataset split, supports ``train``, or ``val``.
-        transform (callable, optional): A function/transform that takes in a PIL image
-            and returns a transformed version. E.g, ``transforms.RandomCrop``
-        target_transform (callable, optional): A function/transform that takes in the
-            target and transforms it.
-        loader (callable, optional): A function to load an image given its path.
+        root: Root directory of the ImageNet Dataset.
+        split: The dataset split, supports ``train``, or ``val``.
+            Defaults to "train".
+        **kwargs: Additional keyword arguments passed to the ImageFolder constructor.
     """
 
     def __init__(self, root: Path, split: str = "train", **kwargs: Any) -> None:
@@ -28,8 +25,18 @@ class ImageNet(ImageFolder):
         self.root = root
 
     @property
-    def split_folder(self) -> str:
+    def split_folder(self) -> Path:
+        """Gets the path to the split folder.
+
+        Returns:
+            The path to the split folder.
+        """
         return self.root / self.split
 
     def extra_repr(self) -> str:
+        """Gets an extra representation string for the dataset.
+
+        Returns:
+            A string representation of the dataset split.
+        """
         return "Split: {split}".format(**self.__dict__)

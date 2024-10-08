@@ -2,9 +2,32 @@
 
 
 def calculate_output_padding(
-    input_shape, output_shape, stride, padding, kernel_size, dilation
-):
-    """Adaptation of https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/conv.py#L629."""
+    input_shape: list[int],
+    output_shape: list[int],
+    stride: list[int],
+    padding: list[int],
+    kernel_size: list[int],
+    dilation: list[int] | None,
+) -> tuple[int, int]:
+    """Calculates output padding for transposed convolution operations.
+
+    This function is an adaptation of PyTorch's output padding calculation, see
+    https://github.com/pytorch/pytorch/blob/main/torch/nn/modules/conv.py#L629.
+
+    Args:
+        input_shape: Shape of the input tensor.
+        output_shape: Desired shape of the output tensor.
+        stride: Stride of the convolution.
+        padding: Padding applied to the input.
+        kernel_size: Size of the convolving kernel.
+        dilation: Dilation rate of the convolution.
+
+    Returns:
+        A tuple of integers representing the output padding.
+
+    Raises:
+        ValueError: If the requested output size is not within the valid range.
+    """
     num_spatial_dims = 2  # [H, W]
     num_non_spatial_dims = 2  # [B, C]
 
@@ -44,20 +67,24 @@ def calculate_output_padding(
     return res
 
 
-def calculate_same_padding(input_shape, filter_shape, stride, dilation):
-    """Calculates padding values for 'SAME' padding for conv2d.
+def calculate_same_padding(
+    input_shape: tuple[int, int, int, int],
+    filter_shape: tuple[int, int, int, int],
+    stride: int | tuple[int, int],
+    dilation: int | tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """Calculates padding values for 'SAME' padding in conv2d operations.
 
     Args:
-        input_shape (tuple or list): Shape of the input data.
-            [batch, channels, height, width]
-        filter_shape (tuple or list): Shape of the filter/kernel.
-            [out_channels, in_channels, kernel_height, kernel_width]
-        stride (int or tuple): Stride of the convolution operation.
-        dilation (int or tuple): Dilation rate of the convolution operation.
+        input_shape: Shape of the input data [batch, channels, height, width].
+        filter_shape: Shape of the filter/kernel [out_channels, in_channels,
+            kernel_height, kernel_width].
+        stride: Stride of the convolution operation.
+        dilation: Dilation rate of the convolution operation.
 
     Returns:
-        padding (tuple): Tuple representing padding
-            (padding_left, padding_right, padding_top, padding_bottom)
+        A tuple representing padding
+        (padding_left, padding_right, padding_top, padding_bottom).
     """
     if isinstance(stride, int):
         stride_height = stride_width = stride

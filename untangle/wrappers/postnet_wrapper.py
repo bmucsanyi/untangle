@@ -1,23 +1,30 @@
 """PostNet model wrapper class."""
 
 import math
+from collections.abc import Callable
 
 import torch
 import torch.distributions as tdist
 import torch.nn.functional as F
 from pyro.distributions.torch_transform import TransformModule
 from pyro.distributions.transforms.radial import Radial
-from pyro.distributions.util import copy_docs_from
-from torch import nn
-from torch.distributions import MultivariateNormal, Transform, constraints
+from torch import Tensor, nn
+from torch.distributions import MultivariateNormal, constraints
+from torch.utils.data import DataLoader
 
+from untangle.utils.loader import PrefetchLoader
 from untangle.wrappers.model_wrapper import DirichletWrapper
 
 
 class NormalizingFlowDensity(nn.Module):
-    """Non-batched normalizing flow density."""
+    """Implements a non-batched normalizing flow density.
 
-    def __init__(self, dim: int, flow_length: int):
+    Args:
+        dim: Dimensionality of the input space.
+        flow_length: Number of flow transformations.
+    """
+
+    def __init__(self, dim: int, flow_length: int) -> None:
         super().__init__()
         self._dim = dim
         self._flow_length = flow_length
@@ -27,9 +34,18 @@ class NormalizingFlowDensity(nn.Module):
 
         self._transforms = nn.Sequential(*(Radial(dim) for _ in range(flow_length)))
 
-    def log_prob(self, x: torch.Tensor) -> torch.Tensor:
+    def log_prob(self, x: Tensor) -> Tensor:
+        """Computes the log probability of the input tensor.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Log probability of the input.
+        """
         sum_log_jacobians = 0
         z = x
+
         for transform in self._transforms:
             z_next = transform(z)
             sum_log_jacobians += transform.log_abs_det_jacobian(z, z_next)
@@ -43,127 +59,125 @@ class NormalizingFlowDensity(nn.Module):
         return log_prob_x
 
 
-@copy_docs_from(Transform)
-class ConditionedRadial(Transform):
-    """Non-batched radial transform used by non-batched normalizing flows."""
+class ConditionedRadial(TransformModule):
+    """Implements a non-batched radial transform used by non-batched normalizing flows.
+
+    Args:
+        params: Parameters for the radial transform, either a callable or a tuple.
+    """
 
     domain = constraints.real_vector
     codomain = constraints.real_vector
     bijective = True
     event_dim = 1
 
-    def __init__(self, params):
+    def __init__(self, params: Callable | tuple) -> None:
         super().__init__(cache_size=1)
         self._params = params
-        self._cached_logDetJ = None
+        self._cached_log_abs_det_J = None
 
-    # This method ensures that torch(u_hat, w) > -1, required for invertibility
-    @staticmethod
-    def u_hat(u, w):
-        del u, w
-        raise NotImplementedError
+    def _call(self, x: Tensor) -> Tensor:
+        """Applies the bijection x=>y.
 
-    def _call(self, x):
-        """Invokes the bijection x=>y.
+        In the context of a TransformedDistribution, x is a sample from the base
+        distribution or the output of a previous transform.
 
-        In the prototypical context of a `pyro.distributions.TransformedDistribution`,
-        `x` is a sample from the
-        base distribution (or the output of a previous transform)
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Transformed tensor.
         """
         x0, alpha_prime, beta_prime = (
             self._params() if callable(self._params) else self._params
         )
 
-        # Ensure invertibility using approach in appendix A.2
+        # Ensure invertibility
         alpha = F.softplus(alpha_prime)
         beta = -alpha + F.softplus(beta_prime)
 
-        # Compute y and logDet using Equation 14.
+        # Compute y and log_det_J
         diff = x - x0[:, None, :]
         r = diff.norm(dim=-1, keepdim=True).squeeze()
         h = (alpha[:, None] + r).reciprocal()
         h_prime = -(h**2)
         beta_h = beta[:, None] * h
 
-        self._cached_logDetJ = (x0.shape[-1] - 1) * torch.log1p(beta_h) + torch.log1p(
-            beta_h + beta[:, None] * h_prime * r
-        )
+        self._cached_log_abs_det_J = (x0.shape[-1] - 1) * torch.log1p(
+            beta_h
+        ) + torch.log1p(beta_h + beta[:, None] * h_prime * r)
+
         return x + beta_h[:, :, None] * diff
 
-    @staticmethod
-    def _inverse(y):
-        """Inverts y => x.
+    def log_abs_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculates the elementwise determinant of the log Jacobian.
 
-        As noted above, this implementation is incapable of
-        inverting arbitrary values `y`; rather it assumes `y` is the result of a
-        previously computed application of the bijector to some `x` (which was
-        cached on the forward call)
+        Args:
+            x: Input tensor.
+            y: Output tensor.
+
+        Returns:
+            Log absolute determinant of the Jacobian.
         """
-        del y
-
-        msg = (
-            "ConditionedRadial object expected to find key in intermediates cache "
-            "but didn't"
-        )
-        raise KeyError(msg)
-
-    def log_abs_det_jacobian(self, x, y):
-        """Calculates the elementwise determinant of the log Jacobian."""
         x_old, y_old = self._cached_x_y
+
         if x is not x_old or y is not y_old:
             # This call to the parent class Transform will update the cache
             # as well as calling self._call and recalculating y and log_detJ
             self(x)
 
-        return self._cached_logDetJ
+        return self._cached_log_abs_det_J
 
 
-@copy_docs_from(ConditionedRadial)
-class BatchedRadial(ConditionedRadial, TransformModule):
-    """Batched radial transform used by batched normalizing flows."""
+class BatchedRadial(ConditionedRadial):
+    """Implements a batched radial transform used by batched normalizing flows.
+
+    Args:
+        c: Number of components in the batch.
+        input_dim: Dimensionality of the input space.
+    """
 
     domain = constraints.real_vector
     codomain = constraints.real_vector
     bijective = True
     event_dim = 1
 
-    def __init__(self, c, input_dim):
+    def __init__(self, c: int, input_dim: int) -> None:
         super().__init__(self._params)
 
-        self._x0 = nn.Parameter(
-            torch.Tensor(
-                c,
-                input_dim,
-            )
-        )
-        self._alpha_prime = nn.Parameter(
-            torch.Tensor(
-                c,
-            )
-        )
-        self._beta_prime = nn.Parameter(
-            torch.Tensor(
-                c,
-            )
-        )
+        self._x0 = nn.Parameter(torch.empty(c, input_dim))
+        self._alpha_prime = nn.Parameter(torch.empty(c))
+        self._beta_prime = nn.Parameter(torch.empty(c))
         self._c = c
         self._input_dim = input_dim
         self.reset_parameters()
 
-    def _params(self):
+    def _params(self) -> tuple[Tensor, Tensor, Tensor]:
+        """Returns the parameters of the batched radial transform.
+
+        Returns:
+            Tuple containing x0, alpha_prime, and beta_prime tensors.
+        """
         return self._x0, self._alpha_prime, self._beta_prime
 
-    def reset_parameters(self):
-        stdv = 1.0 / math.sqrt(self._x0.shape[1])
-        self._alpha_prime.data.uniform_(-stdv, stdv)
-        self._beta_prime.data.uniform_(-stdv, stdv)
-        self._x0.data.uniform_(-stdv, stdv)
+    def reset_parameters(self) -> None:
+        """Resets the parameters of the batched radial transform."""
+        std = 1.0 / math.sqrt(self._x0.shape[1])
+        self._alpha_prime.data.uniform_(-std, std)
+        self._beta_prime.data.uniform_(-std, std)
+        self._x0.data.uniform_(-std, std)
 
 
 class BatchedNormalizingFlowDensity(nn.Module):
-    """Normalizing flow density that is batched for multiple classes."""
+    """Implements a normalizing flow density that is batched for multiple classes.
 
-    def __init__(self, c, dim, flow_length):
+    Args:
+        c: Number of classes.
+        dim: Dimensionality of the input space.
+        flow_length: Number of flow transformations.
+    """
+
+    def __init__(self, c: int, dim: int, flow_length: int) -> None:
         super().__init__()
         self._c = c
         self._dim = dim
@@ -178,28 +192,54 @@ class BatchedNormalizingFlowDensity(nn.Module):
             *(BatchedRadial(c, dim) for _ in range(self._flow_length))
         )
 
-    def forward(self, z):
-        sum_log_jacobians = 0
+    def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
+        """Applies the normalizing flow transformation.
+
+        Args:
+            z: Input tensor.
+
+        Returns:
+            Tuple containing the transformed tensor and sum of log Jacobians.
+        """
+        sum_log_abs_det_jacobians = torch.zeros((), device=z.device, dtype=z.dtype)
         z = z.repeat(self._c, 1, 1)
+
         for transform in self._transforms:
             z_next = transform(z)
-            sum_log_jacobians += transform.log_abs_det_jacobian(z, z_next)
+            sum_log_abs_det_jacobians += transform.log_abs_det_jacobian(z, z_next)
             z = z_next
 
-        return z, sum_log_jacobians
+        return z, sum_log_abs_det_jacobians
 
-    def log_prob(self, x):
-        z, sum_log_jacobians = self.forward(x)
+    def log_prob(self, x: Tensor) -> Tensor:
+        """Computes the log probability of the input tensor.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Log probability of the input.
+        """
+        z, sum_log_abs_det_jacobians = self(x)
         log_prob_z = tdist.MultivariateNormal(
             self._mean.repeat(z.shape[1], 1, 1).permute(1, 0, 2),
             self._cov.repeat(z.shape[1], 1, 1, 1).permute(1, 0, 2, 3),
         ).log_prob(z)
-        log_prob_x = log_prob_z + sum_log_jacobians  # [batch_size]
+        log_prob_x = log_prob_z + sum_log_abs_det_jacobians  # [B]
+
         return log_prob_x
 
 
 class PostNetWrapper(DirichletWrapper):
-    """This module takes a model as input and creates a PostNet model from it."""
+    """Wrapper that creates a PostNet from an input model.
+
+    Args:
+        model: The neural network model to be wrapped.
+        latent_dim: Dimensionality of the latent space.
+        hidden_dim: Dimensionality of the hidden layer in the classifier.
+        num_density_components: Number of components in the normalizing flow.
+        use_batched_flow: Whether to use batched normalizing flow.
+    """
 
     def __init__(
         self,
@@ -208,14 +248,12 @@ class PostNetWrapper(DirichletWrapper):
         hidden_dim: int,
         num_density_components: int,
         use_batched_flow: bool,
-    ):
+    ) -> None:
         super().__init__(model)
 
-        # TODO(bmucsanyi): Come back to check if these are needed/useful
         self._latent_dim = latent_dim
         self.num_features = latent_dim  # For public access & compatibility
         self._hidden_dim = hidden_dim
-        self._num_density_components = num_density_components
         self.num_classes = model.num_classes
         self.register_buffer("_sample_count_per_class", torch.zeros(self.num_classes))
 
@@ -234,22 +272,29 @@ class PostNetWrapper(DirichletWrapper):
             self._density_estimator = BatchedNormalizingFlowDensity(
                 c=self.num_classes,
                 dim=self._latent_dim,
-                flow_length=self._num_density_components,
+                flow_length=num_density_components,
             )
         else:
             self._density_estimator = nn.ModuleList([
                 NormalizingFlowDensity(
-                    dim=self._latent_dim, flow_length=self._num_density_components
+                    dim=self._latent_dim, flow_length=num_density_components
                 )
                 for _ in range(self.num_classes)
             ])
 
-    def calculate_sample_counts(self, train_loader, args):
+    def calculate_sample_counts(
+        self, train_loader: DataLoader | PrefetchLoader
+    ) -> None:
+        """Calculates the sample counts per class from the training data.
+
+        Args:
+            train_loader: DataLoader or PrefetchLoader for the training data.
+        """
         device = next(self.model.parameters()).device
         sample_count_per_class = torch.zeros(self.num_classes)
 
         for _, targets in train_loader:
-            if args.prefetcher:
+            if isinstance(train_loader, PrefetchLoader):
                 targets = targets.cpu()
 
             sample_count_per_class.scatter_add_(
@@ -258,13 +303,27 @@ class PostNetWrapper(DirichletWrapper):
 
         self._sample_count_per_class = sample_count_per_class.to(device)
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(
+        self, input: Tensor, *, pre_logits: bool = False
+    ) -> Tensor | dict[str, Tensor]:
+        """Performs forward pass through the head of the model.
+
+        Args:
+            input: Input tensor.
+            pre_logits: Whether to return pre-logits features.
+
+        Returns:
+            Features, alphas, or a dictionary containing alphas during inference.
+
+        Raises:
+            ValueError: If sample counts haven't been calculated.
+        """
         if self._sample_count_per_class is None:
             msg = "Call to `calculate_sample_counts` needed first"
             raise ValueError(msg)
 
         # Pre-logits are the outputs of the wrapped model
-        features = self._batch_norm(self.model.forward_head(x))  # [B, D]
+        features = self._batch_norm(self.model.forward_head(input))  # [B, D]
 
         if pre_logits:
             return features
@@ -294,14 +353,21 @@ class PostNetWrapper(DirichletWrapper):
             "alpha": alphas,  # [B, C]
         }
 
-    def get_classifier(self):
+    def get_classifier(self) -> nn.Sequential:
+        """Returns the classifier part of the model."""
         return self._classifier
 
     def reset_classifier(
         self,
         hidden_dim: int | None = None,
         num_classes: int | None = None,
-    ):
+    ) -> None:
+        """Resets the classifier with new dimensions.
+
+        Args:
+            hidden_dim: New hidden dimension size.
+            num_classes: New number of classes.
+        """
         if hidden_dim is not None:
             self._hidden_dim = hidden_dim
 

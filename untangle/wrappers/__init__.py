@@ -1,3 +1,5 @@
+"""Implementations of supported uncertainty wrappers."""
+
 __all__ = [
     "BaseCorrectnessPredictionWrapper",
     "BaseLossPredictionWrapper",

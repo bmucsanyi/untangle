@@ -14,29 +14,64 @@ from untangle.utils.transform import create_transform, hard_target_transform
 
 
 def create_dataset(
-    name,
-    root,
-    label_root,
-    split,
-    download,
-    seed,
-    subset,
-    input_size,
-    padding,
-    is_training_dataset,
-    use_prefetcher,
-    scale,
-    ratio,
-    hflip,
-    color_jitter,
-    interpolation,
-    mean,
-    std,
-    crop_pct,
-    ood_transform_type,
-    severity,
-    convert_soft_labels_to_hard,
-):
+    name: str,
+    root: str,
+    label_root: str,
+    split: str,
+    download: bool,
+    seed: int,
+    subset: float,
+    input_size: int,
+    padding: int,
+    is_training_dataset: bool,
+    use_prefetcher: bool,
+    scale: tuple[float, float],
+    ratio: tuple[float, float],
+    hflip: float,
+    color_jitter: float,
+    interpolation: str,
+    mean: tuple[float, float, float],
+    std: tuple[float, float, float],
+    crop_pct: float,
+    ood_transform_type: str | None,
+    severity: int,
+    convert_soft_labels_to_hard: bool,
+) -> CIFAR10 | ImageNet | SoftImageNet | SoftDataset | Subset:
+    """Creates and returns a dataset based on the given parameters.
+
+    This function creates a dataset with the specified configuration, applying
+    transformations and subset selection as needed.
+
+    Args:
+        name: Name of the dataset.
+        root: Root directory of the dataset.
+        label_root: Root directory for labels (used for soft datasets).
+        split: Data split to use ('train' or 'val').
+        download: Whether to download the dataset if not present.
+        seed: Random seed for subset selection.
+        subset: Fraction of the dataset to use (1.0 means use all data).
+        input_size: Size of the input images.
+        padding: Padding to apply to the images.
+        is_training_dataset: Whether this is a training dataset.
+        use_prefetcher: Whether to use a prefetcher.
+        scale: Scale range for transforms.
+        ratio: Aspect ratio range for transforms.
+        hflip: Horizontal flip probability.
+        color_jitter: Color jitter factor.
+        interpolation: Interpolation method for resizing.
+        mean: Mean values for normalization.
+        std: Standard deviation values for normalization.
+        crop_pct: Crop percentage for transforms.
+        ood_transform_type: Type of out-of-distribution transform to apply.
+        severity: Severity of the OOD transform.
+        convert_soft_labels_to_hard: Whether to convert soft labels to hard labels.
+
+    Returns:
+        The created dataset.
+
+    Raises:
+        ValueError: If an unsupported dataset or configuration is specified.
+    """
     transform = create_transform(
         input_size=input_size,
         dataset_name=name,

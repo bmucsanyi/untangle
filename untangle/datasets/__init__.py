@@ -1,3 +1,5 @@
+"""Implementations of supported datasets."""
+
 from .imagenet import ImageNet
 from .soft_dataset import DATASET_NAME_TO_PATH, SoftDataset
 from .soft_imagenet import SoftImageNet

@@ -1,3 +1,5 @@
+"""Implementations of supported loss functions."""
+
 from .bma_cross_entropy_loss import BMACrossEntropyLoss
 from .correctness_prediction_loss import CorrectnessPredictionLoss
 from .duq_loss import DUQLoss

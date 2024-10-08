@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from PIL import Image
 
 from .imagenet import ImageNet
 
@@ -12,23 +13,19 @@ from .imagenet import ImageNet
 class SoftImageNet(ImageNet):
     """A dataset class for handling ImageNet data with soft labels.
 
-    This class extends the ImageNet dataset to work with soft labels, which are
-    multiple annotations per image. It supports loading images and their
-    corresponding soft labels, and can be used for validation or testing.
+    Extends the ImageNet dataset to work with soft labels, which are
+    multiple annotations per image. Supports loading images and their
+    corresponding soft labels for validation or testing.
 
     Args:
-        root (Path): Root directory where the ImageNet dataset is stored.
-        label_root (Path | None, optional): Directory containing the soft labels.
-            If None, it defaults to the same as `root`. Defaults to None.
-        **kwargs (Any): Additional arguments to be passed to the ImageNet constructor.
+        root: Root directory where the ImageNet dataset is stored.
+        label_root: Directory containing the soft labels.
+            If None, it defaults to the same as `root`.
+        **kwargs: Additional arguments to be passed to the ImageNet constructor.
 
     Raises:
         FileNotFoundError: If the required label files are not found in the specified
             directories.
-
-    Example:
-        >>> dataset = SoftImageNet(Path('/path/to/imagenet'), Path('/path/to/labels'))
-        >>> image, soft_label = dataset[0]
     """
 
     def __init__(
@@ -46,7 +43,15 @@ class SoftImageNet(ImageNet):
 
         self.is_ood = False
 
-    def __getitem__(self, index: int) -> tuple[Any, Any]:
+    def __getitem__(self, index: int) -> tuple[Image.Image, np.ndarray]:
+        """Retrieves an item from the dataset.
+
+        Args:
+            index: Index of the item to retrieve.
+
+        Returns:
+            A tuple containing the image and its augmented soft label.
+        """
         path, original_target = self.samples[index]
         img = self.loader(path)
         if self.transform is not None and self.is_ood:
@@ -64,14 +69,25 @@ class SoftImageNet(ImageNet):
 
         return img, augmented_target
 
-    def set_ood(self):
+    def set_ood(self) -> None:
+        """Sets the dataset to use out-of-distribution transform."""
         self.is_ood = True
 
     @staticmethod
-    def load_raw_annotations(path_soft_labels, path_real_labels):
+    def load_raw_annotations(
+        path_soft_labels: Path, path_real_labels: Path
+    ) -> tuple[np.ndarray, dict[str, int]]:
         """Loads the raw annotations from raters.npz from reassessed-imagenet.
 
         Adapted from uncertainty-baselines/baselines/jft/data_uncertainty_utils.py#L87.
+
+        Args:
+            path_soft_labels: Path to the soft labels file (raters.npz).
+            path_real_labels: Path to the real labels file (real.json).
+
+        Returns:
+            A tuple containing the soft labels array and a dictionary mapping
+            file paths to image IDs.
         """
         data = np.load(path_soft_labels)
 

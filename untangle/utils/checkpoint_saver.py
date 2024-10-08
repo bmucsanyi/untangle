@@ -5,6 +5,7 @@ Tracks top-n training checkpoints.
 
 import logging
 import operator
+from pathlib import Path
 
 import torch
 
@@ -12,17 +13,26 @@ logger = logging.getLogger(__name__)
 
 
 class CheckpointSaver:
-    """Checkpoint saver that tracks top-n training checkpoints."""
+    """Checkpoint saver that tracks top-n training checkpoints.
+
+    Args:
+        model: The model to save checkpoints for.
+        optimizer: The optimizer to save state for.
+        amp_scaler: The amp scaler to save state for, if used.
+        decreasing: If True, a lower metric is better.
+        max_history: Maximum number of checkpoints to keep.
+        checkpoint_dir: Directory to save checkpoints in.
+    """
 
     def __init__(
         self,
-        model,
-        optimizer,
-        amp_scaler,
-        decreasing,
-        max_history,
-        checkpoint_dir,
-    ):
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        amp_scaler: torch.cuda.amp.GradScaler | None,
+        decreasing: bool,
+        max_history: int,
+        checkpoint_dir: Path,
+    ) -> None:
         # Objects to save state_dicts of
         self.model = model
         self.optimizer = optimizer
@@ -42,7 +52,13 @@ class CheckpointSaver:
         self.cmp = operator.lt if decreasing else operator.gt
         self.max_history = max_history
 
-    def save_checkpoint(self, epoch, metric):
+    def save_checkpoint(self, epoch: int, metric: float) -> None:
+        """Save a checkpoint.
+
+        Args:
+            epoch: The current epoch number.
+            metric: The metric value for this checkpoint.
+        """
         # Save as last checkpoint
         last_filename = f"{self.checkpoint_prefix}_last.{self.extension}"
         last_save_path = self.checkpoint_dir / last_filename
@@ -78,7 +94,14 @@ class CheckpointSaver:
                 best_save_path.unlink(missing_ok=True)
                 best_save_path.hardlink_to(top_save_path)
 
-    def _save(self, save_path, epoch, metric):
+    def _save(self, save_path: Path, epoch: int, metric: float) -> None:
+        """Internal method to save the checkpoint.
+
+        Args:
+            save_path: Path to save the checkpoint to.
+            epoch: The current epoch number.
+            metric: The metric value for this checkpoint.
+        """
         save_state = {
             "epoch": epoch,
             "state_dict": self.model.state_dict(),
@@ -91,7 +114,12 @@ class CheckpointSaver:
 
         torch.save(save_state, save_path)
 
-    def _cleanup_checkpoints(self, num_checkpoints_to_delete):
+    def _cleanup_checkpoints(self, num_checkpoints_to_delete: int) -> None:
+        """Clean up old checkpoints.
+
+        Args:
+            num_checkpoints_to_delete: Number of checkpoints to remove.
+        """
         start_delete_index = self.max_history - num_checkpoints_to_delete
 
         if start_delete_index < 0 or len(self.checkpoint_files) <= start_delete_index:

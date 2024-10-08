@@ -4,31 +4,38 @@ import argparse
 import ast
 import logging
 import os
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 from torch import nn
 
 logger = logging.getLogger(__name__)
 
 
-def float_tuple(string):
+def float_tuple(string: str) -> tuple[float, ...]:
+    """Converts a comma-separated string of floats to a tuple of floats."""
     return tuple(map(float, string.split(",")))
 
 
-def int_tuple(string):
+def int_tuple(string: str) -> tuple[int, ...]:
+    """Converts a comma-separated string of integers to a tuple of integers."""
     return tuple(map(int, string.split(",")))
 
 
-def string_tuple(string):
+def string_tuple(string: str) -> tuple[str, ...]:
+    """Splits a comma-separated string into a tuple of strings."""
     return tuple(string.split(","))
 
 
-def path_tuple(string):
+def path_tuple(string: str) -> tuple[Path, ...]:
+    """Converts a comma-separated string of paths to a tuple of Path objects."""
     return tuple(map(Path, string.split(",")))
 
 
-def module(string):
+def module(string: str) -> nn.Module:
+    """Retrieves a PyTorch nn module class based on the input string."""
     if not string.startswith("nn."):
         msg = f"Invalid module name: {string}. Must start with 'nn.'"
         raise ValueError(msg)
@@ -41,8 +48,10 @@ def module(string):
     return getattr(nn, class_name)
 
 
-def kwargs(string):
-    def parse_value(value, parsers):
+def kwargs(string: str) -> dict[str, Any]:
+    """Parses a string of key-value pairs into a dictionary."""
+
+    def parse_value(value: str, parsers: list[Callable[[str], Any]]) -> Any:
         for parser in parsers:
             try:
                 return parser(value)
@@ -52,6 +61,7 @@ def kwargs(string):
 
     parsers = [ast.literal_eval, module]
     parse = partial(parse_value, parsers=parsers)
+
     return {
         key: parse(value)
         for key, value in (pair.split("=", 1) for pair in string.split())
@@ -553,7 +563,7 @@ group.add_argument(
     "--weight-paths",
     type=path_tuple,
     default=(),
-    help="List of weight paths for the deep ensemble method",
+    help="List of weight paths for post-hoc methods",
 )
 group.add_argument(
     "--pretrained",
@@ -751,13 +761,8 @@ group.add_argument(
 group.add_argument(
     "--eval-metric",
     type=str,
-    default="id_eval_one_minus_max_probs_of_bma_auroc_hard_bma_correctness",
+    default="id_eval_one_minus_max_probs_of_bma_auroc_hard_bma_correctness_original",
     help="Metric to track for early stopping/checkpoint saving",
-)
-group.add_argument(
-    "--decreasing",
-    action="store_true",
-    help="Whether eval-metric is decreasing",
 )
 group.add_argument(
     "--best-save-start-epoch",
@@ -773,7 +778,8 @@ group.add_argument(
 )
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parses command-line arguments and processes special cases."""
     args = parser.parse_args()
 
     if args.data_dir_id is None:
@@ -797,7 +803,8 @@ def parse_args():
     return args
 
 
-def resolve_data_config(args):
+def resolve_data_config(args: dict[str, Any]) -> dict[str, Any]:
+    """Resolves data configuration based on input arguments."""
     data_config = {}
 
     # Resolve input/image size

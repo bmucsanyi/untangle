@@ -6,10 +6,11 @@ SNGP implementation based on https://github.com/google/edward2
 import itertools
 import math
 from functools import partial
+from typing import Any
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 from torch.nn.modules.batchnorm import _NormBase  # noqa: PLC2701
 from torch.nn.parameter import is_lazy
 
@@ -22,22 +23,38 @@ from untangle.wrappers.model_wrapper import DistributionalWrapper
 
 
 class GPOutputLayer(nn.Module):
-    """Random feature GP output layer."""
+    """Random feature GP output layer.
+
+    This layer implements a Gaussian Process output using random features.
+
+    Args:
+        num_features: Number of input features.
+        num_classes: Number of output classes.
+        num_mc_samples: Number of Monte Carlo samples.
+        num_random_features: Number of random features to use.
+        gp_kernel_scale: Scale of the GP kernel.
+        gp_output_bias: Output bias for the GP.
+        gp_random_feature_type: Type of random features ('orf' or 'rff').
+        use_input_normalized_gp: Whether to use input normalization for GP.
+        gp_cov_momentum: Momentum for covariance update.
+        gp_cov_ridge_penalty: Ridge penalty for covariance.
+        likelihood: Likelihood type ('gaussian' or 'softmax').
+    """
 
     def __init__(
         self,
-        num_features,
-        num_classes,
-        num_mc_samples,
-        num_random_features,
-        gp_kernel_scale,
-        gp_output_bias,
-        gp_random_feature_type,
-        use_input_normalized_gp,
-        gp_cov_momentum,
-        gp_cov_ridge_penalty,
-        likelihood,
-    ):
+        num_features: int,
+        num_classes: int,
+        num_mc_samples: int,
+        num_random_features: int,
+        gp_kernel_scale: float | None,
+        gp_output_bias: float,
+        gp_random_feature_type: str,
+        use_input_normalized_gp: bool,
+        gp_cov_momentum: float,
+        gp_cov_ridge_penalty: float,
+        likelihood: str,
+    ) -> None:
         super().__init__()
         self._num_classes = num_classes
         self._num_random_features = num_random_features
@@ -101,17 +118,25 @@ class GPOutputLayer(nn.Module):
             requires_grad=False,
         )
 
-    def reset_covariance_matrix(self):
-        """Resets covariance matrix of the GP layer.
-
-        This function is useful for resetting the model's covariance matrix at the
-        beginning of a new epoch.
-        """
+    def reset_covariance_matrix(self) -> None:
+        """Resets covariance matrix of the GP layer."""
         for cov_layer in self._gp_cov_layers:
             cov_layer.reset_precision_matrix()
 
     @staticmethod
-    def mean_field_logits(logits, vars, mean_field_factor):
+    def mean_field_logits(
+        logits: Tensor, vars: Tensor, mean_field_factor: float
+    ) -> Tensor:
+        """Computes mean-field logits.
+
+        Args:
+            logits: Input logits.
+            vars: Variances.
+            mean_field_factor: Mean field factor.
+
+        Returns:
+            Mean-field logits.
+        """
         # Compute scaling coefficient for mean-field approximation.
         logits_scale = (1 + vars * mean_field_factor).sqrt()
 
@@ -121,7 +146,19 @@ class GPOutputLayer(nn.Module):
         return logits / logits_scale
 
     @staticmethod
-    def monte_carlo_sample_logits(logits, vars, num_samples):
+    def monte_carlo_sample_logits(
+        logits: Tensor, vars: Tensor, num_samples: int
+    ) -> Tensor:
+        """Performs Monte Carlo sampling of logits.
+
+        Args:
+            logits: Input logits.
+            vars: Variances.
+            num_samples: Number of samples.
+
+        Returns:
+            Sampled logits.
+        """
         batch_size, num_classes = logits.shape
         vars = vars.unsqueeze(dim=1)  # [B, 1, C]
 
@@ -131,7 +168,15 @@ class GPOutputLayer(nn.Module):
 
         return vars.sqrt() * std_normal_samples + logits.unsqueeze(dim=1)
 
-    def forward(self, gp_inputs):
+    def forward(self, gp_inputs: Tensor) -> Tensor:
+        """Performs forward pass of the GP output layer.
+
+        Args:
+            gp_inputs: Input features.
+
+        Returns:
+            Output logits or samples.
+        """
         # Computes random features.
         if self._use_input_normalized_gp:
             gp_inputs = self._input_norm_layer(gp_inputs)
@@ -175,7 +220,16 @@ class GPOutputLayer(nn.Module):
         )  # [B, S, C]
 
     @staticmethod
-    def _orthogonal_random_features_initializer(tensor, std):
+    def _orthogonal_random_features_initializer(tensor: Tensor, std: float) -> Tensor:
+        """Initializes orthogonal random features.
+
+        Args:
+            tensor: Tensor to initialize.
+            std: Standard deviation.
+
+        Returns:
+            Initialized tensor.
+        """
         num_rows, num_cols = tensor.shape
         if num_rows < num_cols:
             # When num_rows < num_cols, sample multiple (num_rows, num_rows) matrices
@@ -210,8 +264,15 @@ class GPOutputLayer(nn.Module):
 
         return tensor
 
-    def _make_random_feature_layer(self, num_features):
-        """Defines random feature layer depending on kernel type."""
+    def _make_random_feature_layer(self, num_features: int) -> nn.Module:
+        """Creates a random feature layer.
+
+        Args:
+            num_features: Number of input features.
+
+        Returns:
+            Random feature layer.
+        """
         # Use user-supplied configurations.
         custom_random_feature_layer = nn.Linear(
             in_features=num_features,
@@ -226,14 +287,23 @@ class GPOutputLayer(nn.Module):
 
 
 class LaplaceRandomFeatureCovariance(nn.Module):
-    """Empirical covariance matrix for random feature GPs."""
+    """Empirical covariance matrix for random feature GPs.
+
+    This module computes and maintains the covariance matrix for random feature
+    Gaussian Processes.
+
+    Args:
+        gp_feature_dim: Dimension of GP features.
+        momentum: Momentum for updating precision matrix.
+        ridge_penalty: Ridge penalty for covariance matrix.
+    """
 
     def __init__(
         self,
-        gp_feature_dim,
-        momentum,
-        ridge_penalty,
-    ):
+        gp_feature_dim: int,
+        momentum: float,
+        ridge_penalty: float,
+    ) -> None:
         super().__init__()
         self._ridge_penalty = ridge_penalty
         self._momentum = momentum
@@ -249,25 +319,19 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # by inverting the newly updated precision matrix) during inference.
         self._update_covariance = False
 
-    def reset_precision_matrix(self):
-        """Resets precision matrix to its initial value.
-
-        This function is useful for resetting the model's covariance matrix at the
-        beginning of a new epoch.
-        """
+    def reset_precision_matrix(self) -> None:
+        """Resets precision matrix to its initial value."""
         gp_feature_dim = self._precision_matrix.shape[0]
         self._precision_matrix.copy_(torch.zeros((gp_feature_dim, gp_feature_dim)))
 
-    def forward(self, gp_features):
-        """Minibatch updates the GP's posterior precision matrix estimate.
+    def forward(self, gp_features: Tensor) -> Tensor:
+        """Computes GP posterior predictive variance.
 
         Args:
-        gp_features: (torch.Tensor) Pre-activation output from the model. Needed
-            for Laplace approximation under a non-Gaussian likelihood.
+            gp_features: GP features.
 
         Returns:
-        gp_var (torch.Tensor): GP posterior predictive variance,
-            shape (batch_size, batch_size).
+            GP posterior predictive variance.
         """
         # Lazily computes feature covariance matrix during inference.
         covariance_matrix_updated = self._update_feature_covariance_matrix()
@@ -285,7 +349,13 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         return gp_var
 
     @torch.no_grad()
-    def update(self, gp_features, multiplier=1):
+    def update(self, gp_features: Tensor, multiplier: float = 1) -> None:
+        """Updates the feature precision matrix.
+
+        Args:
+            gp_features: GP features.
+            multiplier: Multiplier for the update.
+        """
         # Computes the updated feature precision matrix.
         precision_matrix_updated = self._update_feature_precision_matrix(
             gp_features=gp_features,
@@ -298,8 +368,18 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         # Enables covariance update in the next inference call.
         self._update_covariance = True
 
-    def _update_feature_precision_matrix(self, gp_features, multiplier):
-        """Computes the update precision matrix of feature weights."""
+    def _update_feature_precision_matrix(
+        self, gp_features: Tensor, multiplier: float
+    ) -> Tensor:
+        """Computes the updated precision matrix of feature weights.
+
+        Args:
+            gp_features: GP features.
+            multiplier: Multiplier for the update.
+
+        Returns:
+            Updated precision matrix.
+        """
         batch_size = gp_features.shape[0]
 
         # Computes batch-specific normalized precision matrix.
@@ -321,16 +401,11 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         return precision_matrix_new
 
-    def _update_feature_covariance_matrix(self):
-        """Computes the feature covariance if self._update_covariance=True.
-
-        GP layer computes the covariance matrix of the random feature coefficient
-        by inverting the precision matrix. Since this inversion op is expensive,
-        we will invoke it only when there is new update to the precision matrix
-        (where self._update_covariance will be flipped to `True`.).
+    def _update_feature_covariance_matrix(self) -> Tensor:
+        """Computes the feature covariance matrix.
 
         Returns:
-        The updated covariance_matrix.
+            Updated covariance matrix.
         """
         precision_matrix = self._precision_matrix
         covariance_matrix = self._covariance_matrix
@@ -347,17 +422,14 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
         return covariance_matrix_updated
 
-    def _compute_predictive_variance(self, gp_feature):
+    def _compute_predictive_variance(self, gp_feature: Tensor) -> Tensor:
         """Computes posterior predictive variance.
 
-        Approximates the Gaussian process posterior variance using random features.
-
         Args:
-        gp_feature: (torch.Tensor) The random feature of testing data to be used for
-            computing the covariance matrix. Shape (batch_size, gp_hidden_size).
+            gp_feature: GP features.
 
         Returns:
-        (torch.Tensor) Predictive covariance matrix, shape (batch_size, batch_size).
+            Predictive covariance matrix.
         """
         # Computes the variance of the posterior gp prediction.
         gp_var = torch.einsum(
@@ -371,7 +443,17 @@ class LaplaceRandomFeatureCovariance(nn.Module):
 
 
 class LinearSpectralNormalizer(nn.Module):
-    """Module that augments Linear modules with spectral normalization."""
+    """Module that augments Linear modules with spectral normalization.
+
+    This module applies spectral normalization to Linear layers.
+
+    Args:
+        module: The Linear module to be normalized.
+        spectral_normalization_iteration: Number of power iterations.
+        spectral_normalization_bound: Upper bound for spectral norm.
+        dim: Dimension along which to normalize.
+        eps: Small value for numerical stability.
+    """
 
     def __init__(
         self,
@@ -404,7 +486,15 @@ class LinearSpectralNormalizer(nn.Module):
                 weight_matrix=weight_matrix, spectral_normalization_iteration=15
             )
 
-    def forward(self, weight: torch.Tensor) -> torch.Tensor:
+    def forward(self, weight: Tensor) -> Tensor:
+        """Applies spectral normalization to the input weight.
+
+        Args:
+            weight: Input weight tensor.
+
+        Returns:
+            Spectrally normalized weight tensor.
+        """
         if weight.ndim == 1:
             # Faster and more exact path, no need to approximate anything
             weight_norm = weight.norm(p=2, dim=0).clamp_min(self._eps)
@@ -434,10 +524,26 @@ class LinearSpectralNormalizer(nn.Module):
         return weight / division_factor
 
     @staticmethod
-    def right_inverse(value: torch.Tensor) -> torch.Tensor:
+    def right_inverse(value: Tensor) -> Tensor:
+        """Computes the right inverse of the spectral normalization.
+
+        Args:
+            value: Input tensor.
+
+        Returns:
+            Right inverse of the input.
+        """
         return value
 
-    def _reshape_weight_to_matrix(self, weight: torch.Tensor) -> torch.Tensor:
+    def _reshape_weight_to_matrix(self, weight: Tensor) -> Tensor:
+        """Reshapes the weight tensor to a matrix.
+
+        Args:
+            weight: Input weight tensor.
+
+        Returns:
+            Reshaped weight matrix.
+        """
         if self._dim > 0:
             # Permute self._dim to front
             weight = weight.permute(
@@ -450,8 +556,14 @@ class LinearSpectralNormalizer(nn.Module):
 
     @torch.no_grad()
     def _power_method(
-        self, weight_matrix: torch.Tensor, spectral_normalization_iteration: int
+        self, weight_matrix: Tensor, spectral_normalization_iteration: int
     ) -> None:
+        """Applies the power method to estimate singular vectors.
+
+        Args:
+            weight_matrix: Weight matrix.
+            spectral_normalization_iteration: Number of power iterations.
+        """
         # See original note at torch/nn/utils/spectral_norm.py
         # NB: If `do_power_iteration` is set, the `u` and `v` vectors are
         #     updated in power iteration **in-place**. This is very important
@@ -501,7 +613,16 @@ class LinearSpectralNormalizer(nn.Module):
 
 
 class Conv2dSpectralNormalizer(nn.Module):
-    """Module that augments Conv2d modules with spectral normalization."""
+    """Module that augments Conv2d modules with spectral normalization.
+
+    This module applies spectral normalization to Conv2d layers.
+
+    Args:
+        module: The Conv2d module to be normalized.
+        spectral_normalization_iteration: Number of power iterations.
+        spectral_normalization_bound: Upper bound for spectral norm.
+        eps: Small value for numerical stability.
+    """
 
     def __init__(
         self,
@@ -549,7 +670,15 @@ class Conv2dSpectralNormalizer(nn.Module):
             Conv2dSpectralNormalizer._infer_attributes, with_kwargs=True
         )
 
-    def forward(self, weight: torch.Tensor) -> torch.Tensor:
+    def forward(self, weight: Tensor) -> Tensor:
+        """Applies spectral normalization to the input weight.
+
+        Args:
+            weight: Input weight tensor.
+
+        Returns:
+            Spectrally normalized weight tensor.
+        """
         if self.training:
             self._power_method(
                 weight=weight,
@@ -585,7 +714,12 @@ class Conv2dSpectralNormalizer(nn.Module):
 
         return weight / division_factor
 
-    def initialize_buffers(self, weight) -> None:
+    def initialize_buffers(self, weight: Tensor) -> None:
+        """Initializes buffers for spectral normalization.
+
+        Args:
+            weight: Weight tensor to initialize buffers for.
+        """
         if self.has_uninitialized_buffers():
             with torch.no_grad():
                 flattened_input_shape = math.prod(self.single_input_shape)
@@ -606,17 +740,39 @@ class Conv2dSpectralNormalizer(nn.Module):
                 self._power_method(weight=weight, spectral_normalization_iteration=50)
 
     def has_uninitialized_buffers(self) -> bool:
+        """Checks if there are uninitialized buffers.
+
+        Returns:
+            True if there are uninitialized buffers, False otherwise.
+        """
         buffers = self._buffers.values()
         return any(is_lazy(buffer) for buffer in buffers)
 
     @staticmethod
-    def right_inverse(value: torch.Tensor) -> torch.Tensor:
+    def right_inverse(value: Tensor) -> Tensor:
+        """Computes the right inverse of the parametrization.
+
+        Args:
+            value: Input tensor.
+
+        Returns:
+            Right inverse of the input.
+        """
         return value
 
     @staticmethod
-    def _module_set_input_shape(module, args, kwargs=None):
+    def _module_set_input_shape(
+        module: nn.Module, args: tuple, kwargs: dict | None = None
+    ) -> None:
+        """Sets input shape for the module.
+
+        Args:
+            module: Module to set input shape for.
+            args: Positional arguments.
+            kwargs: Keyword arguments.
+        """
         kwargs = kwargs or {}
-        input = kwargs["input"] if "input" in kwargs else args[0]
+        input: Tensor = kwargs["input"] if "input" in kwargs else args[0]
 
         for parametrization in module.parametrizations.weight:
             if isinstance(parametrization, Conv2dSpectralNormalizer):
@@ -672,7 +828,16 @@ class Conv2dSpectralNormalizer(nn.Module):
                 # Invariant: there is only one Conv2dSpectralNormalizer registered
                 break
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_state_dict(
+        self, destination: dict, prefix: str, keep_vars: bool
+    ) -> None:
+        """Saves the module state to a dictionary.
+
+        Args:
+            destination: Destination dictionary.
+            prefix: Prefix for parameter names.
+            keep_vars: Whether to keep variables.
+        """
         # This should be ideally implemented as a hook,
         # but we should override `detach` in the UninitializedParameter to return itself
         # which is not clean
@@ -689,22 +854,24 @@ class Conv2dSpectralNormalizer(nn.Module):
 
     def _lazy_load_hook(
         self,
-        state_dict,
-        prefix,
-        local_metadata,
-        strict,
-        missing_keys,
-        unexpected_keys,
-        error_msgs,
-    ):
-        """load_state_dict pre-hook function for lazy buffers and parameters.
+        state_dict: dict,
+        prefix: str,
+        local_metadata: dict,
+        strict: bool,
+        missing_keys: list,
+        unexpected_keys: list,
+        error_msgs: list,
+    ) -> None:
+        """Hook for lazy loading of state dict.
 
-        The purpose of this hook is to adjust the current state and/or
-        ``state_dict`` being loaded so that a module instance serialized in
-        both un/initialized state can be deserialized onto both un/initialized
-        module instance.
-        See comment in ``torch.nn.Module._register_load_state_dict_pre_hook``
-        for the details of the hook specification.
+        Args:
+            state_dict: State dictionary.
+            prefix: Prefix for parameter names.
+            local_metadata: Local metadata.
+            strict: Whether to strictly enforce that the keys match.
+            missing_keys: List to store missing keys.
+            unexpected_keys: List to store unexpected keys.
+            error_msgs: List to store error messages.
         """
         del local_metadata, strict, missing_keys, unexpected_keys, error_msgs
 
@@ -722,15 +889,15 @@ class Conv2dSpectralNormalizer(nn.Module):
                         param.materialize(input_param.shape)
 
     @staticmethod
-    def _infer_attributes(module, args, kwargs=None):
-        r"""Infers the size and initializes the parameters according to the input batch.
+    def _infer_attributes(
+        module: nn.Module, args: tuple, kwargs: dict | None = None
+    ) -> None:
+        """Infers attributes for the module.
 
-        Given a module that contains parameters that were declared inferable
-        using :class:`torch.nn.parameter.ParameterMode.Infer`, runs a forward pass
-        in the complete module using the provided input to initialize all the parameters
-        as needed.
-        The module is set into evaluation mode before running the forward pass in order
-        to avoid saving statistics or calculating gradients
+        Args:
+            module: Module to infer attributes for.
+            args: Positional arguments.
+            kwargs: Keyword arguments.
         """
         # Infer buffers
         kwargs = kwargs or {}
@@ -747,7 +914,8 @@ class Conv2dSpectralNormalizer(nn.Module):
         delattr(module, "module_input_shape_hook")
         delattr(module, "initialize_hook")
 
-    def _replicate_for_data_parallel(self):
+    def _replicate_for_data_parallel(self) -> "Conv2dSpectralNormalizer":
+        """Replicates the module for data parallel processing."""
         if self.has_uninitialized_buffers():
             msg = (
                 "Modules with uninitialized parameters can't be used with "
@@ -760,8 +928,14 @@ class Conv2dSpectralNormalizer(nn.Module):
 
     @torch.no_grad()
     def _power_method(
-        self, weight: torch.Tensor, spectral_normalization_iteration: int
+        self, weight: Tensor, spectral_normalization_iteration: int
     ) -> None:
+        """Applies the power method to estimate singular vectors.
+
+        Args:
+            weight: Weight tensor.
+            spectral_normalization_iteration: Number of power iterations.
+        """
         # See original note at torch/nn/utils/spectral_norm.py
         # NB: If `do_power_iteration` is set, the `u` and `v` vectors are
         #     updated in power iteration **in-place**. This is very important
@@ -833,28 +1007,53 @@ class Conv2dSpectralNormalizer(nn.Module):
 
 
 class _SpectralNormalizedBatchNorm(_NormBase):
+    """Base class for spectral normalized batch normalization layers.
+
+    Args:
+        num_features: Number of features.
+        spectral_normalization_bound: Upper bound for spectral norm.
+        eps: Small value for numerical stability.
+        momentum: Momentum for running statistics.
+        device: Device to use.
+        dtype: Data type.
+        affine: Whether to use learnable affine parameters.
+        track_running_stats: Whether to track running statistics.
+    """
+
     def __init__(
         self,
         num_features: int,
         spectral_normalization_bound: float,
         eps: float = 1e-5,
         momentum: float = 0.01,
-        device=None,
-        dtype=None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         *,
         affine: bool = True,
-        track_running_stats: bool = True,
     ) -> None:
         # Momentum is 0.01 by default instead of 0.1 of BN which alleviates noisy power
         # iteration. Code is based on torch.nn.modules._NormBase
 
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__(
-            num_features, eps, momentum, affine, track_running_stats, **factory_kwargs
+            num_features=num_features,
+            eps=eps,
+            momentum=momentum,
+            affine=affine,
+            track_running_stats=True,
+            **factory_kwargs,
         )
         self._spectral_normalization_bound = spectral_normalization_bound
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
+        """Applies spectral normalized batch normalization.
+
+        Args:
+            input: Input tensor.
+
+        Returns:
+            Normalized output tensor.
+        """
         self._check_input_dim(input)
 
         # exponential_average_factor is set to self.momentum
@@ -862,7 +1061,7 @@ class _SpectralNormalizedBatchNorm(_NormBase):
         # in ONNX graph when this node is exported to ONNX
         exponential_average_factor = 0.0 if self.momentum is None else self.momentum
 
-        if self.training and self.track_running_stats:  # noqa: SIM102
+        if self.training:  # noqa: SIM102
             # If statement only here to tell the jit to skip emitting this when it
             # is None
             if self.num_batches_tracked is not None:
@@ -872,14 +1071,6 @@ class _SpectralNormalizedBatchNorm(_NormBase):
                 else:  # Use exponential moving average
                     exponential_average_factor = self.momentum
 
-        # Decide whether the mini-batch stats should be used for normalization rather
-        # than the buffers. Mini-batch stats are used in training mode, and in eval mode
-        # when buffers are None
-        if self.training:
-            bn_training = True
-        else:
-            bn_training = (self.running_mean is None) and (self.running_var is None)
-
         # Buffers are only updated if they are to be tracked and we are in training
         # mode. Thus they only need to be passed when the update should occur (i.e. in
         # training mode when they are tracked), or when buffer stats are used for
@@ -888,61 +1079,101 @@ class _SpectralNormalizedBatchNorm(_NormBase):
         # Before the forward pass, estimate the Lipschitz constant of the layer and
         # divide through by it so that the Lipschitz constant of the batch norm operator
         # is at most self.coeff
-        weight = (
-            torch.ones_like(self.running_var) if self.weight is None else self.weight
-        )
-        # See https://arxiv.org/pdf/1804.04368.pdf, equation 28 for why this is correct
-        lipschitz = torch.max(torch.abs(weight * (self.running_var + self.eps) ** -0.5))
+        weight = self.weight
 
-        # If the Lipschitz constant of the operation is greater than coeff, then we want
-        # to divide the input by a constant to force the overall Lipchitz factor of the
-        # batch norm to be exactly coeff
-        lipschitz_factor = torch.max(
-            lipschitz / self._spectral_normalization_bound, torch.ones_like(lipschitz)
-        )
+        if weight is not None:
+            # See https://arxiv.org/pdf/1804.04368.pdf,
+            # equation 28 for why this is correct
+            lipschitz = torch.max(
+                torch.abs(weight * (self.running_var + self.eps) ** -0.5)
+            )
 
-        weight /= lipschitz_factor
+            # If the Lipschitz constant of the operation is greater than coeff, then we
+            # want to divide the input by a constant to force the overall Lipchitz
+            # factor of the batch norm to be exactly coeff
+            lipschitz_factor = torch.max(
+                lipschitz / self._spectral_normalization_bound,
+                torch.ones_like(lipschitz),
+            )
+
+            weight /= lipschitz_factor
 
         return F.batch_norm(
             input,
-            # If buffers are not to be tracked, ensure that they won't be updated
-            (
-                self.running_mean
-                if not self.training or self.track_running_stats
-                else None
-            ),
-            self.running_var if not self.training or self.track_running_stats else None,
+            self.running_mean,
+            self.running_var,
             weight,
             self.bias,
-            bn_training,
+            self.training,
             exponential_average_factor,
             self.eps,
         )
 
 
 class SpectralNormalizedBatchNorm2d(_SpectralNormalizedBatchNorm):
-    """Spectral normalized BatchNorm2d module."""
+    """Spectral normalized BatchNorm2d module.
 
-    def __init__(self, module, spectral_normalization_bound: float) -> None:
-        # TODO(bmucsanyi): Set bn-momentum to 0.01 if we use this!
+    This module applies spectral normalization to BatchNorm2d layers.
+
+    Args:
+        module: The BatchNorm2d module to be normalized.
+        spectral_normalization_bound: Upper bound for spectral norm.
+    """
+
+    def __init__(self, module: nn.Module, spectral_normalization_bound: float) -> None:
+        if not module.track_running_stats:
+            msg = (
+                f"track_running_stats=False is not supported with {type(self).__name__}"
+            )
+            raise ValueError(msg)
+
         super().__init__(
             module.num_features,
             spectral_normalization_bound,
             module.eps,
             module.momentum,
             module.affine,
-            module.track_running_stats,
         )
 
     @staticmethod
-    def _check_input_dim(input):
+    def _check_input_dim(input: Tensor) -> None:
+        """Checks the input dimension.
+
+        Args:
+            input: Input tensor.
+
+        Raises:
+            ValueError: If input dimension is not 4.
+        """
         if input.dim() != 4:
             msg = f"Expected 4D input (got {input.dim()}D input)"
             raise ValueError(msg)
 
 
 class SNGPWrapper(DistributionalWrapper):
-    """This module takes a model as input and creates an SNGP from it."""
+    """Wrapper that creates an SNGP from an input model.
+
+    Args:
+        model: Base model to wrap.
+        use_spectral_normalization: Whether to use spectral normalization.
+        use_tight_norm_for_pointwise_convs: Whether to use tight norm for pointwise
+            convolutions.
+        spectral_normalization_iteration: Number of power iterations for spectral
+            normalization.
+        spectral_normalization_bound: Upper bound for spectral norm.
+        use_spectral_normalized_batch_norm: Whether to use spectral normalized batch
+            norm.
+        num_mc_samples: Number of Monte Carlo samples.
+        num_random_features: Number of random features for GP.
+        gp_kernel_scale: Scale of the GP kernel.
+        gp_output_bias: Output bias for GP.
+        gp_random_feature_type: Type of random features for GP.
+        use_input_normalized_gp: Whether to use input normalization for GP.
+        gp_cov_momentum: Momentum for GP covariance update.
+        gp_cov_ridge_penalty: Ridge penalty for GP covariance.
+        gp_input_dim: Input dimension for GP.
+        likelihood: Likelihood type for GP.
+    """
 
     def __init__(
         self,
@@ -962,7 +1193,7 @@ class SNGPWrapper(DistributionalWrapper):
         gp_cov_ridge_penalty: float,
         gp_input_dim: int,
         likelihood: str,
-    ):
+    ) -> None:
         super().__init__(model)
 
         self._num_mc_samples = num_mc_samples
@@ -1037,7 +1268,7 @@ class SNGPWrapper(DistributionalWrapper):
 
             if use_tight_norm_for_pointwise_convs:
 
-                def is_pointwise_conv(conv2d: nn.Conv2d) -> bool:
+                def is_pointwise_conv(conv2d: nn.Module) -> bool:
                     return conv2d.kernel_size == (1, 1)
 
                 register_cond(
@@ -1063,7 +1294,12 @@ class SNGPWrapper(DistributionalWrapper):
                     target_module=SNBN,
                 )
 
-    def get_classifier(self):
+    def get_classifier(self) -> nn.Sequential:
+        """Returns the classifier of the SNGP.
+
+        Returns:
+            The classifier module.
+        """
         return self._classifier
 
     def reset_classifier(
@@ -1078,9 +1314,25 @@ class SNGPWrapper(DistributionalWrapper):
         gp_cov_ridge_penalty: float | None = None,
         gp_input_dim: int | None = None,
         likelihood: str | None = None,
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Resets the classifier with new parameters.
+
+        Args:
+            num_mc_samples: New number of Monte Carlo samples.
+            num_random_features: New number of random features.
+            gp_kernel_scale: New GP kernel scale.
+            gp_output_bias: New GP output bias.
+            gp_random_feature_type: New GP random feature type.
+            use_input_normalized_gp: Whether to use input normalized GP.
+            gp_cov_momentum: New GP covariance momentum.
+            gp_cov_ridge_penalty: New GP covariance ridge penalty.
+            gp_input_dim: New GP input dimension.
+            likelihood: New likelihood type.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
         if num_mc_samples is not None:
             self._num_mc_samples = num_mc_samples
 
@@ -1146,5 +1398,6 @@ class SNGPWrapper(DistributionalWrapper):
 
         self._classifier = classifier
 
-    def reset_covariance_matrix(self):
+    def reset_covariance_matrix(self) -> None:
+        """Resets covariance matrix of the GP layer."""
         self._classifier[-1].reset_covariance_matrix()

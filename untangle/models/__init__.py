@@ -1,3 +1,5 @@
+"""Implementations of untangle models."""
+
 from .resnet_cifar import wide_resnet_c_26_10
 from .resnet_cifar_fixup import wide_resnet_c_fixup_26_10
 from .resnet_cifar_preact import resnet_c_preact_26, wide_resnet_c_preact_26_10

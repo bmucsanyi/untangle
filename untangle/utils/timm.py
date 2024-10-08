@@ -1,12 +1,15 @@
 """Compatibility utilities for timm."""
 
+import argparse
+from typing import Any
 
-def scheduler_kwargs(args):
+
+def scheduler_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     """Argparse to kwargs helper.
 
     Converts scheduler args in argparse args to keyword args.
     No scheduler keyword argument is exposed directly in `args` because we deem them
-    unimportant for hyperparameter sweeps..
+    unimportant for hyperparameter sweeps.
     """
     sched_kwargs = args.sched_kwargs
     plateau_mode = "max"
@@ -38,7 +41,7 @@ def scheduler_kwargs(args):
     return kwargs
 
 
-def optimizer_kwargs(args):
+def optimizer_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     """Argparse to kwargs helper.
 
     Converts optimizer args in argparse to keyword args.

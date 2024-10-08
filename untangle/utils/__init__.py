@@ -1,8 +1,10 @@
+"""Collection of utilities for the untangle package."""
+
 from .checkpoint_saver import CheckpointSaver
 from .context import DefaultContext
 from .convolution import calculate_output_padding, calculate_same_padding
 from .dataset import create_dataset
-from .loader import create_loader
+from .loader import PrefetchLoader, create_loader
 from .logging import log_wandb, setup_logging
 from .loss import create_loss_fn
 from .metric import (
@@ -58,6 +60,7 @@ __all__ = [
     "DefaultContext",
     "ModuleData",
     "NativeScaler",
+    "PrefetchLoader",
     "accuracy",
     "area_under_lift_curve",
     "area_under_risk_coverage_curve",

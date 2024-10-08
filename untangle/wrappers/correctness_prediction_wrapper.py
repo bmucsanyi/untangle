@@ -1,10 +1,11 @@
 """Direct correctness prediction implementation as a wrapper class."""
 
 import re
+from collections.abc import Callable
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 
 from untangle.models.utils import BinaryClassifier
 from untangle.wrappers.loss_prediction_wrapper import AveragePool, EmbeddingNetwork
@@ -16,7 +17,17 @@ class BaseCorrectnessPredictionWrapper(SpecialWrapper):
 
 
 class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
-    """This module takes a model and creates a correctness prediction module."""
+    """Wrapper that creates a deep correctness prediction model from an input model.
+
+    Args:
+        model: The neural network model to be wrapped.
+        num_hidden_features: Number of hidden features in the embedding network.
+        mlp_depth: Depth of the MLP in the binary classifier.
+        stopgrad: Whether to stop gradient propagation in feature extraction.
+        num_hooks: Number of hooks to attach for feature extraction.
+        module_type: Type of modules to attach hooks to.
+        module_name_regex: Regex pattern for module names to attach hooks to.
+    """
 
     def __init__(
         self,
@@ -24,18 +35,15 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
         num_hidden_features: int,
         mlp_depth: int,
         stopgrad: bool,
-        num_hooks=None,
-        module_type=None,
-        module_name_regex=None,
-    ):
+        num_hooks: int | None = None,
+        module_type: type | None = None,
+        module_name_regex: str | None = None,
+    ) -> None:
         super().__init__(model)
 
         self._num_hidden_features = num_hidden_features
         self._mlp_depth = mlp_depth
         self._stopgrad = stopgrad
-        self._num_hooks = num_hooks
-        self._module_type = module_type
-        self._module_name_regex = module_name_regex
 
         # Register hooks to extract intermediate features
         self._feature_buffer = {}
@@ -51,29 +59,56 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
         # Initialize uncertainty network(s)
         self._add_embedding_modules()
         self._binary_classifier = BinaryClassifier(
-            in_channels=num_hidden_features * num_hooks,
+            in_channels=num_hidden_features * len(chosen_layers),
             width=num_hidden_features,
             depth=mlp_depth,
         )
 
     @staticmethod
-    def _get_layer_candidates(model, module_type, module_name_regex):
+    def _get_layer_candidates(
+        model: nn.Module, module_type: type | None, module_name_regex: str | None
+    ) -> dict[str, nn.Module]:
+        """Gets candidate layers for hook attachment.
+
+        Args:
+            model: The model to search for candidate layers.
+            module_type: Type of modules to consider as candidates.
+            module_name_regex: Regex pattern for module names to consider as candidates.
+
+        Returns:
+            A dictionary of candidate layers.
+        """
         layer_candidates = {}
 
-        if module_name_regex is not None:
-            module_name_regex = re.compile(module_name_regex)
+        compiled_module_name_regex = (
+            re.compile(module_name_regex) if module_name_regex is not None else None
+        )
 
         layer_candidates = {
             name: module
             for name, module in model.named_modules()
-            if (module_name_regex is not None and module_name_regex.match(name))
+            if (
+                compiled_module_name_regex is not None
+                and compiled_module_name_regex.match(name)
+            )
             or (module_type is not None and isinstance(module, module_type))
         }
 
         return layer_candidates
 
     @staticmethod
-    def _filter_layer_candidates(layer_candidates, num_hooks):
+    def _filter_layer_candidates(
+        layer_candidates: dict[str, nn.Module], num_hooks: int | None
+    ) -> dict[str, nn.Module]:
+        """Filters layer candidates based on the number of hooks.
+
+        Args:
+            layer_candidates: Dictionary of candidate layers.
+            num_hooks: Number of hooks to select.
+
+        Returns:
+            A dictionary of filtered candidate layers.
+        """
         if num_hooks is None:
             return layer_candidates
 
@@ -91,9 +126,15 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
 
         return chosen_layers
 
-    def _attach_hooks(self, chosen_layers):
-        def get_features(name):
-            def hook(model, input, output):
+    def _attach_hooks(self, chosen_layers: dict[str, nn.Module]) -> None:
+        """Attaches hooks to the chosen layers.
+
+        Args:
+            chosen_layers: Dictionary of layers to attach hooks to.
+        """
+
+        def get_features(name: str) -> Callable:
+            def hook(model: nn.Module, input: Tensor, output: Tensor) -> None:
                 del model, input
                 self._feature_buffer[name] = (
                     output.detach() if self._stopgrad else output
@@ -107,13 +148,15 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
             handle = layer.register_forward_hook(get_features(name))
             self._hook_handles.append(handle)
 
-    def _remove_hooks(self):
+    def _remove_hooks(self) -> None:
+        """Removes all attached hooks."""
         # Remove all hooks
         for handle in self._hook_handles:
             handle.remove()
         self._hook_handles = []
 
-    def _add_embedding_modules(self):
+    def _add_embedding_modules(self) -> None:
+        """Adds embedding modules for feature processing."""
         # Get the feature map sizes
         empty_image = torch.zeros(
             [1, *self.model.default_cfg["input_size"]],
@@ -140,7 +183,18 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
         self.embedding_modules = nn.ModuleDict(modules)
 
     @staticmethod
-    def _get_feature_dim(shape):
+    def _get_feature_dim(shape: tuple[int, ...]) -> int:
+        """Gets the feature dimension from the shape.
+
+        Args:
+            shape: Shape of the feature tensor.
+
+        Returns:
+            The feature dimension.
+
+        Raises:
+            ValueError: If the shape is invalid.
+        """
         # Exclude the batch dimension
         dims = shape[1:]
 
@@ -156,7 +210,18 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
         raise ValueError(msg)
 
     @staticmethod
-    def _get_pooling_layer(shape):
+    def _get_pooling_layer(shape: tuple[int, ...]) -> nn.Module:
+        """Gets the appropriate pooling layer based on the shape.
+
+        Args:
+            shape: Shape of the feature tensor.
+
+        Returns:
+            An instance of the appropriate pooling layer.
+
+        Raises:
+            ValueError: If the shape is invalid.
+        """
         # Exclude the batch dimension
         dims = shape[1:]
 
@@ -173,14 +238,34 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
 
         return AveragePool(dim)
 
-    def forward_features(self, x):
+    def forward_features(self, x: Tensor) -> Tensor:
+        """Forward pass through the feature extraction part of the model.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor from the feature extraction part.
+        """
         self._feature_buffer.clear()
 
         return self.model.forward_features(x)
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(
+        self, input: Tensor, *, pre_logits: bool = False
+    ) -> dict[str, Tensor] | tuple[Tensor, Tensor] | Tensor:
+        """Forward pass through the head of the model.
+
+        Args:
+            input: Input tensor.
+            pre_logits: Whether to return pre-logits.
+
+        Returns:
+            Either pre-logits, a tuple of logits and binary logits, or a dictionary
+            containing logits and error probability.
+        """
         # Always get pre_logits
-        features = self.model.forward_head(x, pre_logits=True)
+        features = self.model.forward_head(input, pre_logits=True)
 
         if pre_logits:
             return features
@@ -207,15 +292,22 @@ class DeepCorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
 
 
 class CorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
-    """This module takes a model and creates a correctness prediction module."""
+    """Wrapper that creates a correctness prediction model from an input model.
+
+    Args:
+        model: The neural network model to be wrapped.
+        num_hidden_features: Number of hidden features in the binary classifier.
+        mlp_depth: Depth of the MLP in the binary classifier.
+        stopgrad: Whether to stop gradient propagation in feature extraction.
+    """
 
     def __init__(
         self,
         model: nn.Module,
-        num_hidden_features: int,  # 256
+        num_hidden_features: int,
         mlp_depth: int,
         stopgrad: bool,
-    ):
+    ) -> None:
         super().__init__(model)
 
         self._num_hidden_features = num_hidden_features
@@ -226,9 +318,21 @@ class CorrectnessPredictionWrapper(BaseCorrectnessPredictionWrapper):
             in_channels=model.num_features, width=num_hidden_features, depth=mlp_depth
         )
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(
+        self, input: Tensor, *, pre_logits: bool = False
+    ) -> dict[str, Tensor] | tuple[Tensor, Tensor] | Tensor:
+        """Forward pass through the head of the model.
+
+        Args:
+            input: Input tensor.
+            pre_logits: Whether to return pre-logits.
+
+        Returns:
+            Either pre-logits, a tuple of logits and binary logits, or a dictionary
+            containing logits, features, and error probability.
+        """
         # Always get pre_logits
-        features = self.model.forward_head(x, pre_logits=True)
+        features = self.model.forward_head(input, pre_logits=True)
 
         if pre_logits:
             return features

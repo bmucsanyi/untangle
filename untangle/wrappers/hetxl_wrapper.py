@@ -3,36 +3,47 @@
 Heteroscedastic Gaussian sampling based on https://github.com/google/uncertainty-baselines.
 """
 
+from typing import Any
+
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 
 from untangle.wrappers.model_wrapper import DistributionalWrapper
 
 
 class HETXLHead(nn.Module):
-    """Classification head for the HET-XL method."""
+    """Classification head for the HET-XL method.
+
+    Args:
+        matrix_rank: Rank of the low-rank covariance matrix.
+        num_mc_samples: Number of Monte Carlo samples.
+        num_features: Number of input features.
+        temperature: Temperature for scaling logits.
+        classifier: Classifier module.
+        use_het: Whether to use heteroscedastic model.
+    """
 
     def __init__(
         self,
-        matrix_rank,
-        num_mc_samples,
-        num_features,
-        temperature,
-        classifier,
-        use_het,
-    ):
+        matrix_rank: int,
+        num_mc_samples: int,
+        num_features: int,
+        temperature: float,
+        classifier: nn.Module,
+        use_het: bool,
+    ) -> None:
         super().__init__()
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
         self._num_features = num_features
 
         self._low_rank_cov_layer = nn.Linear(
-            in_features=self._num_features,
-            out_features=self._num_features * self._matrix_rank,
+            in_features=num_features,
+            out_features=num_features * matrix_rank,
         )
         self._diagonal_std_layer = nn.Linear(
-            in_features=self._num_features, out_features=self._num_features
+            in_features=num_features, out_features=num_features
         )
         self._min_scale_monte_carlo = 1e-3
 
@@ -40,7 +51,15 @@ class HETXLHead(nn.Module):
         self._classifier = classifier
         self._use_het = use_het
 
-    def forward(self, features):
+    def forward(self, features: Tensor) -> Tensor:
+        """Performs a forward pass through the HET-XL head.
+
+        Args:
+            features: Input features.
+
+        Returns:
+            Temperature-scaled logits.
+        """
         if self._use_het:
             features = self._classifier(features)  # D = C
 
@@ -75,7 +94,15 @@ class HETXLHead(nn.Module):
 
 
 class HETXLWrapper(DistributionalWrapper):
-    """This module takes a model as input and creates a HET-XL model from it."""
+    """Wrapper that creates a HET(-XL) model from an input model.
+
+    Args:
+        model: The backbone model to wrap.
+        matrix_rank: Rank of the low-rank covariance matrix.
+        num_mc_samples: Number of Monte Carlo samples.
+        temperature: Temperature for scaling logits.
+        use_het: Whether to use HET instead of HET-XL.
+    """
 
     def __init__(
         self,
@@ -84,7 +111,7 @@ class HETXLWrapper(DistributionalWrapper):
         num_mc_samples: int,
         temperature: float,
         use_het: bool,
-    ):
+    ) -> None:
         super().__init__(model)
 
         self._matrix_rank = matrix_rank
@@ -101,7 +128,12 @@ class HETXLWrapper(DistributionalWrapper):
             use_het=self._use_het,
         )
 
-    def get_classifier(self):
+    def get_classifier(self) -> HETXLHead:
+        """Returns the HET-XL classifier head.
+
+        Returns:
+            The HETXLHead instance.
+        """
         return self._classifier
 
     def reset_classifier(
@@ -110,9 +142,19 @@ class HETXLWrapper(DistributionalWrapper):
         num_mc_samples: int | None = None,
         temperature: float | None = None,
         use_het: bool | None = None,
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Resets the classifier with new parameters.
+
+        Args:
+            matrix_rank: New matrix rank for the low-rank covariance.
+            num_mc_samples: New number of Monte Carlo samples.
+            temperature: New temperature for scaling logits.
+            use_het: New flag for using heteroscedastic model.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
         if matrix_rank is not None:
             self._matrix_rank = matrix_rank
 

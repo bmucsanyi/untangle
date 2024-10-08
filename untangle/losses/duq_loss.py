@@ -13,7 +13,7 @@ class DUQLoss(nn.Module):
 
     def __init__(
         self,
-    ):
+    ) -> None:
         super().__init__()
 
         self.loss = nn.BCELoss()
@@ -23,5 +23,14 @@ class DUQLoss(nn.Module):
         prediction: Tensor,
         target: Tensor,
     ) -> Tensor:
+        """Computes the DUQ loss.
+
+        Args:
+            prediction: The predicted probabilities.
+            target: The target probabilities.
+
+        Returns:
+            The computed DUQ loss value.
+        """
         with torch.autocast("cuda", enabled=False):
             return self.loss(prediction, target)

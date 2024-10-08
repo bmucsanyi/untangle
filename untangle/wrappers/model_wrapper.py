@@ -1,17 +1,30 @@
 """Contains base wrapper classes."""
 
-import torch
-from torch import nn
+from typing import Any
+
+from torch import Tensor, nn
 
 
 class ModelWrapper(nn.Module):
-    """General model wrapper base class."""
+    """Serves as a general model wrapper base class.
 
-    def __init__(self, model: nn.Module):
+    Args:
+        model: The neural network model to be wrapped.
+    """
+
+    def __init__(self, model: nn.Module) -> None:
         super().__init__()
         self.model = model
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
+        """Retrieves attributes from the wrapped model.
+
+        Args:
+            name: Name of the attribute to retrieve.
+
+        Returns:
+            The requested attribute from the wrapped model.
+        """
         if "_parameters" in self.__dict__:
             _parameters = self.__dict__["_parameters"]
             if name in _parameters:
@@ -26,9 +39,21 @@ class ModelWrapper(nn.Module):
                 return modules[name]
         return getattr(self.model, name)
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(
+        self, input: Tensor, *, pre_logits: bool = False
+    ) -> Tensor | dict[str, Tensor]:
+        """Performs forward pass through the model's head.
+
+        Args:
+            input: Input tensor.
+            pre_logits: Flag to return pre-logits features.
+
+        Returns:
+            Output tensor during training or dictionary containing logits during
+            inference.
+        """
         # Always get pre_logits
-        features = self.model.forward_head(x, pre_logits=True)
+        features = self.model.forward_head(input, pre_logits=True)
 
         if pre_logits:
             return features
@@ -40,8 +65,15 @@ class ModelWrapper(nn.Module):
         return {"logit": out}
 
     @staticmethod
-    def _convert_state_dict(state_dict):
-        """Converts state_dict by removing 'model.' prefix from keys."""
+    def _convert_state_dict(state_dict: dict[str, Tensor]) -> dict[str, Tensor]:
+        """Converts state_dict by removing 'model.' prefix from keys.
+
+        Args:
+            state_dict: Original state dictionary.
+
+        Returns:
+            Converted state dictionary.
+        """
         converted_state_dict = {}
         for k, v in state_dict.items():
             if k.startswith("model."):
@@ -50,29 +82,28 @@ class ModelWrapper(nn.Module):
                 converted_state_dict[k] = v
         return converted_state_dict
 
-    def _load_model(self):
-        """Loads the model."""
-        weight_path = self._weight_path
-        checkpoint = torch.load(weight_path, map_location="cpu", weights_only=True)
-        state_dict = checkpoint["state_dict"]
-        state_dict = self._convert_state_dict(state_dict)
+    def forward(self, input: Tensor) -> Tensor | dict[str, Tensor]:
+        """Performs forward pass through the entire model.
 
-        self.model.load_state_dict(state_dict, strict=True)
+        Args:
+            input: Input tensor.
 
-    def forward(self, x):
-        x = self.forward_features(x)
+        Returns:
+            Model output or dictionary containing output tensors.
+        """
+        x = self.forward_features(input)
         x = self.forward_head(x)
 
         return x
 
 
 class DistributionalWrapper(ModelWrapper):
-    """Meta-class of distributional methods."""
+    """Serves as a meta-class for distributional methods."""
 
 
 class SpecialWrapper(ModelWrapper):
-    """Meta-class of deterministic methods."""
+    """Serves as a meta-class for deterministic methods."""
 
 
 class DirichletWrapper(DistributionalWrapper):
-    """Meta-class of Dirichlet-based methods."""
+    """Serves as a meta-class for Dirichlet-based methods."""

@@ -1,11 +1,27 @@
 """Fast collate implementation."""
 
+from collections.abc import Sequence
+
 import numpy as np
 import torch
+from torch import Tensor
 
 
-def fast_collate(batch):
-    """A fast collation function optimized for uint8 images and int64 targets."""
+def fast_collate(
+    batch: Sequence[tuple[np.ndarray | Tensor | tuple, int]],
+) -> tuple[Tensor, Tensor]:
+    """A fast collation function optimized for uint8 images and int64 targets.
+
+    Args:
+        batch: A sequence of tuples containing image data and target labels.
+
+    Returns:
+        A tuple containing the collated image tensor and target tensor.
+
+    Raises:
+        TypeError: If the input is not a sequence of tuples.
+        ValueError: If the input tensors are not of consistent shape or type.
+    """
     if not isinstance(batch[0], tuple):
         msg = f"Tuple expected at batch[0], got {type(batch[0])}"
         raise TypeError(msg)
@@ -40,7 +56,7 @@ def fast_collate(batch):
 
         return tensor, targets
 
-    if isinstance(batch[0][0], torch.Tensor):
+    if isinstance(batch[0][0], Tensor):
         targets = torch.from_numpy(np.array([b[1] for b in batch], dtype=np.int64))
         tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
 

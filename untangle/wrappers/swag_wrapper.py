@@ -3,19 +3,37 @@
 import itertools
 import logging
 import time
+from collections.abc import Iterable
 from math import sqrt
+from typing import Any
 
 import torch
+from torch import Tensor, nn
+from torch.utils.data import DataLoader
 
+from untangle.utils.loader import PrefetchLoader
 from untangle.wrappers.model_wrapper import DistributionalWrapper
 
 logger = logging.getLogger(__name__)
 
 
 class SWAGWrapper(DistributionalWrapper):
-    """This module takes a model and creates a SWAG model posterior."""
+    """Wrapper that creates a SWAG posterior from an input model.
 
-    def __init__(self, model, weight_path, use_low_rank_cov, max_rank):
+    SWAG (Stochastic Weight Averaging - Gaussian) is a Bayesian deep learning
+    method that approximates the posterior distribution over neural network
+    weights.
+
+    Args:
+        model: The base model to wrap.
+        weight_path: Path to the model weights.
+        use_low_rank_cov: Whether to use low-rank plus diagonal covariance.
+        max_rank: Maximum rank for the low-rank component.
+    """
+
+    def __init__(
+        self, model: nn.Module, weight_path: str, use_low_rank_cov: bool, max_rank: int
+    ) -> None:
         super().__init__(model)
 
         self._use_low_rank_cov = use_low_rank_cov
@@ -23,8 +41,7 @@ class SWAGWrapper(DistributionalWrapper):
         self._min_var = 1e-30
         self._swag_params_device = torch.device("cpu")
 
-        self._weight_path = weight_path
-        self._load_model()
+        self._load_model(weight_path)
 
         num_params = sum(
             param.numel() for param in model.parameters() if param.requires_grad
@@ -41,15 +58,27 @@ class SWAGWrapper(DistributionalWrapper):
         self._modules_and_names = []
         self.model.apply(self._add_swag_params)
 
-    def forward(self, inputs):
+    def forward(self, input: Tensor) -> dict[str, Tensor] | Tensor:
+        """Performs forward pass through the SWAG model.
+
+        During training, it uses the base model. During inference, it samples
+        multiple models and returns their predictions.
+
+        Args:
+            input: Input tensor.
+
+        Returns:
+            During training, returns logits. During inference, returns a
+            dictionary with sampled logits.
+        """
         if self.training:
-            return self.model(inputs)  # [B, C]
+            return self.model(input)  # [B, C]
 
         sampled_logits = []
         for model_index in range(self.num_models):
             self._set_model(model_index=model_index)
             features = self.model.forward_head(
-                self.model.forward_features(inputs), pre_logits=True
+                self.model.forward_features(input), pre_logits=True
             )
             logits = self.model.get_classifier()(features)  # [B, C]
 
@@ -59,22 +88,47 @@ class SWAGWrapper(DistributionalWrapper):
 
         return {"logit": sampled_logits}
 
-    def forward_features(self, inputs):
+    def forward_features(self, inputs: Tensor) -> None:
+        """Not implemented for SWAG wrapper.
+
+        Args:
+            inputs: Input tensor.
+        """
         del inputs
         msg = f"forward_features cannot be called directly for {type(self)}"
         raise ValueError(msg)
 
-    def forward_head(self, features):
-        del features
+    def forward_head(
+        self, input: Tensor, *, pre_logits: bool = False
+    ) -> Tensor | dict[str, Tensor]:
+        """Not implemented for SWAG wrapper.
+
+        Args:
+            input: Input tensor.
+            pre_logits: Whether to return pre-logits instead of logits.
+        """
+        del input, pre_logits
         msg = f"forward_head cannot be called directly for {type(self)}"
         raise ValueError(msg)
 
-    def get_mc_samples(self, train_loader, num_mc_samples, args):
+    def get_mc_samples(
+        self,
+        train_loader: DataLoader | PrefetchLoader,
+        num_mc_samples: int,
+        channels_last: bool,
+    ) -> None:
+        """Performs Monte Carlo sampling of SWAG weights.
+
+        Args:
+            train_loader: DataLoader or PrefetchLoader for the training set.
+            num_mc_samples: Number of Monte Carlo samples to generate.
+            channels_last: Whether a channels_last memory layout should be used.
+        """
         logger.info("Starting MC sampling the SWAG weights.")
         for i in range(num_mc_samples):
             time_start = time.perf_counter()
             self._sample_and_store_params(
-                train_loader=train_loader, fraction=0.1, args=args
+                train_loader=train_loader, fraction=0.1, channels_last=channels_last
             )
             time_end = time.perf_counter()
             logger.info(
@@ -82,7 +136,17 @@ class SWAGWrapper(DistributionalWrapper):
                 f"{time_end - time_start} seconds."
             )
 
-    def to(self, *args, **kwargs):
+    def to(self, *args: Any, **kwargs: Any) -> "SWAGWrapper":
+        """Moves and/or casts the parameters and buffers.
+
+        Args:
+            *args: Arguments to specify the destination device, dtype, and
+                other options.
+            **kwargs: Keyword arguments for the same purpose.
+
+        Returns:
+            Self with parameters and buffers moved and/or cast.
+        """
         device, dtype, non_blocking, convert_to_format = torch._C._nn._parse_to(
             *args, **kwargs
         )
@@ -103,23 +167,58 @@ class SWAGWrapper(DistributionalWrapper):
             memory_format=convert_to_format,
         )
 
-    def cuda(self, device=None):
-        device = device or "cuda"
-        self.to(device)
+    def cuda(self, device: int | torch.device | None = None) -> "SWAGWrapper":
+        """Moves all model parameters and buffers to the GPU.
 
-    def cpu(self):
-        self.to("cpu")
+        Args:
+            device: The destination GPU device. Defaults to the current CUDA device.
 
-    def xpu(self, device=None):
-        device = device or "xpu"
-        self.to(device)
+        Returns:
+            Self with all parameters and buffers moved to GPU.
+        """
+        if device is None:
+            device = torch.device("cuda")
+        return self.to(device)
 
-    def ipu(self, device=None):
-        device = device or "ipu"
-        self.to(device)
+    def cpu(self) -> "SWAGWrapper":
+        """Moves all model parameters and buffers to the CPU.
+
+        Returns:
+            Self with all parameters and buffers moved to CPU.
+        """
+        return self.to("cpu")
+
+    def xpu(self, device: int | torch.device | None = None) -> "SWAGWrapper":
+        """Moves all model parameters and buffers to the XPU.
+
+        Args:
+            device: The destination XPU device. Defaults to the current XPU device.
+
+        Returns:
+            Self with all parameters and buffers moved to XPU.
+        """
+        if device is None:
+            device = torch.device("xpu")
+
+        return self.to(device)
+
+    def ipu(self, device: int | torch.device | None = None) -> "SWAGWrapper":
+        """Moves all model parameters and buffers to the IPU.
+
+        Args:
+            device: The destination IPU device. Defaults to the current IPU device.
+
+        Returns:
+            Self with all parameters and buffers moved to IPU.
+        """
+        if device is None:
+            device = torch.device("ipu")
+
+        return self.to(device)
 
     @torch.no_grad()
-    def update_stats(self):
+    def update_stats(self) -> None:
+        """Updates SWAG statistics (mean, square mean, and covariance)."""
         for module, name in self._modules_and_names:
             param = getattr(module, name)
 
@@ -159,8 +258,21 @@ class SWAGWrapper(DistributionalWrapper):
 
     @staticmethod
     def calculate_checkpoint_batches(
-        num_batches, num_checkpoints_per_epoch, accumulation_steps
-    ):
+        num_batches: int, num_checkpoints_per_epoch: int, accumulation_steps: int
+    ) -> set[int]:
+        """Calculates the batch indices for SWAG checkpoints.
+
+        Args:
+            num_batches: Total number of batches in an epoch.
+            num_checkpoints_per_epoch: Number of checkpoints to save per epoch.
+            accumulation_steps: Number of gradient accumulation steps.
+
+        Returns:
+            Set of batch indices for checkpoints.
+
+        Raises:
+            ValueError: If invalid arguments are provided.
+        """
         if num_checkpoints_per_epoch <= 0:
             msg = "num_checkpoints_per_epoch must be positive"
             raise ValueError(msg)
@@ -206,11 +318,24 @@ class SWAGWrapper(DistributionalWrapper):
         return checkpoint_batches
 
     @property
-    def num_models(self):
+    def num_models(self) -> int:
+        """Returns the number of sampled models."""
         return self._sampled_params_swag.shape[0]
 
     @torch.no_grad()
-    def _sample_and_store_params(self, train_loader, fraction, args):
+    def _sample_and_store_params(
+        self,
+        train_loader: DataLoader | PrefetchLoader,
+        fraction: float,
+        channels_last: bool,
+    ) -> None:
+        """Samples and stores model parameters for SWAG.
+
+        Args:
+            train_loader: DataLoader or PrefetchLoader for the training set.
+            fraction: Fraction of the training data to use for BatchNorm statistics.
+            channels_last: Whether a channels_last memory layout should be used.
+        """
         mean_list = []
         sq_mean_list = []
 
@@ -247,10 +372,18 @@ class SWAGWrapper(DistributionalWrapper):
         )
         self._unflatten_and_set_params(sample)
         self._set_and_store_bn_stats(
-            train_loader=train_loader, fraction=fraction, args=args
+            train_loader=train_loader, fraction=fraction, channels_last=channels_last
         )
 
-    def _set_model(self, model_index):
+    def _set_model(self, model_index: int) -> None:
+        """Sets the model parameters to a specific sampled model.
+
+        Args:
+            model_index: Index of the sampled model to use.
+
+        Raises:
+            ValueError: If an invalid model index is provided.
+        """
         if model_index >= self.num_models or model_index < 0:
             msg = "Invalid model index provided"
             raise ValueError(msg)
@@ -261,7 +394,12 @@ class SWAGWrapper(DistributionalWrapper):
             lambda module: self._load_bn_stats(module=module, model_index=model_index)
         )
 
-    def _add_swag_params(self, module):
+    def _add_swag_params(self, module: nn.Module) -> None:
+        """Adds SWAG-specific parameters to a module.
+
+        Args:
+            module: The module to add SWAG parameters to.
+        """
         for name, param in module.named_parameters(recurse=False):
             module.register_buffer(
                 f"{name}_mean_swag",
@@ -301,7 +439,12 @@ class SWAGWrapper(DistributionalWrapper):
                 torch.zeros((0,), dtype=torch.long, device=self._swag_params_device),
             )
 
-    def _unflatten_and_set_params(self, flat_params):
+    def _unflatten_and_set_params(self, flat_params: Tensor) -> None:
+        """Unflattens and sets model parameters from a flat tensor.
+
+        Args:
+            flat_params: Flattened tensor of model parameters.
+        """
         ind = 0
         for module, name in self._modules_and_names:
             param = getattr(module, name)
@@ -312,8 +455,14 @@ class SWAGWrapper(DistributionalWrapper):
             param.copy_(new_param)
             ind += numel
 
-    def _check_bn(self):
-        def _check_bn_module(module, flag):
+    def _check_bn(self) -> bool:
+        """Checks if the model contains BatchNorm layers.
+
+        Returns:
+            True if the model contains BatchNorm layers, False otherwise.
+        """
+
+        def _check_bn_module(module: nn.Module, flag: list[bool]) -> None:
             if (
                 isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
                 and module.track_running_stats
@@ -325,8 +474,19 @@ class SWAGWrapper(DistributionalWrapper):
         return flag[0]
 
     @torch.no_grad()
-    def _set_and_store_bn_stats(self, train_loader, fraction, args):
-        """Updates and saves the BatchNorm buffers using a `fraction` of `loader`."""
+    def _set_and_store_bn_stats(
+        self,
+        train_loader: DataLoader | PrefetchLoader,
+        fraction: float,
+        channels_last: bool,
+    ) -> None:
+        """Updates and stores BatchNorm statistics.
+
+        Args:
+            train_loader: DataLoader or PrefetchLoader for the training set.
+            fraction: Fraction of the training data to use.
+            channels_last: Whether a channels_last memory layout should be used.
+        """
         device = next(self.model.parameters()).device
 
         if not self._check_bn():
@@ -344,10 +504,10 @@ class SWAGWrapper(DistributionalWrapper):
 
         num_inputs = 0
         for input, _ in train_loader:
-            if not args.prefetcher:
+            if not isinstance(train_loader, PrefetchLoader):
                 input = input.to(device)
 
-            if args.channels_last:
+            if channels_last:
                 input = input.contiguous(memory_format=torch.channels_last)
 
             batch_size = input.shape[0]
@@ -363,11 +523,25 @@ class SWAGWrapper(DistributionalWrapper):
         self.model.apply(SWAGWrapper._store_bn_stats)
 
     @staticmethod
-    def _flatten_params(params):
+    def _flatten_params(params: Iterable[Tensor]) -> Tensor:
+        """Flattens a list of parameter tensors into a single tensor.
+
+        Args:
+            params: Iterable of parameter tensors.
+
+        Returns:
+            Flattened tensor of parameters.
+        """
         return torch.cat([param.flatten() for param in params])
 
     @staticmethod
-    def _load_bn_stats(module, model_index):
+    def _load_bn_stats(module: nn.Module, model_index: int) -> None:
+        """Loads BatchNorm statistics for a specific model.
+
+        Args:
+            module: The module containing BatchNorm layers.
+            model_index: Index of the model to load statistics for.
+        """
         if (
             isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
             and module.track_running_stats
@@ -379,7 +553,12 @@ class SWAGWrapper(DistributionalWrapper):
             )
 
     @staticmethod
-    def _reset_bn(module):
+    def _reset_bn(module: nn.Module) -> None:
+        """Resets BatchNorm statistics for a module.
+
+        Args:
+            module: The module containing BatchNorm layers.
+        """
         if (
             isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
             and module.track_running_stats
@@ -387,7 +566,13 @@ class SWAGWrapper(DistributionalWrapper):
             module.reset_running_stats()
 
     @staticmethod
-    def _get_momenta(module, momenta):
+    def _get_momenta(module: nn.Module, momenta: dict) -> None:
+        """Retrieves BatchNorm momentum values.
+
+        Args:
+            module: The module containing BatchNorm layers.
+            momenta: Dictionary to store momentum values.
+        """
         if (
             isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
             and module.track_running_stats
@@ -395,7 +580,13 @@ class SWAGWrapper(DistributionalWrapper):
             momenta[module] = module.momentum
 
     @staticmethod
-    def _set_momenta(module, momenta):
+    def _set_momenta(module: nn.Module, momenta: dict) -> None:
+        """Sets BatchNorm momentum values.
+
+        Args:
+            module: The module containing BatchNorm layers.
+            momenta: Dictionary containing momentum values.
+        """
         if (
             isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
             and module.track_running_stats
@@ -403,7 +594,12 @@ class SWAGWrapper(DistributionalWrapper):
             module.momentum = momenta[module]
 
     @staticmethod
-    def _store_bn_stats(module):
+    def _store_bn_stats(module: nn.Module) -> None:
+        """Stores BatchNorm statistics for SWAG.
+
+        Args:
+            module: The module containing BatchNorm layers.
+        """
         if (
             isinstance(module, torch.nn.modules.batchnorm._BatchNorm)
             and module.track_running_stats

@@ -8,24 +8,39 @@ from torch import Tensor
 class AverageMeter:
     """Computes and stores the average and current value."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
+        """Resets all statistics of the meter."""
         self.val = 0
         self.avg = 0
         self.sum = 0
         self.count = 0
 
-    def update(self, val, n=1):
+    def update(self, val: float, n: int = 1) -> None:
+        """Updates the meter with a new value.
+
+        Args:
+            val: The new value to be added.
+            n: The number of instances this value represents.
+        """
         self.val = val
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
 
 
-def is_correct_pred(output, target):
-    """Computes whether each target label is the top-1 prediction of the output."""
+def is_correct_pred(output: Tensor, target: Tensor) -> Tensor:
+    """Computes whether each target label is the top-1 prediction of the output.
+
+    Args:
+        output: The model output tensor.
+        target: The ground truth label tensor.
+
+    Returns:
+        A tensor of floats indicating correctness of predictions.
+    """
     _, pred = output.topk(k=1, dim=1, largest=True, sorted=True)
     pred = pred.flatten()
     target = target.flatten()
@@ -33,8 +48,19 @@ def is_correct_pred(output, target):
     return correct.float()
 
 
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy for the specified k top predictions."""
+def accuracy(
+    output: Tensor, target: Tensor, topk: tuple[int, ...] = (1,)
+) -> list[Tensor]:
+    """Computes the accuracy for the specified k top predictions.
+
+    Args:
+        output: The model output tensor.
+        target: The ground truth label tensor.
+        topk: A tuple of k-values for which to compute the accuracy.
+
+    Returns:
+        A list of accuracies for each k.
+    """
     maxk = min(max(topk), output.shape[1])
     batch_size = target.shape[0]
     _, pred = output.topk(maxk, 1, True, True)
@@ -46,7 +72,16 @@ def accuracy(output, target, topk=(1,)):
     ]
 
 
-def entropy(probs, dim=-1):
+def entropy(probs: Tensor, dim: int = -1) -> Tensor:
+    """Computes the entropy of a probability distribution.
+
+    Args:
+        probs: The probability distribution tensor.
+        dim: The dimension along which to compute entropy.
+
+    Returns:
+        The entropy tensor.
+    """
     log_probs = probs.log()
     min_real = torch.finfo(log_probs.dtype).min
     log_probs = torch.clamp(log_probs, min=min_real)
@@ -55,32 +90,91 @@ def entropy(probs, dim=-1):
     return -p_log_p.sum(dim=dim)
 
 
-def cross_entropy(probs_p, log_probs_q, dim=-1):
+def cross_entropy(probs_p: Tensor, log_probs_q: Tensor, dim: int = -1) -> Tensor:
+    """Computes the cross-entropy between two probability distributions.
+
+    Args:
+        probs_p: The first probability distribution tensor.
+        log_probs_q: The log of the second probability distribution tensor.
+        dim: The dimension along which to compute cross-entropy.
+
+    Returns:
+        The cross-entropy tensor.
+    """
     p_log_q = probs_p * log_probs_q
 
     return -p_log_q.sum(dim=dim)
 
 
-def kl_divergence(log_probs_p, log_probs_q, dim=-1):
+def kl_divergence(log_probs_p: Tensor, log_probs_q: Tensor, dim: int = -1) -> Tensor:
+    """Computes the KL divergence between two probability distributions.
+
+    Args:
+        log_probs_p: The log of the first probability distribution tensor.
+        log_probs_q: The log of the second probability distribution tensor.
+        dim: The dimension along which to compute KL divergence.
+
+    Returns:
+        The KL divergence tensor.
+    """
     return (log_probs_p.exp() * (log_probs_p - log_probs_q)).sum(dim=dim)
 
 
-def binary_log_probability(confidences, targets):
+def binary_log_probability(confidences: Tensor, targets: Tensor) -> Tensor:
+    """Computes the binary log probability.
+
+    Args:
+        confidences: The predicted confidence scores.
+        targets: The binary target labels.
+
+    Returns:
+        The binary log probability tensor.
+    """
     confidences = confidences.clamp(min=1e-7, max=1 - 1e-7)
     return (
         targets * confidences.log() + (1 - targets) * (1 - confidences).log()
     ).mean()
 
 
-def binary_brier(confidences, targets):
+def binary_brier(confidences: Tensor, targets: Tensor) -> Tensor:
+    """Computes the binary Brier score.
+
+    Args:
+        confidences: The predicted confidence scores.
+        targets: The binary target labels.
+
+    Returns:
+        The binary Brier score tensor.
+    """
     return (-confidences.square() - targets + 2 * confidences * targets).mean()
 
 
-def multiclass_log_probability(log_preds, targets):
+def multiclass_log_probability(log_preds: Tensor, targets: Tensor) -> Tensor:
+    """Computes the multiclass log probability.
+
+    Args:
+        log_preds: The log of predicted probabilities.
+        targets: The target labels.
+
+    Returns:
+        The multiclass log probability tensor.
+    """
     return -F.cross_entropy(log_preds, targets)
 
 
-def multiclass_brier(log_preds, targets, is_soft_targets):
+def multiclass_brier(
+    log_preds: Tensor, targets: Tensor, is_soft_targets: bool
+) -> Tensor:
+    """Computes the multiclass Brier score.
+
+    Args:
+        log_preds: The log of predicted probabilities.
+        targets: The target labels.
+        is_soft_targets: Whether the targets are soft (probabilistic) or hard.
+
+    Returns:
+        The multiclass Brier score tensor.
+    """
     preds = log_preds.exp()
 
     if not is_soft_targets:
@@ -108,7 +202,6 @@ def calculate_bin_metrics(
             confidence for each bin.
         bin_accuracies: Float tensor of shape (num_bins,) containing the average
             accuracy for each bin.
-
     """
     correctnesses = correctnesses.float()
 
@@ -152,6 +245,8 @@ def calibration_error(
     Returns:
         The ECE/MCE.
 
+    Raises:
+        ValueError: If the provided norm is neither 'l1' nor 'inf'.
     """
     bin_proportions, bin_confidences, bin_accuracies = calculate_bin_metrics(
         confidences, correctnesses, num_bins
@@ -171,11 +266,21 @@ def calibration_error(
 
 
 def area_under_lift_curve(
-    uncertainties: torch.Tensor,
-    correctnesses: torch.Tensor,
+    uncertainties: Tensor,
+    correctnesses: Tensor,
     *,
     reverse_sort: bool = False,
-) -> torch.Tensor:
+) -> Tensor:
+    """Computes the area under the lift curve.
+
+    Args:
+        uncertainties: Tensor of uncertainties.
+        correctnesses: Tensor of correctness labels.
+        reverse_sort: Whether to sort uncertainties in reverse order.
+
+    Returns:
+        The area under the lift curve.
+    """
     uncertainties = uncertainties.double()
     correctnesses = correctnesses.double()
     batch_size = correctnesses.shape[0]
@@ -200,6 +305,15 @@ def area_under_lift_curve(
 def relative_area_under_lift_curve(
     uncertainties: Tensor, correctnesses: Tensor
 ) -> Tensor:
+    """Computes the relative area under the lift curve.
+
+    Args:
+        uncertainties: Tensor of uncertainties.
+        correctnesses: Tensor of correctness labels.
+
+    Returns:
+        The relative area under the lift curve.
+    """
     area = area_under_lift_curve(uncertainties, correctnesses)
     area_opt = area_under_lift_curve(correctnesses, correctnesses, reverse_sort=True)
 
@@ -207,6 +321,14 @@ def relative_area_under_lift_curve(
 
 
 def dempster_shafer_metric(logits: Tensor) -> Tensor:
+    """Computes the Dempster-Shafer metric.
+
+    Args:
+        logits: Tensor of logits.
+
+    Returns:
+        The Dempster-Shafer metric.
+    """
     num_classes = logits.shape[-1]
     belief_mass = logits.exp().sum(dim=-1)  # [B]
     dempster_shafer_value = num_classes / (belief_mass + num_classes)
@@ -214,7 +336,15 @@ def dempster_shafer_metric(logits: Tensor) -> Tensor:
     return dempster_shafer_value
 
 
-def centered_cov(x):
+def centered_cov(x: Tensor) -> Tensor:
+    """Computes the centered covariance matrix.
+
+    Args:
+        x: Input tensor.
+
+    Returns:
+        The centered covariance matrix.
+    """
     n = x.shape[0]
 
     return 1 / (n - 1) * x.T @ x
@@ -224,8 +354,17 @@ def centered_cov(x):
 
 
 def area_under_risk_coverage_curve(
-    uncertainties: torch.Tensor, correctnesses: torch.Tensor
-) -> torch.Tensor:
+    uncertainties: Tensor, correctnesses: Tensor
+) -> Tensor:
+    """Computes the area under the risk-coverage curve.
+
+    Args:
+        uncertainties: Tensor of uncertainties.
+        correctnesses: Tensor of correctness labels.
+
+    Returns:
+        The area under the risk-coverage curve.
+    """
     uncertainties = uncertainties.double()
     correctnesses = correctnesses.double()
 
@@ -246,6 +385,15 @@ def area_under_risk_coverage_curve(
 def excess_area_under_risk_coverage_curve(
     uncertainties: Tensor, correctnesses: Tensor
 ) -> Tensor:
+    """Computes the excess area under the risk-coverage curve.
+
+    Args:
+        uncertainties: Tensor of uncertainties.
+        correctnesses: Tensor of correctness labels.
+
+    Returns:
+        The excess area under the risk-coverage curve.
+    """
     aurc = area_under_risk_coverage_curve(uncertainties, correctnesses)
 
     accuracy = correctnesses.float().mean()
@@ -262,6 +410,17 @@ def coverage_for_accuracy(
     accuracy: float = 0.95,
     start_index: int = 200,
 ) -> Tensor:
+    """Computes the coverage for a given accuracy threshold.
+
+    Args:
+        uncertainties: Tensor of uncertainties.
+        correctnesses: Tensor of correctness labels.
+        accuracy: The desired accuracy threshold.
+        start_index: The starting index for non-strict measurement.
+
+    Returns:
+        The coverage for the given accuracy threshold.
+    """
     sorted_indices = torch.argsort(uncertainties)
     correctnesses = correctnesses[sorted_indices]
 
@@ -287,11 +446,28 @@ def coverage_for_accuracy(
     return coverage_for_accuracy
 
 
-def get_ranks(x: torch.Tensor) -> torch.Tensor:
+def get_ranks(x: Tensor) -> Tensor:
+    """Computes the ranks of elements in a tensor.
+
+    Args:
+        x: Input tensor.
+
+    Returns:
+        A tensor of ranks.
+    """
     return x.argsort().argsort().float()
 
 
-def spearmanr(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def spearmanr(x: Tensor, y: Tensor) -> Tensor:
+    """Computes the Spearman rank correlation coefficient.
+
+    Args:
+        x: First input tensor.
+        y: Second input tensor.
+
+    Returns:
+        The Spearman rank correlation coefficient.
+    """
     if (x == x[0]).all() or (y == y[0]).all():
         return torch.tensor(float("NaN"), device=x.device)
 
@@ -301,11 +477,29 @@ def spearmanr(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.corrcoef(torch.stack([x_rank, y_rank]))[0, 1]
 
 
-def pearsonr(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def pearsonr(x: Tensor, y: Tensor) -> Tensor:
+    """Computes the Pearson correlation coefficient.
+
+    Args:
+        x: First input tensor.
+        y: Second input tensor.
+
+    Returns:
+        The Pearson correlation coefficient.
+    """
     return torch.corrcoef(torch.stack([x, y]))[0, 1]
 
 
-def auroc(y_true, y_score):
+def auroc(y_true: Tensor, y_score: Tensor) -> Tensor:
+    """Computes the Area Under the Receiver Operating Characteristic curve (AUROC).
+
+    Args:
+        y_true: True binary labels.
+        y_score: Target scores.
+
+    Returns:
+        The AUROC score.
+    """
     # Sort scores and corresponding truth values
     desc_score_indices = torch.argsort(y_score, descending=True)
     y_score = y_score[desc_score_indices]
@@ -339,7 +533,15 @@ def auroc(y_true, y_score):
     return torch.trapz(true_positive_rate, false_positive_rate)
 
 
-def diag_hessian_softmax(logit):
+def diag_hessian_softmax(logit: Tensor) -> Tensor:
+    """Computes the diagonal of the Hessian of the softmax function.
+
+    Args:
+        logit: Input logits.
+
+    Returns:
+        The diagonal of the Hessian of the softmax function.
+    """
     prob = logit.softmax(dim=-1)
 
     return prob * (1 - prob)

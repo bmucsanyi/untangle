@@ -1,17 +1,23 @@
 """Copyright 2020 Ross Wightman and 2024 Bálint Mucsányi."""
 
+import argparse
 import logging
 import os
 import time
+from collections.abc import Callable
 from numbers import Number
 from pathlib import Path
+from typing import Any
 
 import torch
 import torch.nn.functional as F
 import torch.nn.parallel
+from torch import Tensor, nn
+from torch.utils.data import DataLoader
 
 from untangle.utils import (
     AverageMeter,
+    PrefetchLoader,
     area_under_lift_curve,
     area_under_risk_coverage_curve,
     auroc,
@@ -44,16 +50,32 @@ logger = logging.getLogger(__name__)
 
 
 def evaluate_on_ood_uniform_test_loaders(
-    model,
-    loaders,
-    device,
-    storage_device,
-    amp_autocast,
-    key_prefix,
-    output_dir,
-    is_soft_dataset,
-    args,
-):
+    model: nn.Module,
+    loaders: dict[str, dict[str, DataLoader | PrefetchLoader]],
+    device: torch.device,
+    storage_device: torch.device,
+    amp_autocast: Callable,
+    key_prefix: str,
+    output_dir: Path,
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    """Evaluates the model on uniform out-of-distribution test loaders.
+
+    Args:
+        model: The model to evaluate.
+        loaders: Dictionary of OOD test loaders.
+        device: The device to use for evaluation.
+        storage_device: The device to use for storing results.
+        amp_autocast: Function for automatic mixed precision.
+        key_prefix: Prefix for metric keys.
+        output_dir: Directory to save output.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+
+    Returns:
+        A dictionary containing flattened metrics.
+    """
     metrics = {}
 
     for name, loader_subset in loaders.items():
@@ -95,16 +117,32 @@ def evaluate_on_ood_uniform_test_loaders(
 
 
 def evaluate_on_ood_varied_test_loaders(
-    model,
-    loaders,
-    device,
-    storage_device,
-    amp_autocast,
-    key_prefix,
-    output_dir,
-    is_soft_dataset,
-    args,
-):
+    model: nn.Module,
+    loaders: dict[str, DataLoader | PrefetchLoader],
+    device: torch.device,
+    storage_device: torch.device,
+    amp_autocast: Callable,
+    key_prefix: str,
+    output_dir: Path,
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    """Evaluates the model on varied out-of-distribution test loaders.
+
+    Args:
+        model: The model to evaluate.
+        loaders: Dictionary of OOD test loaders.
+        device: The device to use for evaluation.
+        storage_device: The device to use for storing results.
+        amp_autocast: Function for automatic mixed precision.
+        key_prefix: Prefix for metric keys.
+        output_dir: Directory to save output.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+
+    Returns:
+        A dictionary containing flattened metrics.
+    """
     metrics = {}
 
     for name, loader in loaders.items():
@@ -146,7 +184,12 @@ def evaluate_on_ood_varied_test_loaders(
     return flattened_metrics
 
 
-def add_average_metric_value(metrics):
+def add_average_metric_value(metrics: dict[str, dict[str, Any]]) -> None:
+    """Adds average values to the metrics dictionary.
+
+    Args:
+        metrics: Dictionary of metrics to update.
+    """
     # Summarize results
     avg_results = {}
     first_loader_results = metrics[next(iter(metrics.keys()))]
@@ -159,7 +202,18 @@ def add_average_metric_value(metrics):
     metrics["avg"] = avg_results
 
 
-def flatten_ood_uniform_metrics(results, key_prefix):
+def flatten_ood_uniform_metrics(
+    results: dict[str, dict[str, dict[str, float]]], key_prefix: str
+) -> dict[str, float]:
+    """Flattens metrics for uniform OOD evaluation.
+
+    Args:
+        results: Dictionary of results to flatten.
+        key_prefix: Prefix for flattened keys.
+
+    Returns:
+        A dictionary of flattened metrics.
+    """
     # Flatten output
     flattened_results = {}
     for name, results_subset in results.items():
@@ -172,7 +226,18 @@ def flatten_ood_uniform_metrics(results, key_prefix):
     return flattened_results
 
 
-def flatten_ood_varied_metrics(results, key_prefix):
+def flatten_ood_varied_metrics(
+    results: dict[str, dict[str, float]], key_prefix: str
+) -> dict[str, float]:
+    """Flattens metrics for varied OOD evaluation.
+
+    Args:
+        results: Dictionary of results to flatten.
+        key_prefix: Prefix for flattened keys.
+
+    Returns:
+        A dictionary of flattened metrics.
+    """
     # Flatten output
     flattened_results = {}
     for name, results_subset in results.items():
@@ -184,19 +249,38 @@ def flatten_ood_varied_metrics(results, key_prefix):
 
 @torch.no_grad()
 def evaluate(
-    model,
-    loader,
-    loader_name,
-    device,
-    storage_device,
-    amp_autocast,
-    key_prefix,
-    output_dir,
-    is_upstream_dataset,
-    is_test_dataset,
-    is_soft_dataset,
-    args,
-):
+    model: nn.Module,
+    loader: DataLoader | PrefetchLoader,
+    loader_name: str,
+    device: torch.device,
+    storage_device: torch.device,
+    amp_autocast: Callable,
+    key_prefix: str,
+    output_dir: Path,
+    is_upstream_dataset: bool,
+    is_test_dataset: bool,
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    """Evaluates the model on a given loader.
+
+    Args:
+        model: The model to evaluate.
+        loader: The data loader.
+        loader_name: Name of the loader.
+        device: The device to use for evaluation.
+        storage_device: The device to use for storing results.
+        amp_autocast: Function for automatic mixed precision.
+        key_prefix: Prefix for metric keys.
+        output_dir: Directory to save output.
+        is_upstream_dataset: Whether it's an upstream dataset.
+        is_test_dataset: Whether it's a test dataset.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+
+    Returns:
+        A dictionary of evaluation metrics.
+    """
     model.eval()
 
     estimates, log_probs, targets, times = get_bundle(
@@ -227,7 +311,7 @@ def evaluate(
             args=args,
         )
     else:
-        metrics = evaluate_on_auroc_hard_bma_correctness(
+        metrics = evaluate_on_validation_metrics(
             estimates=estimates,
             targets=targets,
             metrics=metrics,
@@ -403,7 +487,16 @@ def evaluate(
     return metrics
 
 
-def filter_entries(estimates, indices):
+def filter_entries(estimates: dict[str, Tensor], indices: Tensor) -> dict[str, Tensor]:
+    """Filters entries in the estimates dictionary based on given indices.
+
+    Args:
+        estimates: Dictionary of estimates.
+        indices: Indices to use for filtering.
+
+    Returns:
+        A filtered dictionary of estimates.
+    """
     filtered_estimates = estimates.copy()
 
     for estimator_name, estimate in filtered_estimates.items():
@@ -412,7 +505,18 @@ def filter_entries(estimates, indices):
     return filtered_estimates
 
 
-def truncate_entries(estimates, num_indices_to_keep):
+def truncate_entries(
+    estimates: dict[str, Tensor], num_indices_to_keep: int
+) -> dict[str, Tensor]:
+    """Truncates entries in the estimates dictionary.
+
+    Args:
+        estimates: Dictionary of estimates.
+        num_indices_to_keep: Number of indices to keep.
+
+    Returns:
+        A truncated dictionary of estimates.
+    """
     truncated_estimates = estimates.copy()
 
     for estimator_name, estimate in truncated_estimates.items():
@@ -421,7 +525,21 @@ def truncate_entries(estimates, num_indices_to_keep):
     return truncated_estimates
 
 
-def concatenate_values(upstream_dict, downstream_dict, keys_to_exclude=None):
+def concatenate_values(
+    upstream_dict: dict[str, Tensor],
+    downstream_dict: dict[str, Tensor],
+    keys_to_exclude: list[str] | None = None,
+) -> dict[str, Tensor]:
+    """Concatenates values from upstream and downstream dictionaries.
+
+    Args:
+        upstream_dict: Dictionary of upstream values.
+        downstream_dict: Dictionary of downstream values.
+        keys_to_exclude: List of keys to exclude from concatenation.
+
+    Returns:
+        A dictionary with concatenated values.
+    """
     if keys_to_exclude is None:
         keys_to_exclude = []
 
@@ -435,19 +553,30 @@ def concatenate_values(upstream_dict, downstream_dict, keys_to_exclude=None):
     return result
 
 
-def evaluate_on_auroc_hard_bma_correctness(
-    estimates,
-    targets,
-    metrics,
-    args,
-):
+def evaluate_on_validation_metrics(
+    estimates: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    metrics: dict[str, float],
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    """Evaluates the model's estimates on the metrics needed for validation.
+
+    Args:
+        estimates: Dictionary of estimates.
+        targets: Dictionary of targets.
+        metrics: Dictionary of metrics to update.
+        args: Additional arguments.
+
+    Returns:
+        Updated metrics dictionary.
+    """
     metrics["hard_bma_accuracy_original"] = (
         targets["gt_hard_bma_correctnesses_original"].float().mean().item()
     )
 
-    for estimator_name in estimates:
+    for estimator_name, estimate in estimates.items():
         if estimator_name in args.eval_metric:
-            estimate = -estimates[estimator_name]
+            estimate = -estimate
 
             gt_hard_bma_correctnesses = targets["gt_hard_bma_correctnesses_original"]
             metrics[f"{estimator_name}_auroc_hard_bma_correctness_original"] = auroc(
@@ -460,17 +589,34 @@ def evaluate_on_auroc_hard_bma_correctness(
 
 
 def evaluate_on_tasks(
-    model,
-    estimates,
-    log_probs,
-    targets,
-    metrics,
-    is_soft_dataset,
-    save_prefix,
-    output_dir,
-    args,
-    is_soft_upstream_dataset=None,
-):
+    model: nn.Module,
+    estimates: dict[str, Tensor],
+    log_probs: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    metrics: dict[str, float],
+    is_soft_dataset: bool,
+    save_prefix: str,
+    output_dir: Path,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None = None,
+) -> dict[str, float]:
+    """Evaluates the model on various uncertainty quantification tasks.
+
+    Args:
+        model: The model to evaluate.
+        estimates: Dictionary of estimates.
+        log_probs: Dictionary of log probabilities.
+        targets: Dictionary of targets.
+        metrics: Dictionary of metrics to update.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        save_prefix: Prefix for saving results.
+        output_dir: Directory to save output.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        Updated metrics dictionary.
+    """
     metrics |= evaluate_on_correctness_prediction(
         estimates=estimates,
         targets=targets,
@@ -532,12 +678,24 @@ def evaluate_on_tasks(
 
 
 def evaluate_on_correctness_prediction(
-    estimates,
-    targets,
-    is_soft_dataset,
-    args,
-    is_soft_upstream_dataset,
-):
+    estimates: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None,
+) -> dict[str, float]:
+    """Evaluates the model on correctness prediction metrics.
+
+    Args:
+        estimates: Dictionary of estimates.
+        targets: Dictionary of targets.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        A dictionary of correctness prediction metrics.
+    """
     is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For correctness prediction, one of the datasets being soft is enough
@@ -546,7 +704,7 @@ def evaluate_on_correctness_prediction(
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
+    key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
     gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
     gt_hard_bma_correctnesses_original = targets["gt_hard_bma_correctnesses_original"]
@@ -562,13 +720,12 @@ def evaluate_on_correctness_prediction(
     gt_hard_fbar_correctnesses_top5 = targets["gt_hard_fbar_correctnesses_top5"]
     gt_hard_bma_correctnesses_top5 = targets["gt_hard_bma_correctnesses_top5"]
 
-    for estimator_name in estimates:
+    for estimator_name, estimate in estimates.items():
         # In `estimates`, we have *uncertainty* estimates: higher signals more
         # uncertain. For correctness prediction, we need *certainty* estimates: the
         # AUROC is high if there exists a threshold for which all certain samples are
         # correct (1) and all others are incorrect (0).
-
-        estimate = -estimates[estimator_name]
+        estimate = -estimate
 
         metrics[
             f"{key_prefix}{estimator_name}_auroc_hard_fbar_correctness_original"
@@ -646,12 +803,24 @@ def evaluate_on_correctness_prediction(
 
 
 def evaluate_on_abstained_prediction(
-    estimates,
-    targets,
-    is_soft_dataset,
-    args,
-    is_soft_upstream_dataset,
-):
+    estimates: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None,
+) -> dict[str, float]:
+    """Evaluates the model on abstained prediction metrics.
+
+    Args:
+        estimates: Dictionary of estimates.
+        targets: Dictionary of targets.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        A dictionary of abstained prediction metrics.
+    """
     is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For correctness of prediction, one of the datasets being soft is enough
@@ -660,7 +829,7 @@ def evaluate_on_abstained_prediction(
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
+    key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
     gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
     gt_hard_fbar_correctnesses = targets["gt_hard_fbar_correctnesses"]
@@ -683,9 +852,7 @@ def evaluate_on_abstained_prediction(
         gt_soft_fbar_correctnesses_top5 = targets["gt_soft_fbar_correctnesses_top5"]
         gt_soft_bma_correctnesses_top5 = targets["gt_soft_bma_correctnesses_top5"]
 
-    for estimator_name in estimates:
-        estimate = estimates[estimator_name]
-
+    for estimator_name, estimate in estimates.items():
         metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_original"] = (
             area_under_risk_coverage_curve(
                 estimate, gt_hard_fbar_correctnesses_original
@@ -1066,25 +1233,53 @@ def evaluate_on_abstained_prediction(
     return metrics
 
 
-def evaluate_on_ood_detection(estimates, targets, args):
+def evaluate_on_ood_detection(
+    estimates: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    args: argparse.Namespace,
+) -> dict[str, float]:
+    """Evaluates the model on OOD detection metrics.
+
+    Args:
+        estimates: Dictionary of estimates.
+        targets: Dictionary of targets.
+        args: Additional arguments.
+
+    Returns:
+        A dictionary of OOD detection metrics.
+    """
     metrics = {}
-    for estimator_name in estimates:
-        metrics[f"mixed_{args.dataset_id}_{estimator_name}_auroc_oodness"] = auroc(
-            targets["gt_oodness"], estimates[estimator_name]
-        ).item()
+    for estimator_name, estimate in estimates.items():
+        metrics[
+            f"mixed_{args.dataset_id.replace('/', '_')}_{estimator_name}_auroc_oodness"
+        ] = auroc(targets["gt_oodness"], estimate).item()
 
     return metrics
 
 
 def evaluate_on_proper_scoring_and_calibration(
-    model,
-    estimates,
-    log_probs,
-    targets,
-    is_soft_dataset,
-    args,
-    is_soft_upstream_dataset,
-):
+    model: nn.Module,
+    estimates: dict[str, Tensor],
+    log_probs: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None,
+) -> dict[str, float]:
+    """Evaluates the model on proper scoring and calibration metrics.
+
+    Args:
+        model: The model to evaluate.
+        estimates: Dictionary of estimates.
+        log_probs: Dictionary of log probabilities.
+        targets: Dictionary of targets.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        A dictionary of proper scoring and calibration metrics.
+    """
     is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For proper scoring and calibration, one of the datasets being soft is enough
@@ -1093,7 +1288,7 @@ def evaluate_on_proper_scoring_and_calibration(
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
+    key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
     # Proper scoring and calibration for correctness of prediction
     correctness_estimator_names = [
@@ -1467,12 +1662,24 @@ def evaluate_on_proper_scoring_and_calibration(
 
 
 def evaluate_on_bregman(
-    estimates,
-    targets,
-    is_soft_dataset,
-    args,
-    is_soft_upstream_dataset,
-):
+    estimates: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None,
+) -> dict[str, float]:
+    """Evaluates the model using the Bregman decomposition's terms.
+
+    Args:
+        estimates: Dictionary of estimates.
+        targets: Dictionary of targets.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        A dictionary of metrics using the Bregman decomposition.
+    """
     is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For Bregman, both datasets need to be soft
@@ -1481,7 +1688,7 @@ def evaluate_on_bregman(
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
+    key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
     gt_predictives_bregman_fbar = targets["gt_predictives_bregman_fbar"]
     gt_predictives_bregman_bma = targets["gt_predictives_bregman_bma"]
@@ -1499,9 +1706,7 @@ def evaluate_on_bregman(
 
     gt_epistemics_bregman = targets["gt_epistemics_bregman"]
 
-    for estimator_name in estimates:
-        estimate = estimates[estimator_name]
-
+    for estimator_name, estimate in estimates.items():
         metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_eu"] = (
             spearmanr(estimate, gt_epistemics_bregman).item()
         )
@@ -1592,17 +1797,30 @@ def evaluate_on_bregman(
 
 
 def evaluate_on_correlation_of_estimators(
-    model,
-    estimates,
-    output_dir,
-    save_prefix,
-    args,
-    is_soft_upstream_dataset,
-):
+    model: nn.Module,
+    estimates: dict[str, Tensor],
+    output_dir: Path,
+    save_prefix: str,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None,
+) -> dict[str, float]:
+    """Evaluates the correlation of estimators.
+
+    Args:
+        model: The model to evaluate.
+        estimates: Dictionary of estimates.
+        output_dir: Directory to save output.
+        save_prefix: Prefix for saving results.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        A dictionary of correlation metrics.
+    """
     metrics = {}
 
     is_mixed_eval = is_soft_upstream_dataset is not None
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
+    key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
     if isinstance(model, DDUWrapper):
         ddu_aleatoric = estimates["expected_entropies"]
@@ -1703,14 +1921,28 @@ def evaluate_on_correlation_of_estimators(
 
 
 def evaluate_on_correlation_of_decompositions(
-    estimates,
-    targets,
-    is_soft_dataset,
-    output_dir,
-    save_prefix,
-    args,
-    is_soft_upstream_dataset,
-):
+    estimates: dict[str, Tensor],
+    targets: dict[str, Tensor],
+    is_soft_dataset: bool,
+    output_dir: Path,
+    save_prefix: str,
+    args: argparse.Namespace,
+    is_soft_upstream_dataset: bool | None,
+) -> dict[str, float]:
+    """Evaluates the correlation of decompositions.
+
+    Args:
+        estimates: Dictionary of estimates.
+        targets: Dictionary of targets.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        output_dir: Directory to save output.
+        save_prefix: Prefix for saving results.
+        args: Additional arguments.
+        is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
+
+    Returns:
+        A dictionary of correlation metrics for decompositions.
+    """
     is_mixed_eval = is_soft_upstream_dataset is not None
 
     # For Bregman, both datasets need to be soft
@@ -1719,7 +1951,7 @@ def evaluate_on_correlation_of_decompositions(
 
     metrics = {}
 
-    key_prefix = f"mixed_{args.dataset_id}_" if is_mixed_eval else ""
+    key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
     # Information-theoretical decomposition
     entropies_of_bma = estimates["entropies_of_bma"]
@@ -1936,46 +2168,98 @@ def evaluate_on_correlation_of_decompositions(
 
 
 def forward_general_model_on_loader(
-    model,
-    loader,
-    is_soft_dataset,
-    amp_autocast,
-    device,
-    storage_device,
-    args,
-    log_fbars,
-    log_bmas,
-    gt_epistemics_bregman,
-    time_forward_m,
-    expected_entropies,
-    expected_entropies_plus_expected_divergences,
-    one_minus_expected_max_probs,
-    entropies_of_bma,
-    entropies_of_fbar,
-    one_minus_max_probs_of_bma,
-    one_minus_max_probs_of_fbar,
-    jensen_shannon_divergences,
-    dempster_shafer_values,
-    expected_variances_of_probs,
-    expected_variances_of_logits,
-    loss_values,
-    gmm_neg_log_densities,
-    error_probabilities,
-    duq_values,
-    mahalanobis_values,
-    expected_variances_of_internal_probs,
-    expected_variances_of_internal_logits,
-    gt_aleatorics_bregman,
-    gt_biases_bregman_fbar,
-    gt_biases_bregman_bma,
-    gt_predictives_bregman_fbar,
-    gt_predictives_bregman_bma,
-    gt_total_predictives_bregman_fbar,
-    gt_total_predictives_bregman_bma,
-    gt_soft_labels,
-    gt_hard_labels,
-    gt_hard_labels_original,
-):
+    model: nn.Module,
+    loader: DataLoader | PrefetchLoader,
+    is_soft_dataset: bool,
+    amp_autocast: Callable,
+    device: torch.device,
+    storage_device: torch.device,
+    args: argparse.Namespace,
+    log_fbars: Tensor,
+    log_bmas: Tensor,
+    gt_epistemics_bregman: Tensor,
+    time_forward_m: AverageMeter,
+    expected_entropies: Tensor,
+    expected_entropies_plus_expected_divergences: Tensor,
+    one_minus_expected_max_probs: Tensor,
+    entropies_of_bma: Tensor,
+    entropies_of_fbar: Tensor,
+    one_minus_max_probs_of_bma: Tensor,
+    one_minus_max_probs_of_fbar: Tensor,
+    jensen_shannon_divergences: Tensor,
+    dempster_shafer_values: Tensor,
+    expected_variances_of_probs: Tensor,
+    expected_variances_of_logits: Tensor,
+    loss_values: Tensor,
+    gmm_neg_log_densities: Tensor,
+    error_probabilities: Tensor,
+    duq_values: Tensor,
+    mahalanobis_values: Tensor,
+    expected_variances_of_internal_probs: Tensor,
+    expected_variances_of_internal_logits: Tensor,
+    gt_aleatorics_bregman: Tensor,
+    gt_biases_bregman_fbar: Tensor,
+    gt_biases_bregman_bma: Tensor,
+    gt_predictives_bregman_fbar: Tensor,
+    gt_predictives_bregman_bma: Tensor,
+    gt_total_predictives_bregman_fbar: Tensor,
+    gt_total_predictives_bregman_bma: Tensor,
+    gt_soft_labels: Tensor,
+    gt_hard_labels: Tensor,
+    gt_hard_labels_original: Tensor,
+) -> None:
+    """Performs the forward pass of a general model on a data loader.
+
+    Args:
+        model: The model to evaluate.
+        loader: The data loader.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        amp_autocast: Function for automatic mixed precision.
+        device: The device to use for computation.
+        storage_device: The device to use for storing results.
+        args: Additional arguments.
+        log_fbars: Tensor to store log f-bar values.
+        log_bmas: Tensor to store log BMA values.
+        gt_epistemics_bregman: Tensor to store ground truth epistemic uncertainties.
+        time_forward_m: AverageMeter to track forward pass time.
+        expected_entropies: Tensor to store expected entropies.
+        expected_entropies_plus_expected_divergences: Tensor to store sum of expected
+            entropies and expected divergences.
+        one_minus_expected_max_probs: Tensor to store 1 minus expected max
+            probabilities.
+        entropies_of_bma: Tensor to store entropies of BMA.
+        entropies_of_fbar: Tensor to store entropies of f-bar.
+        one_minus_max_probs_of_bma: Tensor to store 1 minus max probabilities of BMA.
+        one_minus_max_probs_of_fbar: Tensor to store 1 minus max probabilities of f-bar.
+        jensen_shannon_divergences: Tensor to store Jensen-Shannon divergences.
+        dempster_shafer_values: Tensor to store Dempster-Shafer values.
+        expected_variances_of_probs: Tensor to store expected variances of
+            probabilities.
+        expected_variances_of_logits: Tensor to store expected variances of logits.
+        loss_values: Tensor to store loss prediction values.
+        gmm_neg_log_densities: Tensor to store GMM negative log densities.
+        error_probabilities: Tensor to store error probabilities.
+        duq_values: Tensor to store DUQ values.
+        mahalanobis_values: Tensor to store Mahalanobis distance values.
+        expected_variances_of_internal_probs: Tensor to store expected variances of
+            internal probabilities.
+        expected_variances_of_internal_logits: Tensor to store expected variances of
+            internal logits.
+        gt_aleatorics_bregman: Tensor to store ground truth aleatoric uncertainties.
+        gt_biases_bregman_fbar: Tensor to store ground truth Bregman biases for f-bar.
+        gt_biases_bregman_bma: Tensor to store ground truth Bregman biases for BMA.
+        gt_predictives_bregman_fbar: Tensor to store ground truth Bregman predictive
+            uncertainties for f-bar.
+        gt_predictives_bregman_bma: Tensor to store ground truth Bregman predictive
+            uncertainties for BMA.
+        gt_total_predictives_bregman_fbar: Tensor to store ground truth Bregman total
+            predictive uncertainties for f-bar.
+        gt_total_predictives_bregman_bma: Tensor to store ground truth Bregman total
+            predictive uncertainties for BMA.
+        gt_soft_labels: Tensor to store ground truth soft labels.
+        gt_hard_labels: Tensor to store ground truth hard labels.
+        gt_hard_labels_original: Tensor to store original ground truth hard labels.
+    """
     current_ind = 0
 
     for input, label in loader:
@@ -2128,40 +2412,87 @@ def forward_general_model_on_loader(
 
 
 def forward_deep_ensemble_on_loader(
-    model,
-    loader,
-    is_soft_dataset,
-    amp_autocast,
-    device,
-    storage_device,
-    num_samples,
-    args,
-    log_fbars,
-    log_bmas,
-    gt_epistemics_bregman,
-    time_forward_m,
-    expected_entropies,
-    expected_entropies_plus_expected_divergences,
-    one_minus_expected_max_probs,
-    entropies_of_bma,
-    entropies_of_fbar,
-    one_minus_max_probs_of_bma,
-    one_minus_max_probs_of_fbar,
-    jensen_shannon_divergences,
-    dempster_shafer_values,
-    expected_variances_of_probs,
-    expected_variances_of_logits,
-    gt_aleatorics_bregman,
-    gt_biases_bregman_fbar,
-    gt_biases_bregman_bma,
-    gt_predictives_bregman_fbar,
-    gt_predictives_bregman_bma,
-    gt_total_predictives_bregman_fbar,
-    gt_total_predictives_bregman_bma,
-    gt_soft_labels,
-    gt_hard_labels,
-    gt_hard_labels_original,
-):
+    model: DeepEnsembleWrapper,
+    loader: DataLoader | PrefetchLoader,
+    is_soft_dataset: bool,
+    amp_autocast: Callable,
+    device: torch.device,
+    storage_device: torch.device,
+    num_samples: int,
+    args: argparse.Namespace,
+    log_fbars: Tensor,
+    log_bmas: Tensor,
+    gt_epistemics_bregman: Tensor,
+    time_forward_m: AverageMeter,
+    expected_entropies: Tensor,
+    expected_entropies_plus_expected_divergences: Tensor,
+    one_minus_expected_max_probs: Tensor,
+    entropies_of_bma: Tensor,
+    entropies_of_fbar: Tensor,
+    one_minus_max_probs_of_bma: Tensor,
+    one_minus_max_probs_of_fbar: Tensor,
+    jensen_shannon_divergences: Tensor,
+    dempster_shafer_values: Tensor,
+    expected_variances_of_probs: Tensor,
+    expected_variances_of_logits: Tensor,
+    gt_aleatorics_bregman: Tensor,
+    gt_biases_bregman_fbar: Tensor,
+    gt_biases_bregman_bma: Tensor,
+    gt_predictives_bregman_fbar: Tensor,
+    gt_predictives_bregman_bma: Tensor,
+    gt_total_predictives_bregman_fbar: Tensor,
+    gt_total_predictives_bregman_bma: Tensor,
+    gt_soft_labels: Tensor,
+    gt_hard_labels: Tensor,
+    gt_hard_labels_original: Tensor,
+) -> None:
+    """Performs a forward pass of a deep ensemble model on a data loader.
+
+    This function processes the data through each model in the ensemble, aggregates
+    the results, and updates various metrics and estimates.
+
+    Args:
+        model: The deep ensemble model to evaluate.
+        loader: The data loader.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        amp_autocast: Function for automatic mixed precision.
+        device: The device to use for computation.
+        storage_device: The device to use for storing results.
+        num_samples: Number of samples.
+        args: Additional arguments.
+        log_fbars: Tensor to store log f-bar values.
+        log_bmas: Tensor to store log BMA values.
+        gt_epistemics_bregman: Tensor to store ground truth epistemic uncertainties.
+        time_forward_m: AverageMeter to track forward pass time.
+        expected_entropies: Tensor to store expected entropies.
+        expected_entropies_plus_expected_divergences: Tensor to store sum of expected
+            entropies and expected divergences.
+        one_minus_expected_max_probs: Tensor to store 1 minus expected max
+            probabilities.
+        entropies_of_bma: Tensor to store entropies of BMA.
+        entropies_of_fbar: Tensor to store entropies of f-bar.
+        one_minus_max_probs_of_bma: Tensor to store 1 minus max probabilities of BMA.
+        one_minus_max_probs_of_fbar: Tensor to store 1 minus max probabilities of f-bar.
+        jensen_shannon_divergences: Tensor to store Jensen-Shannon divergences.
+        dempster_shafer_values: Tensor to store Dempster-Shafer values.
+        expected_variances_of_probs: Tensor to store expected variances of
+            probabilities.
+        expected_variances_of_logits: Tensor to store expected variances of logits.
+        gt_aleatorics_bregman: Tensor to store ground truth aleatoric uncertainties.
+        gt_biases_bregman_fbar: Tensor to store ground truth Bregman biases for f-bar.
+        gt_biases_bregman_bma: Tensor to store ground truth Bregman biases for BMA.
+        gt_predictives_bregman_fbar: Tensor to store ground truth Bregman predictive
+            uncertainties for f-bar.
+        gt_predictives_bregman_bma: Tensor to store ground truth Bregman predictive
+            uncertainties for BMA.
+        gt_total_predictives_bregman_fbar: Tensor to store ground truth Bregman total
+            predictive uncertainties for f-bar.
+        gt_total_predictives_bregman_bma: Tensor to store ground truth Bregman total
+            predictive uncertainties for BMA.
+        gt_soft_labels: Tensor to store ground truth soft labels.
+        gt_hard_labels: Tensor to store ground truth hard labels.
+        gt_hard_labels_original: Tensor to store original ground truth hard labels.
+    """
     temp_logits = torch.empty(
         num_samples, model.num_models, model.num_classes, device=storage_device
     )
@@ -2170,7 +2501,7 @@ def forward_deep_ensemble_on_loader(
     for model_index in range(model.num_models):
         logger.info(f"Loading model {model_index + 1}/{model.num_models}.")
 
-        model.load_model(model_index)
+        model.load_model_with_index(model_index)
         current_ind = 0
         for i, (input, _) in enumerate(loader):
             batch_size = input.shape[0]
@@ -2290,7 +2621,16 @@ def forward_deep_ensemble_on_loader(
         current_ind += batch_size
 
 
-def calc_correctnesses(log_probs, targets, is_soft):
+def calc_correctnesses(
+    log_probs: dict[str, Tensor], targets: dict[str, Tensor], is_soft: bool
+) -> None:
+    """Calculates correctness metrics for the model's predictions.
+
+    Args:
+        log_probs: Dictionary of log probabilities.
+        targets: Dictionary of targets to update with correctness metrics.
+        is_soft: Whether the dataset uses soft labels.
+    """
     predicted_labels_fbar = log_probs["log_fbars"].argmax(dim=1)
 
     targets["gt_hard_fbar_correctnesses_original"] = predicted_labels_fbar.eq(
@@ -2364,12 +2704,28 @@ def calc_correctnesses(log_probs, targets, is_soft):
         )[0]
 
 
-def extract_averages(times):
+def extract_averages(times: dict[str, AverageMeter]) -> None:
+    """Extracts average values from AverageMeter objects.
+
+    Args:
+        times: Dictionary containing AverageMeter objects.
+    """
     for key in list(times.keys()):
         times[key] = times[key].avg
 
 
-def remove_faulty_indices(estimates, log_probs, targets):
+def remove_faulty_indices(
+    estimates: dict[str, Tensor],
+    log_probs: dict[str, Tensor],
+    targets: dict[str, Tensor],
+) -> None:
+    """Removes entries with faulty indices from estimates, log_probs, and targets.
+
+    Args:
+        estimates: Dictionary of estimates.
+        log_probs: Dictionary of log probabilities.
+        targets: Dictionary of targets.
+    """
     faulty_indices = targets["gt_aleatorics_bregman"].isnan()
 
     if faulty_indices.sum() > 0:
@@ -2384,14 +2740,34 @@ def remove_faulty_indices(estimates, log_probs, targets):
 
 
 def get_bundle(
-    model,
-    loader,
-    device,
-    storage_device,
-    amp_autocast,
-    is_soft_dataset,
-    args,
-):
+    model: nn.Module,
+    loader: DataLoader | PrefetchLoader,
+    device: torch.device,
+    storage_device: torch.device,
+    amp_autocast: Callable,
+    is_soft_dataset: bool,
+    args: argparse.Namespace,
+) -> tuple[
+    dict[str, Tensor],
+    dict[str, Tensor],
+    dict[str, Tensor],
+    dict[str, float],
+]:
+    """Processes the data loader and returns a bundle of evaluation results.
+
+    Args:
+        model: The model to evaluate.
+        loader: The data loader.
+        device: The device to use for computation.
+        storage_device: The device to use for storing results.
+        amp_autocast: Function for automatic mixed precision.
+        is_soft_dataset: Whether the dataset uses soft labels.
+        args: Additional arguments.
+
+    Returns:
+        A tuple containing dictionaries of estimates, log probabilities, targets, and
+        times.
+    """
     estimates = {}
     log_probs = {}
     targets = {}
@@ -2399,30 +2775,13 @@ def get_bundle(
 
     num_samples = len(loader.dataset)  # Total number of samples
 
-    # Ground truth containers
-
-    # Practical tasks
-
-    # Abstained prediction
+    # Ground-truth containers
     gt_hard_labels = torch.empty(num_samples, dtype=torch.long, device=storage_device)
     gt_hard_labels_original = torch.empty(
         num_samples, dtype=torch.long, device=storage_device
     )
     targets["gt_hard_labels"] = gt_hard_labels
     targets["gt_hard_labels_original"] = gt_hard_labels_original
-
-    # Correctness of prediction
-    # We calculate the correctness in the CoP evaluation function. Here,
-    # we only record the GT labels and our predictions (logits).
-    # The reason is that there are two possible ways to treat soft labels
-
-    # OOD detection
-    # We don't record OOD-ness, as these labels are decided at a later point of the code
-
-    # Proper scoring and calibration
-    # We only need the labels and the logits to calculate these metrics
-
-    # Theoretical tasks
 
     if is_soft_dataset:
         gt_soft_labels = torch.empty(
@@ -2477,22 +2836,20 @@ def get_bundle(
     log_bmas = torch.empty(num_samples, model.num_classes, device=storage_device)
     log_probs["log_bmas"] = log_bmas
 
-    # AU
+    # Aleatoric Uncertainty
     expected_entropies = torch.empty(num_samples, device=storage_device)
     estimates["expected_entropies"] = expected_entropies
     one_minus_expected_max_probs = torch.empty(num_samples, device=storage_device)
     estimates["one_minus_expected_max_probs"] = one_minus_expected_max_probs
 
-    # PU
+    # Predictive Uncertainty
     entropies_of_bma = torch.empty(num_samples, device=storage_device)
     estimates["entropies_of_bma"] = entropies_of_bma
     entropies_of_fbar = torch.empty(num_samples, device=storage_device)
     estimates["entropies_of_fbar"] = entropies_of_fbar
     one_minus_max_probs_of_bma = torch.empty(num_samples, device=storage_device)
     estimates["one_minus_max_probs_of_bma"] = one_minus_max_probs_of_bma
-    one_minus_max_probs_of_fbar = torch.empty(
-        num_samples, device=storage_device
-    )  # Just an extra thing to try out
+    one_minus_max_probs_of_fbar = torch.empty(num_samples, device=storage_device)
     estimates["one_minus_max_probs_of_fbar"] = one_minus_max_probs_of_fbar
     expected_entropies_plus_expected_divergences = torch.empty(
         num_samples, device=storage_device
@@ -2501,10 +2858,9 @@ def get_bundle(
         expected_entropies_plus_expected_divergences
     )
 
-    # EU
+    # Epistemic Uncertainty
     dempster_shafer_values = torch.empty(num_samples, device=storage_device)
     estimates["dempster_shafer_values"] = dempster_shafer_values
-    # Just a duplicate
     estimates["expected_divergences"] = gt_epistemics_bregman
     jensen_shannon_divergences = torch.empty(num_samples, device=storage_device)
     estimates["jensen_shannon_divergences"] = jensen_shannon_divergences
@@ -2523,29 +2879,23 @@ def get_bundle(
     expected_variances_of_internal_probs = None
     expected_variances_of_internal_logits = None
 
-    # This class modifies the model when it's not frozen, leading to different
-    # logits.
     if isinstance(model, BaseLossPredictionWrapper):
-        # PU
+        # Predictive Uncertainty
         loss_values = torch.empty(num_samples, device=storage_device)
         estimates["loss_values"] = loss_values
     elif isinstance(model, DDUWrapper):
         gmm_neg_log_densities = torch.empty(num_samples, device=storage_device)
         estimates["gmm_neg_log_densities"] = gmm_neg_log_densities
-    # This class also modifies the model when it's not frozen.
     elif isinstance(model, BaseCorrectnessPredictionWrapper):
-        # PU
+        # Predictive Uncertainty
         error_probabilities = torch.empty(num_samples, device=storage_device)
         estimates["error_probabilities"] = error_probabilities
-    # This class gives "logits" that are different from the baseline model.
     elif isinstance(model, DUQWrapper):
-        # EU
+        # Epistemic Uncertainty
         duq_values = torch.empty(num_samples, device=storage_device)
         estimates["duq_values"] = duq_values
-    # While this class returns logits, it's post-hoc. As such, the logits are not
-    # changed compared to the baseline model, so we'd get the same results.
     elif isinstance(model, MahalanobisWrapper):
-        # EU
+        # Epistemic Uncertainty
         mahalanobis_values = torch.empty(num_samples, device=storage_device)
         estimates["mahalanobis_values"] = mahalanobis_values
     elif isinstance(model, HetClassNNWrapper):
@@ -2653,143 +3003,38 @@ def get_bundle(
     return estimates, log_probs, targets, times
 
 
-def convert_inference_dict(model, inference_dict, time_forward, args):
+def convert_inference_dict(
+    model: nn.Module,
+    inference_dict: dict[str, Tensor],
+    time_forward: float,
+    args: argparse.Namespace,
+) -> dict[str, Tensor]:
+    """Converts the raw inference dict into a standardized format.
+
+    Args:
+        model: The model used for inference.
+        inference_dict: Dictionary containing raw inference results.
+        time_forward: Time taken for the forward pass.
+        args: Additional arguments.
+
+    Returns:
+        A dictionary with converted and standardized inference results.
+    """
     converted_inference_dict = {}
 
     converted_inference_dict["time_forward"] = time_forward
 
     if isinstance(model, DirichletWrapper):
-        alphas = inference_dict["alpha"]  # [B, C]
-        min_real = torch.finfo(alphas.dtype).min
-        log_probs = (
-            torch.distributions.Dirichlet(alphas)
-            .sample((args.num_mc_samples,))
-            .permute(1, 0, 2)
-            .log()
-            .clamp(min=min_real)
-        )  # [B, S, C]
-
-        sum_alphas = alphas.sum(dim=1)  # [B]
-        mean_alphas = alphas.div(sum_alphas.unsqueeze(1))  # [B, C]
-
-        log_bma = mean_alphas.log().clamp(min=min_real)
-        converted_inference_dict["log_bma"] = log_bma
-
-        log_fbar = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
-        converted_inference_dict["log_fbar"] = log_fbar
-
-        digamma_term = torch.digamma(alphas + 1) - torch.digamma(
-            sum_alphas + 1
-        ).unsqueeze(1)  # [B, C]
-        expected_entropy = -mean_alphas.mul(digamma_term).sum(dim=1)  # [B]
-        converted_inference_dict["expected_entropy"] = expected_entropy
-
-        expected_divergence = kl_divergence(log_fbar, log_probs.permute(1, 0, 2)).mean(
-            dim=0
+        convert_inference_dict_dirichlet(
+            converted_inference_dict=converted_inference_dict,
+            inference_dict=inference_dict,
+            args=args,
         )
-        converted_inference_dict["expected_divergence"] = expected_divergence
-
-        probs = log_probs.exp()  # [B, S, C]
-
-        if probs.shape[1] > 1:
-            converted_inference_dict["expected_variance_of_probs"] = torch.var(
-                probs, dim=1
-            ).mean(dim=-1)  # [B]
-        else:
-            converted_inference_dict["expected_variance_of_probs"] = 0.0
-
-        converted_inference_dict["expected_variance_of_logits"] = 0.0
-
-        expected_max_prob = probs.max(dim=-1)[0].mean(dim=1)
-        converted_inference_dict["expected_max_prob"] = expected_max_prob
-
-        entropy_of_bma = entropy(mean_alphas)
-        converted_inference_dict["entropy_of_bma"] = entropy_of_bma
-
-        fbar = log_fbar.exp()
-
-        entropy_of_fbar = entropy(fbar)
-        converted_inference_dict["entropy_of_fbar"] = entropy_of_fbar
-
-        max_prob_of_bma = mean_alphas.max(dim=-1)[0]
-        converted_inference_dict["max_prob_of_bma"] = max_prob_of_bma
-
-        max_prob_of_fbar = fbar.max(dim=-1)[0]
-        converted_inference_dict["max_prob_of_fbar"] = max_prob_of_fbar
-
-        jensen_shannon_divergence = entropy_of_bma - expected_entropy
-        converted_inference_dict["jensen_shannon_divergence"] = (
-            jensen_shannon_divergence
-        )
-
-        num_classes = alphas.shape[1]
-        dempster_shafer_value = num_classes / sum_alphas  # [B]
-        converted_inference_dict["dempster_shafer_value"] = dempster_shafer_value
     else:
-        logits = inference_dict["logit"]
-        min_real = torch.finfo(logits.dtype).min
-        if logits.dim() == 2:  # [B, C]
-            logits = logits.unsqueeze(dim=1)  # [B, 1, C]
-        log_probs = F.log_softmax(logits, dim=-1)  # [B, S, C]
-
-        probs = log_probs.exp()  # [B, S, C]
-
-        if logits.shape[1] > 1:
-            converted_inference_dict["expected_variance_of_logits"] = torch.var(
-                logits, dim=1
-            ).mean(dim=-1)  # [B]
-        else:
-            converted_inference_dict["expected_variance_of_logits"] = 0.0
-
-        if probs.shape[1] > 1:
-            converted_inference_dict["expected_variance_of_probs"] = torch.var(
-                probs, dim=1
-            ).mean(dim=-1)  # [B]
-        else:
-            converted_inference_dict["expected_variance_of_probs"] = 0.0
-
-        log_fbar = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
-
-        fbar = log_fbar.exp()
-        converted_inference_dict["log_fbar"] = log_fbar
-
-        bma = probs.mean(dim=1)  # [B, C]
-
-        log_bma = bma.log()  # [B, C]
-        log_bma = torch.clamp(log_bma, min=min_real)
-        converted_inference_dict["log_bma"] = log_bma
-
-        expected_entropy = entropy(probs).mean(dim=-1)
-        converted_inference_dict["expected_entropy"] = expected_entropy
-
-        expected_divergence = kl_divergence(log_fbar, log_probs.permute(1, 0, 2)).mean(
-            dim=0
+        convert_inference_dict_general(
+            converted_inference_dict=converted_inference_dict,
+            inference_dict=inference_dict,
         )
-        converted_inference_dict["expected_divergence"] = expected_divergence
-
-        expected_max_prob = probs.max(dim=-1)[0].mean(dim=1)
-        converted_inference_dict["expected_max_prob"] = expected_max_prob
-
-        entropy_of_bma = entropy(bma)
-
-        converted_inference_dict["entropy_of_bma"] = entropy_of_bma
-
-        entropy_of_fbar = entropy(fbar)
-        converted_inference_dict["entropy_of_fbar"] = entropy_of_fbar
-
-        max_prob_of_bma = bma.max(dim=-1)[0]
-        converted_inference_dict["max_prob_of_bma"] = max_prob_of_bma
-
-        max_prob_of_fbar = fbar.max(dim=-1)[0]
-        converted_inference_dict["max_prob_of_fbar"] = max_prob_of_fbar
-
-        jensen_shannon_divergence = entropy_of_bma - expected_entropy
-        converted_inference_dict["jensen_shannon_divergence"] = (
-            jensen_shannon_divergence
-        )
-
-        dempster_shafer_value = dempster_shafer_metric(logits.mean(dim=1))
-        converted_inference_dict["dempster_shafer_value"] = dempster_shafer_value
 
     if isinstance(model, BaseLossPredictionWrapper):
         converted_inference_dict["loss_value"] = inference_dict["loss_value"]
@@ -2830,26 +3075,203 @@ def convert_inference_dict(model, inference_dict, time_forward, args):
     return converted_inference_dict
 
 
+def convert_inference_dict_dirichlet(
+    converted_inference_dict: dict[str, Tensor],
+    inference_dict: dict[str, Tensor],
+    args: argparse.Namespace,
+) -> None:
+    """Converts the raw inference dict into a standardized format for Dirichlets.
+
+    Args:
+        converted_inference_dict: Dictionary to collect the converted values into.
+        inference_dict: Dictionary containing raw inference results.
+        args: Additional arguments.
+    """
+    alphas = inference_dict["alpha"]  # [B, C]
+    min_real = torch.finfo(alphas.dtype).min
+    log_probs = (
+        torch.distributions.Dirichlet(alphas)
+        .sample((args.num_mc_samples,))
+        .permute(1, 0, 2)
+        .log()
+        .clamp(min=min_real)
+    )  # [B, S, C]
+
+    sum_alphas = alphas.sum(dim=1)  # [B]
+    mean_alphas = alphas.div(sum_alphas.unsqueeze(1))  # [B, C]
+
+    log_bma = mean_alphas.log().clamp(min=min_real)
+    converted_inference_dict["log_bma"] = log_bma
+
+    log_fbar = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
+    converted_inference_dict["log_fbar"] = log_fbar
+
+    digamma_term = torch.digamma(alphas + 1) - torch.digamma(sum_alphas + 1).unsqueeze(
+        1
+    )  # [B, C]
+    expected_entropy = -mean_alphas.mul(digamma_term).sum(dim=1)  # [B]
+    converted_inference_dict["expected_entropy"] = expected_entropy
+
+    expected_divergence = kl_divergence(log_fbar, log_probs.permute(1, 0, 2)).mean(
+        dim=0
+    )
+    converted_inference_dict["expected_divergence"] = expected_divergence
+
+    probs = log_probs.exp()  # [B, S, C]
+
+    if probs.shape[1] > 1:
+        converted_inference_dict["expected_variance_of_probs"] = torch.var(
+            probs, dim=1
+        ).mean(dim=-1)  # [B]
+    else:
+        converted_inference_dict["expected_variance_of_probs"] = 0.0
+
+    converted_inference_dict["expected_variance_of_logits"] = 0.0
+
+    expected_max_prob = probs.max(dim=-1)[0].mean(dim=1)
+    converted_inference_dict["expected_max_prob"] = expected_max_prob
+
+    entropy_of_bma = entropy(mean_alphas)
+    converted_inference_dict["entropy_of_bma"] = entropy_of_bma
+
+    fbar = log_fbar.exp()
+
+    entropy_of_fbar = entropy(fbar)
+    converted_inference_dict["entropy_of_fbar"] = entropy_of_fbar
+
+    max_prob_of_bma = mean_alphas.max(dim=-1)[0]
+    converted_inference_dict["max_prob_of_bma"] = max_prob_of_bma
+
+    max_prob_of_fbar = fbar.max(dim=-1)[0]
+    converted_inference_dict["max_prob_of_fbar"] = max_prob_of_fbar
+
+    jensen_shannon_divergence = entropy_of_bma - expected_entropy
+    converted_inference_dict["jensen_shannon_divergence"] = jensen_shannon_divergence
+
+    num_classes = alphas.shape[1]
+    dempster_shafer_value = num_classes / sum_alphas  # [B]
+    converted_inference_dict["dempster_shafer_value"] = dempster_shafer_value
+
+
+def convert_inference_dict_general(
+    converted_inference_dict: dict[str, Tensor],
+    inference_dict: dict[str, Tensor],
+) -> None:
+    """Converts the raw inference dict into a standardized format for general models.
+
+    Args:
+        converted_inference_dict: Dictionary to collect the converted values into.
+        inference_dict: Dictionary containing raw inference results.
+    """
+    logits = inference_dict["logit"]
+    min_real = torch.finfo(logits.dtype).min
+    if logits.dim() == 2:  # [B, C]
+        logits = logits.unsqueeze(dim=1)  # [B, 1, C]
+    log_probs = F.log_softmax(logits, dim=-1)  # [B, S, C]
+
+    probs = log_probs.exp()  # [B, S, C]
+
+    if logits.shape[1] > 1:
+        converted_inference_dict["expected_variance_of_logits"] = torch.var(
+            logits, dim=1
+        ).mean(dim=-1)  # [B]
+    else:
+        converted_inference_dict["expected_variance_of_logits"] = 0.0
+
+    if probs.shape[1] > 1:
+        converted_inference_dict["expected_variance_of_probs"] = torch.var(
+            probs, dim=1
+        ).mean(dim=-1)  # [B]
+    else:
+        converted_inference_dict["expected_variance_of_probs"] = 0.0
+
+    log_fbar = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
+
+    fbar = log_fbar.exp()
+    converted_inference_dict["log_fbar"] = log_fbar
+
+    bma = probs.mean(dim=1)  # [B, C]
+
+    log_bma = bma.log()  # [B, C]
+    log_bma = torch.clamp(log_bma, min=min_real)
+    converted_inference_dict["log_bma"] = log_bma
+
+    expected_entropy = entropy(probs).mean(dim=-1)
+    converted_inference_dict["expected_entropy"] = expected_entropy
+
+    expected_divergence = kl_divergence(log_fbar, log_probs.permute(1, 0, 2)).mean(
+        dim=0
+    )
+    converted_inference_dict["expected_divergence"] = expected_divergence
+
+    expected_max_prob = probs.max(dim=-1)[0].mean(dim=1)
+    converted_inference_dict["expected_max_prob"] = expected_max_prob
+
+    entropy_of_bma = entropy(bma)
+
+    converted_inference_dict["entropy_of_bma"] = entropy_of_bma
+
+    entropy_of_fbar = entropy(fbar)
+    converted_inference_dict["entropy_of_fbar"] = entropy_of_fbar
+
+    max_prob_of_bma = bma.max(dim=-1)[0]
+    converted_inference_dict["max_prob_of_bma"] = max_prob_of_bma
+
+    max_prob_of_fbar = fbar.max(dim=-1)[0]
+    converted_inference_dict["max_prob_of_fbar"] = max_prob_of_fbar
+
+    jensen_shannon_divergence = entropy_of_bma - expected_entropy
+    converted_inference_dict["jensen_shannon_divergence"] = jensen_shannon_divergence
+
+    dempster_shafer_value = dempster_shafer_metric(logits.mean(dim=1))
+    converted_inference_dict["dempster_shafer_value"] = dempster_shafer_value
+
+
 def update_logit_based(
-    inference_dict,
-    indices,
-    batch_size,
-    log_fbars,
-    log_bmas,
-    gt_epistemics_bregman,
-    time_forward_m,
-    expected_entropies,
-    expected_entropies_plus_expected_divergences,
-    one_minus_expected_max_probs,
-    entropies_of_bma,
-    entropies_of_fbar,
-    one_minus_max_probs_of_bma,
-    one_minus_max_probs_of_fbar,
-    jensen_shannon_divergences,
-    dempster_shafer_values,
-    expected_variances_of_probs,
-    expected_variances_of_logits,
-):
+    inference_dict: dict[str, Tensor],
+    indices: slice,
+    batch_size: int,
+    log_fbars: Tensor,
+    log_bmas: Tensor,
+    gt_epistemics_bregman: Tensor,
+    time_forward_m: AverageMeter,
+    expected_entropies: Tensor,
+    expected_entropies_plus_expected_divergences: Tensor,
+    one_minus_expected_max_probs: Tensor,
+    entropies_of_bma: Tensor,
+    entropies_of_fbar: Tensor,
+    one_minus_max_probs_of_bma: Tensor,
+    one_minus_max_probs_of_fbar: Tensor,
+    jensen_shannon_divergences: Tensor,
+    dempster_shafer_values: Tensor,
+    expected_variances_of_probs: Tensor,
+    expected_variances_of_logits: Tensor,
+) -> None:
+    """Updates logit-based metrics and estimates.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        batch_size: Size of the current batch.
+        log_fbars: Tensor to store log f-bar values.
+        log_bmas: Tensor to store log BMA values.
+        gt_epistemics_bregman: Tensor to store ground truth epistemic uncertainties.
+        time_forward_m: AverageMeter to track forward pass time.
+        expected_entropies: Tensor to store expected entropies.
+        expected_entropies_plus_expected_divergences: Tensor to store sum of expected
+            entropies and expected divergences.
+        one_minus_expected_max_probs: Tensor to store 1 minus expected max
+            probabilities.
+        entropies_of_bma: Tensor to store entropies of BMA.
+        entropies_of_fbar: Tensor to store entropies of f-bar.
+        one_minus_max_probs_of_bma: Tensor to store 1 minus max probabilities of BMA.
+        one_minus_max_probs_of_fbar: Tensor to store 1 minus max probabilities of f-bar.
+        jensen_shannon_divergences: Tensor to store Jensen-Shannon divergences.
+        dempster_shafer_values: Tensor to store Dempster-Shafer values.
+        expected_variances_of_probs: Tensor to store expected variances of
+            probabilities.
+        expected_variances_of_logits: Tensor to store expected variances of logits.
+    """
     log_fbars[indices] = inference_dict["log_fbar"]
     log_bmas[indices] = inference_dict["log_bma"]
     gt_epistemics_bregman[indices] = inference_dict["expected_divergence"]
@@ -2873,40 +3295,93 @@ def update_logit_based(
     ]
 
 
-def update_losspred(inference_dict, indices, loss_values):
+def update_losspred(
+    inference_dict: dict[str, Tensor], indices: slice, loss_values: Tensor
+) -> None:
+    """Updates loss prediction values.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        loss_values: Tensor to store loss prediction values.
+    """
     loss_values[indices] = inference_dict["loss_value"]
 
 
 def update_ddu(
-    inference_dict,
-    indices,
-    gmm_neg_log_densities,
-):
+    inference_dict: dict[str, Tensor],
+    indices: slice,
+    gmm_neg_log_densities: Tensor,
+) -> None:
+    """Updates DDU-specific metrics.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        gmm_neg_log_densities: Tensor to store GMM negative log densities.
+    """
     gmm_neg_log_densities[indices] = inference_dict["gmm_neg_log_density"]
 
 
-def update_corrpred(inference_dict, indices, error_probabilities):
+def update_corrpred(
+    inference_dict: dict[str, Tensor],
+    indices: slice,
+    error_probabilities: Tensor,
+) -> None:
+    """Updates correctness prediction values.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        error_probabilities: Tensor to store error probabilities.
+    """
     error_probabilities[indices] = inference_dict["error_probability"]
 
 
-def update_duq(inference_dict, indices, duq_values):
+def update_duq(
+    inference_dict: dict[str, Tensor], indices: slice, duq_values: Tensor
+) -> None:
+    """Updates DUQ-specific values.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        duq_values: Tensor to store DUQ values.
+    """
     duq_values[indices] = inference_dict["duq_value"]
 
 
 def update_mahalanobis(
-    inference_dict,
-    indices,
-    mahalanobis_values,
-):
+    inference_dict: dict[str, Tensor],
+    indices: slice,
+    mahalanobis_values: Tensor,
+) -> None:
+    """Updates Mahalanobis distance values.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        mahalanobis_values: Tensor to store Mahalanobis distance values.
+    """
     mahalanobis_values[indices] = inference_dict["mahalanobis_value"]
 
 
 def update_hetclassnn(
-    inference_dict,
-    indices,
-    expected_variances_of_internal_probs,
-    expected_variances_of_internal_logits,
-):
+    inference_dict: dict[str, Tensor],
+    indices: slice,
+    expected_variances_of_internal_probs: Tensor,
+    expected_variances_of_internal_logits: Tensor,
+) -> None:
+    """Updates HetClassNN-specific values.
+
+    Args:
+        inference_dict: Dictionary containing inference results.
+        indices: Slice object for indexing tensors.
+        expected_variances_of_internal_probs: Tensor to store expected variances of
+            internal probabilities.
+        expected_variances_of_internal_logits: Tensor to store expected variances of
+            internal logits.
+    """
     expected_variances_of_internal_probs[indices] = inference_dict[
         "expected_variance_of_internal_probs"
     ]

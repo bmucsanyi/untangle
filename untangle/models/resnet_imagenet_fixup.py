@@ -4,45 +4,34 @@ import logging
 import math
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
 
 logger = logging.getLogger(__name__)
 
 
-def resnet_fixup_50(
-    num_classes=1000,
-    in_chans=3,
-    downsample_type="conv",
-    act_layer=nn.ReLU,
-):
-    """Constructs a ResNet-Fixup-50 model."""
-    model = ResNetFixup(
-        block_fn=BottleneckFixup,
-        layers=[3, 4, 6, 3],
-        num_classes=num_classes,
-        in_chans=in_chans,
-        downsample_type=downsample_type,
-        act_layer=act_layer,
-    )
-
-    return model
-
-
 class BasicBlockFixup(nn.Module):
-    """BasicBlock for ImageNet Fixup ResNets."""
+    """BasicBlock for ImageNet Fixup ResNets.
+
+    Args:
+        in_planes: Number of input channels.
+        planes: Number of output channels.
+        stride: Stride for the first convolutional layer.
+        downsample: Optional downsampling module.
+        act_layer: Activation layer constructor.
+    """
 
     expansion = 1
 
     def __init__(
         self,
-        in_planes,
-        planes,
-        stride,
-        downsample,
-        act_layer,
-    ):
+        in_planes: int,
+        planes: int,
+        stride: int,
+        downsample: nn.Module | None,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
 
         out_planes = planes * self.expansion
@@ -74,7 +63,15 @@ class BasicBlockFixup(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass of the BasicBlockFixup.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the block.
+        """
         shortcut = x
 
         x = self.conv1(x + self.bias1a)
@@ -93,18 +90,26 @@ class BasicBlockFixup(nn.Module):
 
 
 class BottleneckFixup(nn.Module):
-    """Bottleneck module for ImageNet Fixup ResNets."""
+    """Bottleneck module for ImageNet Fixup ResNets.
+
+    Args:
+        in_planes: Number of input channels.
+        planes: Number of intermediate channels.
+        stride: Stride for the second convolutional layer.
+        downsample: Optional downsampling module.
+        act_layer: Activation layer constructor.
+    """
 
     expansion = 4
 
     def __init__(
         self,
-        in_planes,
-        planes,
-        stride,
-        downsample,
-        act_layer,
-    ):
+        in_planes: int,
+        planes: int,
+        stride: int,
+        downsample: nn.Module | None,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
 
         out_planes = planes * self.expansion
@@ -140,7 +145,15 @@ class BottleneckFixup(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass of the BottleneckFixup.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the block.
+        """
         shortcut = x
 
         x = self.conv1(x + self.bias1a)
@@ -162,17 +175,26 @@ class BottleneckFixup(nn.Module):
 
 
 class ResNetFixup(nn.Module):
-    """ImageNet Fixup ResNet."""
+    """ImageNet Fixup ResNet.
+
+    Args:
+        block_fn: Type of residual block to use.
+        layers: List of number of blocks in each layer.
+        num_classes: Number of classes for classification.
+        in_chans: Number of input channels.
+        downsample_type: Type of downsampling to use.
+        act_layer: Activation layer constructor.
+    """
 
     def __init__(
         self,
-        block_fn,
-        layers,
-        num_classes,
-        in_chans,
-        downsample_type,
-        act_layer,
-    ):
+        block_fn: nn.Module,
+        layers: list[int],
+        num_classes: int,
+        in_chans: int,
+        downsample_type: str,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
 
         self.num_classes = num_classes
@@ -208,7 +230,8 @@ class ResNetFixup(nn.Module):
 
         self.init_weights()
 
-    def init_weights(self):
+    def init_weights(self) -> None:
+        """Initialize the weights of the network."""
         for module in self.modules():
             if isinstance(module, BasicBlockFixup):
                 weight1 = module.conv1.weight
@@ -277,17 +300,38 @@ class ResNetFixup(nn.Module):
                 nn.init.constant_(module.weight, 0)
                 nn.init.constant_(module.bias, 0)
 
-    def get_classifier(self, *, name_only=False):
+    def get_classifier(self, *, name_only: bool = False) -> None:
+        """Get the classifier.
+
+        Args:
+            name_only: If True, return only the name of the classifier.
+
+        Returns:
+            The classifier function or its name.
+        """
         return "fc" if name_only else lambda x: self.fc(x + self.bias2)
 
-    def reset_classifier(self, num_classes):
+    def reset_classifier(self, num_classes: int) -> None:
+        """Reset the classifier.
+
+        Args:
+            num_classes: New number of classes for classification.
+        """
         self.num_classes = num_classes
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
         nn.init.constant_(self.fc.weight, 0)
         nn.init.constant_(self.fc.bias, 0)
 
-    def forward_features(self, x):
+    def forward_features(self, x: Tensor) -> Tensor:
+        """Forward pass through the feature extraction layers.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the feature layers.
+        """
         x = self.conv1(x)
         x = self.act1(x + self.bias1)
         x = self.maxpool(x)
@@ -299,25 +343,55 @@ class ResNetFixup(nn.Module):
 
         return x
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(self, x: Tensor, *, pre_logits: bool = False) -> Tensor:
+        """Forward pass through the head of the network.
+
+        Args:
+            x: Input tensor.
+            pre_logits: If True, return features before the final linear layer.
+
+        Returns:
+            Output tensor after passing through the head.
+        """
         x = self.global_pool(x)
 
         return x if pre_logits else self.fc(x + self.bias2)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the entire network.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the network.
+        """
         x = self.forward_features(x)
         x = self.forward_head(x)
         return x
 
 
 def make_blocks(
-    block_fn,
-    channels,
-    block_repeats,
-    in_planes,
-    downsample_type,
-    act_layer,
-):
+    block_fn: nn.Module,
+    channels: list[int],
+    block_repeats: list[int],
+    in_planes: int,
+    downsample_type: str,
+    act_layer: nn.Module,
+) -> list[tuple[str, nn.Sequential]]:
+    """Create blocks for ResNet stages.
+
+    Args:
+        block_fn: The block function to use (BasicBlockFixup or BottleneckFixup).
+        channels: List of channel sizes for each stage.
+        block_repeats: List of number of blocks in each stage.
+        in_planes: Number of input channels.
+        downsample_type: Type of downsampling to use ('conv' or other).
+        act_layer: Activation layer to use.
+
+    Returns:
+        List of tuples containing stage names and corresponding sequential blocks.
+    """
     stages = []
 
     for stage_idx, (planes, num_blocks) in enumerate(
@@ -365,3 +439,32 @@ def make_blocks(
         stages.append((stage_name, nn.Sequential(*blocks)))
 
     return stages
+
+
+def resnet_fixup_50(
+    num_classes: int = 1000,
+    in_chans: int = 3,
+    downsample_type: str = "conv",
+    act_layer: nn.Module = nn.ReLU,
+) -> ResNetFixup:
+    """Constructs a ResNet-Fixup-50 model.
+
+    Args:
+        num_classes: Number of classes for classification.
+        in_chans: Number of input channels.
+        downsample_type: Type of downsampling to use.
+        act_layer: Activation layer to use.
+
+    Returns:
+        ResNetFixup model instance.
+    """
+    model = ResNetFixup(
+        block_fn=BottleneckFixup,
+        layers=[3, 4, 6, 3],
+        num_classes=num_classes,
+        in_chans=in_chans,
+        downsample_type=downsample_type,
+        act_layer=act_layer,
+    )
+
+    return model

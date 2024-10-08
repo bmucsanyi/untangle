@@ -48,7 +48,28 @@ UNTANGLE_STR_TO_MODEL_CLASS = {
 }
 
 
-def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
+def create_model(
+    model_name: str,
+    pretrained: bool,
+    num_classes: int,
+    in_chans: int,
+    model_kwargs: dict,
+) -> torch.nn.Module:
+    """Creates a model based on the given parameters.
+
+    Args:
+        model_name: Name of the model to create.
+        pretrained: Whether to use pretrained weights.
+        num_classes: Number of classes for the model.
+        in_chans: Number of input channels.
+        model_kwargs: Additional keyword arguments for model creation.
+
+    Returns:
+        The created model.
+
+    Raises:
+        ValueError: If an invalid prefix is provided in the model_name.
+    """
     prefix, model_name = model_name.split("/")
 
     if prefix == "timm":
@@ -81,52 +102,110 @@ def create_model(model_name, pretrained, num_classes, in_chans, model_kwargs):
 
 
 def wrap_model(  # noqa: C901
-    model,
-    model_wrapper_name,
-    reset_classifier,
-    weight_paths,
-    num_hidden_features,
-    mlp_depth,
-    stopgrad,
-    num_hooks,
-    module_type,
-    module_name_regex,
-    dropout_probability,
-    use_filterwise_dropout,
-    num_mc_samples,
-    num_mc_samples_integral,
-    num_mc_samples_cv,
-    rbf_length_scale,
-    ema_momentum,
-    matrix_rank,
-    use_het,
-    temperature,
-    pred_type,
-    hessian_structure,
-    use_low_rank_cov,
-    max_rank,
-    magnitude,
-    num_heads,
-    likelihood,
-    use_spectral_normalization,
-    spectral_normalization_iteration,
-    spectral_normalization_bound,
-    use_spectral_normalized_batch_norm,
-    use_tight_norm_for_pointwise_convs,
-    num_random_features,
-    gp_kernel_scale,
-    gp_output_bias,
-    gp_random_feature_type,
-    use_input_normalized_gp,
-    gp_cov_momentum,
-    gp_cov_ridge_penalty,
-    gp_input_dim,
-    latent_dim,
-    num_density_components,
-    use_batched_flow,
-    edl_activation,
-    checkpoint_path,
-):
+    model: torch.nn.Module,
+    model_wrapper_name: str,
+    reset_classifier: bool,
+    weight_paths: list[str],
+    num_hidden_features: int,
+    mlp_depth: int,
+    stopgrad: bool,
+    num_hooks: int,
+    module_type: str,
+    module_name_regex: str,
+    dropout_probability: float,
+    use_filterwise_dropout: bool,
+    num_mc_samples: int,
+    num_mc_samples_integral: int,
+    num_mc_samples_cv: int,
+    rbf_length_scale: float,
+    ema_momentum: float,
+    matrix_rank: int,
+    use_het: bool,
+    temperature: float,
+    pred_type: str,
+    hessian_structure: str,
+    use_low_rank_cov: bool,
+    max_rank: int,
+    magnitude: float,
+    num_heads: int,
+    likelihood: str,
+    use_spectral_normalization: bool,
+    spectral_normalization_iteration: int,
+    spectral_normalization_bound: float,
+    use_spectral_normalized_batch_norm: bool,
+    use_tight_norm_for_pointwise_convs: bool,
+    num_random_features: int,
+    gp_kernel_scale: float,
+    gp_output_bias: bool,
+    gp_random_feature_type: str,
+    use_input_normalized_gp: bool,
+    gp_cov_momentum: float,
+    gp_cov_ridge_penalty: float,
+    gp_input_dim: int,
+    latent_dim: int,
+    num_density_components: int,
+    use_batched_flow: bool,
+    edl_activation: str,
+    checkpoint_path: str,
+) -> torch.nn.Module:
+    """Wraps the given model with the specified wrapper.
+
+    Args:
+        model: The model to be wrapped.
+        model_wrapper_name: Name of the wrapper to use.
+        reset_classifier: Whether to reset the classifier.
+        weight_paths: Paths to model weights.
+        num_hidden_features: Number of hidden features.
+        mlp_depth: Depth of the MLP.
+        stopgrad: Whether to stop gradient propagation.
+        num_hooks: Number of hooks to use.
+        module_type: Type of module.
+        module_name_regex: Regex for module names.
+        dropout_probability: Probability of dropout.
+        use_filterwise_dropout: Whether to use filterwise dropout.
+        num_mc_samples: Number of Monte Carlo samples.
+        num_mc_samples_integral: Number of Monte Carlo samples for integral.
+        num_mc_samples_cv: Number of Monte Carlo samples for cross-validation.
+        rbf_length_scale: Length scale for RBF kernel.
+        ema_momentum: Momentum for EMA.
+        matrix_rank: Rank of the matrix.
+        use_het: Whether to use HET.
+        temperature: Temperature for scaling.
+        pred_type: Type of prediction.
+        hessian_structure: Structure of the Hessian.
+        use_low_rank_cov: Whether to use low-rank covariance.
+        max_rank: Maximum rank.
+        magnitude: Magnitude value.
+        num_heads: Number of heads.
+        likelihood: Likelihood function.
+        use_spectral_normalization: Whether to use spectral normalization.
+        spectral_normalization_iteration: Number of iterations for spectral
+            normalization.
+        spectral_normalization_bound: Bound for spectral normalization.
+        use_spectral_normalized_batch_norm: Whether to use spectral normalized batch
+            norm.
+        use_tight_norm_for_pointwise_convs: Whether to use tight norm for pointwise
+            convolutions.
+        num_random_features: Number of random features.
+        gp_kernel_scale: Scale for GP kernel.
+        gp_output_bias: Whether to use output bias for GP.
+        gp_random_feature_type: Type of random features for GP.
+        use_input_normalized_gp: Whether to use input normalized GP.
+        gp_cov_momentum: Momentum for GP covariance.
+        gp_cov_ridge_penalty: Ridge penalty for GP covariance.
+        gp_input_dim: Input dimension for GP.
+        latent_dim: Dimension of latent space.
+        num_density_components: Number of density components.
+        use_batched_flow: Whether to use batched flow.
+        edl_activation: Activation function for EDL.
+        checkpoint_path: Path to the checkpoint.
+
+    Returns:
+        The wrapped model.
+
+    Raises:
+        ValueError: If the specified model wrapper is not implemented.
+    """
     if reset_classifier:
         model.reset_classifier(model.num_classes)
 
@@ -292,6 +371,18 @@ def load_checkpoint(
     model: torch.nn.Module,
     checkpoint_path: str,
 ) -> dict[str, Any]:
+    """Loads a checkpoint into the given model.
+
+    Args:
+        model: The model to load the checkpoint into.
+        checkpoint_path: Path to the checkpoint file.
+
+    Returns:
+        A dictionary containing information about incompatible keys.
+
+    Raises:
+        FileNotFoundError: If no checkpoint is found at the specified path.
+    """
     if checkpoint_path.exists():
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
         state_dict = checkpoint["state_dict"]

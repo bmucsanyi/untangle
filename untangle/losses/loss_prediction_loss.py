@@ -7,16 +7,16 @@ class LossPredictionLoss(nn.Module):
     """Combines the task loss with loss prediction for uncertainty estimation.
 
     Args:
-        lambda_uncertainty_loss (float): Weight for the uncertainty loss component.
-        detach_task_loss (bool): If True, detaches task loss when used as target for
+        lambda_uncertainty_loss: Weight for the uncertainty loss component.
+        detach_uncertainty_target: If True, detaches task loss when used as target for
             loss prediction.
     """
 
     def __init__(
         self,
-        lambda_uncertainty_loss,
-        detach_uncertainty_target,
-    ):
+        lambda_uncertainty_loss: float,
+        detach_uncertainty_target: bool,
+    ) -> None:
         super().__init__()
 
         self.task_loss = nn.CrossEntropyLoss(reduction="none")
@@ -26,9 +26,19 @@ class LossPredictionLoss(nn.Module):
 
     def forward(
         self,
-        prediction_tuple: tuple,
+        prediction_tuple: tuple[Tensor, Tensor],
         target: Tensor,
     ) -> Tensor:
+        """Compute the combined task and uncertainty loss.
+
+        Args:
+            prediction_tuple: A tuple containing the model prediction and loss
+                prediction.
+            target: The target labels.
+
+        Returns:
+            The combined loss value.
+        """
         prediction, loss_prediction = prediction_tuple
 
         task_loss_per_sample = self.task_loss(prediction, target)

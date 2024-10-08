@@ -1,36 +1,31 @@
 """CIFAR (Wide-)ResNet implementation."""
 
-from torch import nn
+from torch import Tensor, nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
 
 
-def wide_resnet_c_26_10(
-    num_classes=10,
-    in_chans=3,
-    downsample_type="conv",
-    act_layer=nn.ReLU,
-):
-    """Constructs a WideResNet-26-10 model."""
-    model = ResNetC(
-        block_fn=BasicBlockC,
-        depth=26,
-        width_multiplier=10,
-        num_classes=num_classes,
-        in_chans=in_chans,
-        downsample_type=downsample_type,
-        act_layer=act_layer,
-    )
-
-    return model
-
-
 class BasicBlockC(nn.Module):
-    """BasicBlock for CIFAR ResNets."""
+    """BasicBlock for CIFAR ResNets.
+
+    Args:
+        in_planes: Number of input planes.
+        planes: Number of output planes.
+        stride: Stride for convolution.
+        act_layer: Activation layer to use.
+        downsample_type: Type of downsampling to use.
+    """
 
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride, act_layer, downsample_type):
+    def __init__(
+        self,
+        in_planes: int,
+        planes: int,
+        stride: int,
+        act_layer: nn.Module,
+        downsample_type: str,
+    ) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(
             in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
@@ -65,7 +60,15 @@ class BasicBlockC(nn.Module):
                     downsample_type=downsample_type,
                 )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass of the BasicBlockC.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the block.
+        """
         shortcut = x
 
         out = self.act1(self.bn1(self.conv1(x)))
@@ -80,18 +83,28 @@ class BasicBlockC(nn.Module):
 
 
 class ResNetC(nn.Module):
-    """CIFAR ResNet."""
+    """CIFAR ResNet.
+
+    Args:
+        block_fn: Block function to use.
+        depth: Depth of the network.
+        width_multiplier: Width multiplier for the network.
+        num_classes: Number of output classes.
+        in_chans: Number of input channels.
+        downsample_type: Type of downsampling to use.
+        act_layer: Activation layer to use.
+    """
 
     def __init__(
         self,
-        block_fn,
-        depth,
-        width_multiplier,
-        num_classes,
-        in_chans,
-        downsample_type,
-        act_layer,
-    ):
+        block_fn: BasicBlockC,
+        depth: int,
+        width_multiplier: int,
+        num_classes: int,
+        in_chans: int,
+        downsample_type: str,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
         self.in_planes = 16
         self.num_classes = num_classes
@@ -126,7 +139,26 @@ class ResNetC(nn.Module):
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes)
 
-    def make_layer(self, block, planes, num_blocks, stride, act_layer):
+    def make_layer(
+        self,
+        block: BasicBlockC,
+        planes: int,
+        num_blocks: int,
+        stride: int,
+        act_layer: nn.Module,
+    ) -> nn.Sequential:
+        """Create a layer of blocks.
+
+        Args:
+            block: Block type to use.
+            planes: Number of output planes.
+            num_blocks: Number of blocks in the layer.
+            stride: Stride for the first block.
+            act_layer: Activation layer to use.
+
+        Returns:
+            A sequential container of blocks.
+        """
         blocks = nn.Sequential(
             block(
                 in_planes=self.in_planes,
@@ -151,14 +183,35 @@ class ResNetC(nn.Module):
 
         return blocks
 
-    def get_classifier(self, *, name_only=False):
+    def get_classifier(self, *, name_only: bool = False) -> str | nn.Linear:
+        """Get the classifier of the network.
+
+        Args:
+            name_only: If True, return only the name of the classifier.
+
+        Returns:
+            The classifier or its name.
+        """
         return "fc" if name_only else self.fc
 
-    def reset_classifier(self, num_classes):
+    def reset_classifier(self, num_classes: int) -> None:
+        """Reset the classifier with a new number of classes.
+
+        Args:
+            num_classes: New number of classes for the classifier.
+        """
         self.num_classes = num_classes
         self.fc = nn.Linear(self.num_features, self.num_classes)
 
-    def forward_features(self, x):
+    def forward_features(self, x: Tensor) -> Tensor:
+        """Forward pass through the feature extraction layers.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after feature extraction.
+        """
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.act1(out)
@@ -169,13 +222,60 @@ class ResNetC(nn.Module):
 
         return out
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(self, x: Tensor, *, pre_logits: bool = False) -> Tensor:
+        """Forward pass through the head of the network.
+
+        Args:
+            x: Input tensor.
+            pre_logits: If True, return features before the final linear layer.
+
+        Returns:
+            Output tensor after passing through the head.
+        """
         out = self.global_pool(x)
 
         return out if pre_logits else self.fc(out)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the entire network.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor of the network.
+        """
         out = self.forward_features(x)
         out = self.forward_head(out)
 
         return out
+
+
+def wide_resnet_c_26_10(
+    num_classes: int = 10,
+    in_chans: int = 3,
+    downsample_type: str = "conv",
+    act_layer: nn.Module = nn.ReLU,
+) -> ResNetC:
+    """Constructs a WideResNet-26-10 model.
+
+    Args:
+        num_classes: Number of output classes.
+        in_chans: Number of input channels.
+        downsample_type: Type of downsampling to use.
+        act_layer: Activation layer to use.
+
+    Returns:
+        A WideResNet-26-10 model.
+    """
+    model = ResNetC(
+        block_fn=BasicBlockC,
+        depth=26,
+        width_multiplier=10,
+        num_classes=num_classes,
+        in_chans=in_chans,
+        downsample_type=downsample_type,
+        act_layer=act_layer,
+    )
+
+    return model

@@ -7,9 +7,11 @@ import logging
 from functools import partial
 
 import torch
-from torch import nn
+from torch import Tensor, nn
+from torch.utils.data import DataLoader
 
 from untangle.utils import centered_cov
+from untangle.utils.loader import PrefetchLoader
 from untangle.utils.replace import register, register_cond, replace
 from untangle.wrappers.sngp_wrapper import (
     Conv2dSpectralNormalizer,
@@ -25,7 +27,22 @@ logger = logging.getLogger(__name__)
 
 
 class DDUWrapper(TemperatureWrapper):
-    """This module takes a model as input and creates an SNGP from it."""
+    """Wrapper that creates a DDU model from an input model.
+
+    This wrapper applies spectral normalization and other techniques to create
+    a Spectral-normalized Neural Gaussian Process (SNGP) from the input model.
+
+    Args:
+        model: The neural network model to be wrapped.
+        use_spectral_normalization: Whether to use spectral normalization.
+        spectral_normalization_iteration: Number of iterations for spectral
+            normalization.
+        spectral_normalization_bound: Upper bound for spectral normalization.
+        use_spectral_normalized_batch_norm: Whether to use spectral normalized batch
+            normalization.
+        use_tight_norm_for_pointwise_convs: Whether to use tight norm for pointwise
+            convolutions.
+    """
 
     def __init__(
         self,
@@ -35,7 +52,7 @@ class DDUWrapper(TemperatureWrapper):
         spectral_normalization_bound: float,
         use_spectral_normalized_batch_norm: bool,
         use_tight_norm_for_pointwise_convs: bool,
-    ):
+    ) -> None:
         super().__init__(model, None)
 
         self.register_buffer("_gmm_loc", None)
@@ -65,7 +82,7 @@ class DDUWrapper(TemperatureWrapper):
 
             if use_tight_norm_for_pointwise_convs:
 
-                def is_pointwise_conv(conv2d: nn.Conv2d) -> bool:
+                def is_pointwise_conv(conv2d: nn.Module) -> bool:
                     return conv2d.kernel_size == (1, 1)
 
                 register_cond(
@@ -91,7 +108,20 @@ class DDUWrapper(TemperatureWrapper):
                     target_module=SNBN,
                 )
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(
+        self, x: Tensor, *, pre_logits: bool = False
+    ) -> Tensor | dict[str, Tensor]:
+        """Performs the forward pass through the head of the model.
+
+        Args:
+            x: The input tensor.
+            pre_logits: Whether to return pre-logits.
+
+        Returns:
+            Either the features (if pre_logits is True), the logits (during training),
+            or a dictionary containing logits and GMM negative log density
+            (during inference).
+        """
         # Always get pre_logits
         features = self.model.forward_head(x, pre_logits=True)
 
@@ -125,15 +155,42 @@ class DDUWrapper(TemperatureWrapper):
             "gmm_neg_log_density": -gmm_log_density,
         }
 
-    def fit_gmm(self, train_loader, max_num_training_samples, args):
+    def fit_gmm(
+        self,
+        train_loader: DataLoader | PrefetchLoader,
+        max_num_training_samples: int,
+        channels_last: bool,
+    ) -> None:
+        """Fits a Gaussian Mixture Model to the features of the training data.
+
+        Args:
+            train_loader: The DataLoader or PrefetchLoader for the training set.
+            max_num_training_samples: The maximum number of training samples to use.
+            channels_last: Whether a channels_last memory layout should be used.
+        """
         features, labels = self._get_features(
             train_loader=train_loader,
             max_num_training_samples=max_num_training_samples,
-            args=args,
+            channels_last=channels_last,
         )
         self._get_gmm(features=features, labels=labels)
 
-    def _get_features(self, train_loader, max_num_training_samples, args):
+    def _get_features(
+        self,
+        train_loader: DataLoader | PrefetchLoader,
+        max_num_training_samples: int,
+        channels_last: bool,
+    ) -> tuple[Tensor, Tensor]:
+        """Extracts features from the training data.
+
+        Args:
+            train_loader: The DataLoader or PrefetchLoader for the training set.
+            max_num_training_samples: The maximum number of training samples to use.
+            channels_last: Whether a channels_last memory layout should be used.
+
+        Returns:
+            A tuple containing the extracted features and corresponding labels.
+        """
         batch_size = train_loader.batch_size
         dataset_size = len(train_loader.dataset)
         drop_last = train_loader.drop_last
@@ -166,12 +223,12 @@ class DDUWrapper(TemperatureWrapper):
                 input = input[:actual_batch_size]
                 label = label[:actual_batch_size]
 
-                if not args.prefetcher:
+                if not isinstance(train_loader, PrefetchLoader):
                     input = input.to(device)
                 else:
                     label = label.cpu()
 
-                if args.channels_last:
+                if channels_last:
                     input = input.contiguous(memory_format=torch.channels_last)
 
                 feature = self.model.forward_head(
@@ -187,7 +244,17 @@ class DDUWrapper(TemperatureWrapper):
 
         return features, labels
 
-    def _get_gmm(self, features, labels):
+    def _get_gmm(self, features: Tensor, labels: Tensor) -> None:
+        """Computes the Gaussian Mixture Model parameters.
+
+        Args:
+            features: The extracted features.
+            labels: The corresponding labels.
+
+        Raises:
+            ValueError: If all jitters fail to make the covariance matrix positive
+            definite.
+        """
         num_classes = self.model.num_classes
 
         classwise_mean_features = torch.stack([
@@ -198,6 +265,8 @@ class DDUWrapper(TemperatureWrapper):
             centered_cov(features[labels == c] - classwise_mean_features[c])
             for c in range(num_classes)
         ])  # [C, D, D]
+
+        used_jitter_eps = None
 
         for jitter_eps in JITTERS:
             logger.info(f"Trying {jitter_eps}...")
@@ -214,6 +283,7 @@ class DDUWrapper(TemperatureWrapper):
                     covariance_matrix=jittered_classwise_cov_features,
                 )
 
+                used_jitter_eps = jitter_eps
                 self._gmm = gmm
                 self._gmm_loc = classwise_mean_features
                 self._gmm_covariance_matrix = jittered_classwise_cov_features
@@ -223,8 +293,8 @@ class DDUWrapper(TemperatureWrapper):
                 continue
             break
 
-        logger.info(f"Used jitter: {jitter_eps}")
+        logger.info(f"Used jitter: {used_jitter_eps}")
 
-        if self._gmm is None:
+        if used_jitter_eps is None:
             msg = "All jitters failed making the covariance matrix positive definite"
             raise ValueError(msg)

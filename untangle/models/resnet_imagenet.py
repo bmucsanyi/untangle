@@ -4,69 +4,34 @@ import logging
 
 import torch
 from huggingface_hub import hf_hub_download
-from torch import nn
+from torch import Tensor, nn
 
 from .utils import FlattenAdaptiveAvgPool2d, PoolPad
 
 logger = logging.getLogger(__name__)
 
 
-def resnet_50(
-    num_classes=1000,
-    in_chans=3,
-    downsample_type="conv",
-    act_layer=nn.ReLU,
-    *,
-    pretrained=False,
-):
-    """Constructs a ResNet-50 model."""
-    model = ResNet(
-        block_fn=Bottleneck,
-        layers=[3, 4, 6, 3],
-        num_classes=num_classes,
-        in_chans=in_chans,
-        downsample_type=downsample_type,
-        act_layer=act_layer,
-    )
-
-    if pretrained:
-        pretrained_strict = downsample_type == "conv"
-        cached_file = hf_hub_download(
-            "timm/resnet50.a1_in1k",
-            filename="pytorch_model.bin",
-            revision=None,
-            library_name="timm",
-            library_version="0.9.8dev0",
-        )
-        state_dict = torch.load(cached_file, map_location="cpu", weights_only=True)
-        mismatches = model.load_state_dict(state_dict, strict=pretrained_strict)
-
-        if mismatches.missing_keys:
-            logger.warning(
-                f"The following keys are missing: {mismatches.missing_keys}."
-            )
-
-        if mismatches.unexpected_keys:
-            logger.warning(
-                f"The following keys are unexpected: {mismatches.unexpected_keys}."
-            )
-
-    return model
-
-
 class BasicBlock(nn.Module):
-    """BasicBlock for ImageNet ResNets."""
+    """BasicBlock for ImageNet ResNets.
+
+    Args:
+        in_planes: Number of input channels.
+        planes: Number of output channels.
+        stride: Stride for the first convolutional layer.
+        downsample: Optional downsampling module.
+        act_layer: Activation layer constructor.
+    """
 
     expansion = 1
 
     def __init__(
         self,
-        in_planes,
-        planes,
-        stride,
-        downsample,
-        act_layer,
-    ):
+        in_planes: int,
+        planes: int,
+        stride: int,
+        downsample: nn.Module | None,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
 
         out_planes = planes * self.expansion
@@ -95,11 +60,20 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def zero_init_last(self):
+    def zero_init_last(self) -> None:
+        """Initialize the last BatchNorm layer with zeros."""
         if getattr(self.bn2, "weight", None) is not None:
             nn.init.zeros_(self.bn2.weight)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass of the BasicBlock.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the block.
+        """
         shortcut = x
 
         x = self.conv1(x)
@@ -119,18 +93,26 @@ class BasicBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    """Bottleneck module for ImageNet ResNets."""
+    """Bottleneck module for ImageNet ResNets.
+
+    Args:
+        in_planes: Number of input channels.
+        planes: Number of intermediate channels.
+        stride: Stride for the second convolutional layer.
+        downsample: Optional downsampling module.
+        act_layer: Activation layer constructor.
+    """
 
     expansion = 4
 
     def __init__(
         self,
-        in_planes,
-        planes,
-        stride,
-        downsample,
-        act_layer,
-    ):
+        in_planes: int,
+        planes: int,
+        stride: int,
+        downsample: nn.Module | None,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
 
         out_planes = planes * self.expansion
@@ -162,11 +144,20 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def zero_init_last(self):
+    def zero_init_last(self) -> None:
+        """Initialize the last BatchNorm layer with zeros."""
         if getattr(self.bn3, "weight", None) is not None:
             nn.init.zeros_(self.bn3.weight)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass of the Bottleneck.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the block.
+        """
         shortcut = x
 
         x = self.conv1(x)
@@ -190,17 +181,26 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    """ImageNet ResNet."""
+    """ImageNet ResNet.
+
+    Args:
+        block_fn: Type of residual block to use.
+        layers: List of number of blocks in each layer.
+        num_classes: Number of classes for classification.
+        in_chans: Number of input channels.
+        downsample_type: Type of downsampling to use.
+        act_layer: Activation layer constructor.
+    """
 
     def __init__(
         self,
-        block_fn,
-        layers,
-        num_classes,
-        in_chans,
-        downsample_type,
-        act_layer,
-    ):
+        block_fn: nn.Module,
+        layers: list[int],
+        num_classes: int,
+        in_chans: int,
+        downsample_type: str,
+        act_layer: nn.Module,
+    ) -> None:
         super().__init__()
 
         self.num_classes = num_classes
@@ -234,7 +234,8 @@ class ResNet(nn.Module):
 
         self.init_weights()
 
-    def init_weights(self):
+    def init_weights(self) -> None:
+        """Initialize the weights of the network."""
         for _, module in self.named_modules():
             if isinstance(module, nn.Conv2d):
                 nn.init.kaiming_normal_(
@@ -245,15 +246,36 @@ class ResNet(nn.Module):
             if hasattr(module, "zero_init_last"):
                 module.zero_init_last()
 
-    def get_classifier(self, *, name_only=False):
+    def get_classifier(self, *, name_only: bool = False) -> str | nn.Linear:
+        """Get the classifier.
+
+        Args:
+            name_only: If True, return only the name of the classifier.
+
+        Returns:
+            The classifier name or the classifier module.
+        """
         return "fc" if name_only else self.fc
 
-    def reset_classifier(self, num_classes):
+    def reset_classifier(self, num_classes: int) -> None:
+        """Reset the classifier.
+
+        Args:
+            num_classes: New number of classes for classification.
+        """
         self.num_classes = num_classes
         self.global_pool = FlattenAdaptiveAvgPool2d()
         self.fc = nn.Linear(self.num_features, self.num_classes, bias=True)
 
-    def forward_features(self, x):
+    def forward_features(self, x: Tensor) -> Tensor:
+        """Forward pass through the feature extraction layers.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the feature layers.
+        """
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.act1(x)
@@ -266,25 +288,55 @@ class ResNet(nn.Module):
 
         return x
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(self, x: Tensor, *, pre_logits: bool = False) -> Tensor:
+        """Forward pass through the head of the network.
+
+        Args:
+            x: Input tensor.
+            pre_logits: If True, return features before the final linear layer.
+
+        Returns:
+            Output tensor after passing through the head.
+        """
         x = self.global_pool(x)
 
         return x if pre_logits else self.fc(x)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the entire network.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor after passing through the network.
+        """
         x = self.forward_features(x)
         x = self.forward_head(x)
         return x
 
 
 def make_blocks(
-    block_fn,
-    channels,
-    block_repeats,
-    in_planes,
-    downsample_type,
-    act_layer,
-):
+    block_fn: nn.Module,
+    channels: list[int],
+    block_repeats: list[int],
+    in_planes: int,
+    downsample_type: str,
+    act_layer: nn.Module,
+) -> list[tuple[str, nn.Sequential]]:
+    """Create blocks for ResNet stages.
+
+    Args:
+        block_fn: The block function to use (BasicBlock or Bottleneck).
+        channels: List of channel sizes for each stage.
+        block_repeats: List of number of blocks in each stage.
+        in_planes: Number of input channels.
+        downsample_type: Type of downsampling to use ('conv' or other).
+        act_layer: Activation layer to use.
+
+    Returns:
+        List of tuples containing stage names and corresponding sequential blocks.
+    """
     stages = []
 
     for stage_idx, (planes, num_blocks) in enumerate(
@@ -335,3 +387,57 @@ def make_blocks(
         stages.append((stage_name, nn.Sequential(*blocks)))
 
     return stages
+
+
+def resnet_50(
+    num_classes: int = 1000,
+    in_chans: int = 3,
+    downsample_type: str = "conv",
+    act_layer: nn.Module = nn.ReLU,
+    *,
+    pretrained: bool = False,
+) -> ResNet:
+    """Constructs a ResNet-50 model.
+
+    Args:
+        num_classes: Number of classes for classification.
+        in_chans: Number of input channels.
+        downsample_type: Type of downsampling to use.
+        act_layer: Activation layer to use.
+        pretrained: Whether to load pretrained weights.
+
+    Returns:
+        ResNet model instance.
+    """
+    model = ResNet(
+        block_fn=Bottleneck,
+        layers=[3, 4, 6, 3],
+        num_classes=num_classes,
+        in_chans=in_chans,
+        downsample_type=downsample_type,
+        act_layer=act_layer,
+    )
+
+    if pretrained:
+        pretrained_strict = downsample_type == "conv"
+        cached_file = hf_hub_download(
+            "timm/resnet50.a1_in1k",
+            filename="pytorch_model.bin",
+            revision=None,
+            library_name="timm",
+            library_version="0.9.8dev0",
+        )
+        state_dict = torch.load(cached_file, map_location="cpu", weights_only=True)
+        mismatches = model.load_state_dict(state_dict, strict=pretrained_strict)
+
+        if mismatches.missing_keys:
+            logger.warning(
+                f"The following keys are missing: {mismatches.missing_keys}."
+            )
+
+        if mismatches.unexpected_keys:
+            logger.warning(
+                f"The following keys are unexpected: {mismatches.unexpected_keys}."
+            )
+
+    return model

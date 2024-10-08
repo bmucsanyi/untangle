@@ -3,24 +3,34 @@
 Based on https://github.com/y0ast/deterministic-uncertainty-quantification.
 """
 
+from typing import Any
+
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 
 from untangle.wrappers.model_wrapper import SpecialWrapper
 
 
 class DUQHead(nn.Module):
-    """Classification head for the DUQ method."""
+    """Classification head for the DUQ method.
+
+    Args:
+        num_classes: Number of classes for classification.
+        num_features: Number of input features.
+        rbf_length_scale: Length scale for the RBF kernel.
+        ema_momentum: Momentum for exponential moving average.
+        num_hidden_features: Number of hidden features.
+    """
 
     def __init__(
         self,
-        num_classes,
-        num_features,
-        rbf_length_scale,
-        ema_momentum,
-        num_hidden_features,
-    ):
+        num_classes: int,
+        num_features: int,
+        rbf_length_scale: float,
+        ema_momentum: float,
+        num_hidden_features: int,
+    ) -> None:
         super().__init__()
         self._num_classes = num_classes
 
@@ -45,7 +55,13 @@ class DUQHead(nn.Module):
             torch.randn(num_classes, num_hidden_features),
         )
 
-    def update_centroids(self, features, targets):
+    def update_centroids(self, features: Tensor, targets: Tensor) -> None:
+        """Updates the centroids of the DUQ model.
+
+        Args:
+            features: Input features.
+            targets: Target labels.
+        """
         prev_state = self.training
 
         self.eval()
@@ -70,7 +86,16 @@ class DUQHead(nn.Module):
 
         self.train(prev_state)
 
-    def forward(self, features):
+    def forward(self, features: Tensor) -> Tensor | dict[str, Tensor]:
+        """Forward pass of the DUQ head.
+
+        Args:
+            features: Input features.
+
+        Returns:
+            RBF values during training, or a dictionary containing logits and DUQ values
+            during evaluation.
+        """
         rbf_values = self._rbf(features)
 
         if self.training:
@@ -87,7 +112,15 @@ class DUQHead(nn.Module):
             "duq_value": 1 - rbf_values.max(dim=1)[0],  # [B]
         }
 
-    def _rbf(self, features):
+    def _rbf(self, features: Tensor) -> Tensor:
+        """Calculates RBF values.
+
+        Args:
+            features: Input features.
+
+        Returns:
+            RBF values.
+        """
         latent_features = torch.einsum(
             "clf,bf->bcl", self._weight, features
         )  # [B, C, L]
@@ -106,15 +139,22 @@ class DUQHead(nn.Module):
 
 
 class DUQWrapper(SpecialWrapper):
-    """This module takes a model as input and creates a DUQ model from it."""
+    """Wrapper that creates a DUQ model from an input model.
+
+    Args:
+        model: The base model to be wrapped.
+        num_hidden_features: Number of hidden features in the DUQ head.
+        rbf_length_scale: Length scale for the RBF kernel.
+        ema_momentum: Momentum for exponential moving average.
+    """
 
     def __init__(
         self,
         model: nn.Module,
-        num_hidden_features,
-        rbf_length_scale,
-        ema_momentum,
-    ):
+        num_hidden_features: int,
+        rbf_length_scale: float,
+        ema_momentum: float,
+    ) -> None:
         super().__init__(model)
 
         self._num_hidden_features = num_hidden_features
@@ -129,7 +169,8 @@ class DUQWrapper(SpecialWrapper):
             num_hidden_features=self._num_hidden_features,
         )
 
-    def get_classifier(self):
+    def get_classifier(self) -> DUQHead:
+        """Gets the DUQ classifier head."""
         return self._classifier
 
     def reset_classifier(
@@ -137,9 +178,18 @@ class DUQWrapper(SpecialWrapper):
         num_hidden_features: int | None = None,
         rbf_length_scale: float | None = None,
         ema_momentum: float | None = None,
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Resets the classifier with new parameters.
+
+        Args:
+            num_hidden_features: New number of hidden features.
+            rbf_length_scale: New RBF length scale.
+            ema_momentum: New EMA momentum.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
         if num_hidden_features is not None:
             self._num_hidden_features = num_hidden_features
 
@@ -158,15 +208,32 @@ class DUQWrapper(SpecialWrapper):
             num_hidden_features=self._num_hidden_features,
         )
 
-    def update_centroids(self, inputs, targets):
+    def update_centroids(self, inputs: Tensor, targets: Tensor) -> None:
+        """Updates the centroids of the DUQ model.
+
+        Args:
+            inputs: Input data.
+            targets: Target labels.
+        """
         features = self.model.forward_head(
             self.model.forward_features(inputs), pre_logits=True
         )
         self._classifier.update_centroids(features, targets)
 
-    def forward_head(self, x, *, pre_logits: bool = False):
+    def forward_head(
+        self, input: Tensor, *, pre_logits: bool = False
+    ) -> Tensor | dict[str, Tensor]:
+        """Forward pass through the head of the model.
+
+        Args:
+            input: Input tensor.
+            pre_logits: If True, return features before the final classification layer.
+
+        Returns:
+            Features or classification output.
+        """
         # Always get pre_logits
-        features = self.model.forward_head(x, pre_logits=True)
+        features = self.model.forward_head(input, pre_logits=True)
 
         if pre_logits:
             return features
@@ -175,12 +242,27 @@ class DUQWrapper(SpecialWrapper):
 
         return out
 
-    def prepare_data(self, input, target):
+    def prepare_data(self, input: Tensor, target: Tensor) -> None:
+        """Prepares input data and target for DUQ.
+
+        Args:
+            input: Input tensor.
+            target: Target tensor.
+        """
         input.requires_grad_(True)
         target = F.one_hot(target, self.num_classes).float()
 
     @staticmethod
-    def calc_gradient_penalty(x, pred):
+    def calc_gradient_penalty(x: Tensor, pred: Tensor) -> Tensor:
+        """Calculates the gradient penalty.
+
+        Args:
+            x: Input tensor.
+            pred: Prediction tensor.
+
+        Returns:
+            Gradient penalty.
+        """
         gradients = DUQWrapper._calc_gradients_input(x, pred)
 
         # L2 norm
@@ -192,7 +274,16 @@ class DUQWrapper(SpecialWrapper):
         return gradient_penalty
 
     @staticmethod
-    def _calc_gradients_input(x, pred):
+    def _calc_gradients_input(x: Tensor, pred: Tensor) -> Tensor:
+        """Calculates gradients with respect to input.
+
+        Args:
+            x: Input tensor.
+            pred: Prediction tensor.
+
+        Returns:
+            Gradients with respect to input.
+        """
         gradients = torch.autograd.grad(
             outputs=pred,
             inputs=x,

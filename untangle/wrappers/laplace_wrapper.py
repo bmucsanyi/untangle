@@ -2,15 +2,18 @@
 
 import logging
 import time
+from typing import Any
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from laplace import Laplace
-from torch import nn
+from laplace import Laplace, LLLaplace
+from torch import Tensor, nn
 from torch.distributions import MultivariateNormal
 from torch.nn.utils import vector_to_parameters
+from torch.utils.data import DataLoader
 
+from untangle.utils.loader import PrefetchLoader
 from untangle.utils.metric import calibration_error
 from untangle.wrappers.model_wrapper import DistributionalWrapper
 
@@ -18,7 +21,17 @@ logger = logging.getLogger(__name__)
 
 
 class LaplaceWrapper(DistributionalWrapper):
-    """This module takes a model and creates a Laplace-approximated model posterior."""
+    """Wrapper that creates a Laplace-approximated posterior from an input model.
+
+    Args:
+        model: The neural network model to be wrapped.
+        num_mc_samples: Number of Monte Carlo samples for prediction.
+        num_mc_samples_cv: Number of Monte Carlo samples for cross-validation.
+        weight_path: Path to the model weights.
+        pred_type: Type of prediction ("glm" or "nn").
+        hessian_structure: Structure of the Hessian approximation
+            ("kron", "full", or "diag").
+    """
 
     def __init__(
         self,
@@ -26,23 +39,32 @@ class LaplaceWrapper(DistributionalWrapper):
         num_mc_samples: int,
         num_mc_samples_cv: int,
         weight_path: str,
-        pred_type: str,  # "glm", "nn"
-        hessian_structure: str,  # "kron", "full", "diag"
-    ):
+        pred_type: str,
+        hessian_structure: str,
+    ) -> None:
         super().__init__(model)
 
         self._num_mc_samples = num_mc_samples
         self._num_mc_samples_cv = num_mc_samples_cv
-        self._weight_path = weight_path
-        self._laplace_model = None
+        self._is_laplace_approximated = False
         self._pred_type = pred_type
         self._hessian_structure = hessian_structure
 
-        self._load_model()
+        self._load_model(weight_path)
 
-    def perform_laplace_approximation(self, train_loader, val_loader, args):
+    def perform_laplace_approximation(
+        self,
+        train_loader: DataLoader | PrefetchLoader,
+        val_loader: DataLoader | PrefetchLoader,
+    ) -> None:
+        """Performs Laplace approximation and optimize prior precision.
+
+        Args:
+            train_loader: DataLoader or PrefetchLoader for the training data.
+            val_loader: DataLoader or PrefetchLoader for the validation data.
+        """
         with torch.enable_grad():
-            self._laplace_model = Laplace(
+            self._laplace_model: LLLaplace = Laplace(
                 self.model,
                 "classification",
                 subset_of_weights="last_layer",
@@ -55,21 +77,37 @@ class LaplaceWrapper(DistributionalWrapper):
         logger.info("Starting prior precision optimization.")
         self._optimize_prior_precision_cv(
             val_loader=val_loader,
-            args=args,
         )
+        self._is_laplace_approximated = True
         logger.info("Prior precision optimization done.")
 
-    def forward_head(self, *args, **kwargs):
-        # Warning! This class requires extra care, as the predictive samples are
-        # sampled end-to-end from a black-box package. One can't use the usual strategy
-        # of "obtain features => obtain logits". Instead, one has to obtain features
-        # with `forward_features` and the logits with `forward`.
+    def forward_head(self, *args: Any, **kwargs: Any) -> Tensor | dict[str, Tensor]:
+        """Raises an error as it cannot be called directly for this class.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Raises:
+            ValueError: Always raised when this method is called.
+        """
         del args, kwargs
         msg = f"forward_head cannot be called directly for {type(self)}"
         raise ValueError(msg)
 
-    def forward(self, input):
-        if self._laplace_model is None:
+    def forward(self, input: Tensor) -> Tensor | dict[str, Tensor]:
+        """Performs forward pass with Laplace-approximated model.
+
+        Args:
+            input: Input tensor to the model.
+
+        Returns:
+            Dictionary containing the logit tensor.
+
+        Raises:
+            ValueError: If the model hasn't been Laplace-approximated yet.
+        """
+        if not self._is_laplace_approximated:
             msg = "Model has to be Laplace-approximated first"
             raise ValueError(msg)
 
@@ -89,7 +127,16 @@ class LaplaceWrapper(DistributionalWrapper):
         }
 
     @staticmethod
-    def _get_ece(out_dist, targets):
+    def _get_ece(out_dist: Tensor, targets: Tensor) -> Tensor:
+        """Calculates the Expected Calibration Error.
+
+        Args:
+            out_dist: Output distribution from the model.
+            targets: True labels.
+
+        Returns:
+            Calculated Expected Calibration Error.
+        """
         confidences, predictions = out_dist.max(dim=-1)  # [B]
         correctnesses = predictions.eq(targets).int()
 
@@ -99,17 +146,23 @@ class LaplaceWrapper(DistributionalWrapper):
 
     def _optimize_prior_precision_cv(
         self,
-        val_loader,
-        args,
-        log_prior_prec_min=-1,
-        log_prior_prec_max=2,
-        grid_size=100,
-    ):
+        val_loader: DataLoader | PrefetchLoader,
+        log_prior_prec_min: float = -1,
+        log_prior_prec_max: float = 2,
+        grid_size: int = 100,
+    ) -> None:
+        """Optimizes prior precision using cross-validation.
+
+        Args:
+            val_loader: DataLoader or PrefetchLoader for the validation data.
+            log_prior_prec_min: Minimum log prior precision.
+            log_prior_prec_max: Maximum log prior precision.
+            grid_size: Number of grid points for optimization.
+        """
         interval = torch.logspace(log_prior_prec_min, log_prior_prec_max, grid_size)
         self._laplace_model.prior_precision = self._gridsearch(
             interval=interval,
             val_loader=val_loader,
-            args=args,
         )
 
         logger.info(
@@ -118,10 +171,18 @@ class LaplaceWrapper(DistributionalWrapper):
 
     def _gridsearch(
         self,
-        interval,
-        val_loader,
-        args,
-    ):
+        interval: Tensor,
+        val_loader: DataLoader | PrefetchLoader,
+    ) -> float:
+        """Performs grid search to find optimal prior precision.
+
+        Args:
+            interval: Tensor of prior precision values to search.
+            val_loader: DataLoader or PrefetchLoader for the validation data.
+
+        Returns:
+            Optimal prior precision value.
+        """
         results = []
         prior_precs = []
         for prior_prec in interval:
@@ -130,7 +191,7 @@ class LaplaceWrapper(DistributionalWrapper):
             self._laplace_model.prior_precision = prior_prec
 
             try:
-                out_dist, targets = self._validate(val_loader=val_loader, args=args)
+                out_dist, targets = self._validate(val_loader=val_loader)
                 result = self._get_ece(out_dist, targets).item()
                 accuracy = out_dist.argmax(dim=-1).eq(targets).float().mean()
             except RuntimeError as error:
@@ -147,14 +208,24 @@ class LaplaceWrapper(DistributionalWrapper):
         return prior_precs[np.argmin(results)]
 
     @torch.no_grad()
-    def _validate(self, val_loader, args):
+    def _validate(
+        self, val_loader: DataLoader | PrefetchLoader
+    ) -> tuple[Tensor, Tensor]:
+        """Validates the model on the validation set.
+
+        Args:
+            val_loader: DataLoader or PrefetchLoader for the validation data.
+
+        Returns:
+            Tuple of output means and targets.
+        """
         self.model.eval()
-        device = self._laplace_model._device  # noqa: SLF001
+        device = next(self.model.parameters()).device
         output_means = []
         targets = []
 
         for input, target in val_loader:
-            if not args.prefetcher:
+            if not isinstance(val_loader, PrefetchLoader):
                 input, target = input.to(device), target.to(device)
 
             feature = self.model.forward_head(
@@ -172,7 +243,16 @@ class LaplaceWrapper(DistributionalWrapper):
 
         return torch.cat(output_means, dim=0), torch.cat(targets, dim=0)
 
-    def _nn_logit_samples(self, feature, num_samples=100):
+    def _nn_logit_samples(self, feature: Tensor, num_samples: int = 100) -> Tensor:
+        """Generates logit samples using neural network sampling.
+
+        Args:
+            feature: Input features.
+            num_samples: Number of samples to generate.
+
+        Returns:
+            Tensor of logit samples.
+        """
         fs = []
 
         classifier = self.model.get_classifier()
@@ -186,32 +266,32 @@ class LaplaceWrapper(DistributionalWrapper):
 
         return fs
 
-    def _glm_logit_distribution(self, feature):
+    def _glm_logit_distribution(self, feature: Tensor) -> tuple[Tensor, Tensor]:
+        """Calculates the logit distribution using GLM.
+
+        Args:
+            feature: Input features.
+
+        Returns:
+            Tuple of mean and variance of the logit distribution.
+        """
         Js, f_mu = self._last_layer_jacobians(feature)
         f_var = self._laplace_model.functional_variance(Js)
 
         return f_mu.detach(), f_var.detach()
 
-    def _logit_samples(self, feature, num_samples=100):
-        """Sample from the posterior logits on `feature`.
+    def _logit_samples(self, feature: Tensor, num_samples: int = 100) -> Tensor:
+        """Samples from the posterior logits on the given features.
 
-        Parameters
-        ----------
-        feature : torch.Tensor
-            pre-logit features `(batch_size, feature_dim)`.
-
-        pred_type : {'glm', 'nn'}, default='glm'
-            type of posterior predictive, linearized GLM predictive or neural
-            network sampling predictive. The GLM predictive is consistent with
-            the curvature approximations used here.
-
-        num_samples : int
-            number of samples
+        Args:
+            feature: Input features.
+            num_samples: Number of samples to generate.
 
         Returns:
-        -------
-        samples : torch.Tensor
-            samples `(batch_size, num_samples, output_shape)`
+            Tensor of logit samples.
+
+        Raises:
+            ValueError: If an invalid prediction type is specified.
         """
         if self._pred_type not in {"glm", "nn"}:
             msg = "Only glm and nn supported as prediction types"
@@ -220,14 +300,21 @@ class LaplaceWrapper(DistributionalWrapper):
         if self._pred_type == "glm":
             f_mu, f_var = self._glm_logit_distribution(feature=feature)
             dist = MultivariateNormal(f_mu, f_var)
-            samples = dist.sample((num_samples,))
+            samples = dist.sample(torch.Size((num_samples,)))
 
             return samples.permute(1, 0, 2)
         # 'nn'
         return self._nn_logit_samples(feature=feature, num_samples=num_samples)
 
-    def _last_layer_jacobians(self, feature):
-        """Compute Jacobians only at current last-layer parameter."""
+    def _last_layer_jacobians(self, feature: Tensor) -> tuple[Tensor, Tensor]:
+        """Computes Jacobians only at current last-layer parameter.
+
+        Args:
+            feature: Input features.
+
+        Returns:
+            Tuple of Jacobians and logits.
+        """
         classifier = self.model.get_classifier()
 
         logit = classifier(feature)

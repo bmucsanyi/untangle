@@ -1,5 +1,7 @@
 """Loss function utilities."""
 
+import argparse
+
 from torch import nn
 
 from untangle.losses import (
@@ -13,7 +15,19 @@ from untangle.losses import (
 )
 
 
-def create_loss_fn(args, num_batches):
+def create_loss_fn(args: argparse.Namespace, num_batches: int) -> nn.Module:
+    """Creates and returns a loss function based on the provided arguments.
+
+    Args:
+        args: Arguments containing loss function configuration.
+        num_batches: Number of batches in the dataset.
+
+    Returns:
+        A PyTorch loss function (subclass of nn.Module).
+
+    Raises:
+        NotImplementedError: If the specified loss function is not implemented.
+    """
     # Setup loss function
     if args.loss == "cross-entropy":
         train_loss_fn = nn.CrossEntropyLoss()

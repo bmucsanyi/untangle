@@ -1,8 +1,11 @@
 """Loader utilities."""
 
+from collections.abc import Iterator
 from functools import partial
 
 import torch
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from untangle.utils import DefaultContext
 
@@ -10,15 +13,15 @@ from .collate import fast_collate
 
 
 class PrefetchLoader:
-    """Fast prefetch loader."""
+    """Data loader that prefetches and preprocesses data on GPU for faster training."""
 
     def __init__(
         self,
-        loader,
-        mean,
-        std,
-        device,
-    ):
+        loader: DataLoader,
+        mean: tuple[float, float, float],
+        std: tuple[float, float, float],
+        device: torch.device,
+    ) -> None:
         normalization_shape = (1, 3, 1, 1)
 
         self.loader = loader
@@ -31,7 +34,8 @@ class PrefetchLoader:
         ).view(normalization_shape)
         self.has_cuda = torch.cuda.is_available() and device.type == "cuda"
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[tuple[Tensor, Tensor]]:
+        """Returns an iterator over the data, prefetching and preprocessing batches."""
         first = True
         if self.has_cuda:
             stream = torch.cuda.Stream()
@@ -59,38 +63,44 @@ class PrefetchLoader:
 
         yield input, target
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Returns the number of batches in the loader."""
         return len(self.loader)
 
     @property
-    def sampler(self):
+    def sampler(self) -> Sampler:
+        """Returns the sampler used by the underlying loader."""
         return self.loader.sampler
 
     @property
-    def dataset(self):
+    def dataset(self) -> Dataset:
+        """Returns the dataset used by the underlying loader."""
         return self.loader.dataset
 
     @property
-    def batch_size(self):
+    def batch_size(self) -> int:
+        """Returns the batch size used by the underlying loader."""
         return self.loader.batch_size
 
     @property
-    def drop_last(self):
+    def drop_last(self) -> bool:
+        """Returns whether the underlying loader drops the last incomplete batch."""
         return self.loader.drop_last
 
 
 def create_loader(
-    dataset,
-    batch_size,
-    is_training_dataset,
-    use_prefetcher,
-    mean,
-    std,
-    num_workers,
-    pin_memory,
-    persistent_workers,
-    device,
-):
+    dataset: torch.utils.data.Dataset,
+    batch_size: int,
+    is_training_dataset: bool,
+    use_prefetcher: bool,
+    mean: list[float],
+    std: list[float],
+    num_workers: int,
+    pin_memory: bool,
+    persistent_workers: bool,
+    device: torch.device,
+) -> DataLoader | PrefetchLoader:
+    """Creates a DataLoader or PrefetchLoader based on the given parameters."""
     if use_prefetcher:
         collate_fn = fast_collate
     else:

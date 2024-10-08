@@ -1,12 +1,20 @@
 """Logging utilities."""
 
+import argparse
 import logging
 from collections import OrderedDict
 
 import wandb
+from torch.optim import Optimizer
 
 
-def setup_logging(args, level=logging.INFO):
+def setup_logging(args: argparse.Namespace, level: int = logging.INFO) -> None:
+    """Sets up basic logging configuration and initializes wandb if specified.
+
+    Args:
+        args: Arguments containing logging configuration.
+        level: Logging level to be set. Defaults to logging.INFO.
+    """
     logging.basicConfig(
         format="{asctime} - {levelname} - {message}",
         datefmt="%Y-%m-%d %H:%M",
@@ -20,13 +28,23 @@ def setup_logging(args, level=logging.INFO):
 
 
 def log_wandb(
-    epoch=None,
-    train_metrics=None,
-    eval_metrics=None,
-    best_eval_metrics=None,
-    best_test_metrics=None,
-    optimizer=None,
-):
+    epoch: int | None = None,
+    train_metrics: dict[str, float] | None = None,
+    eval_metrics: dict[str, float] | None = None,
+    best_eval_metrics: dict[str, float] | None = None,
+    best_test_metrics: dict[str, float] | None = None,
+    optimizer: Optimizer | None = None,
+) -> None:
+    """Logs various metrics to wandb.
+
+    Args:
+        epoch: Current epoch number.
+        train_metrics: Dictionary of training metrics.
+        eval_metrics: Dictionary of evaluation metrics.
+        best_eval_metrics: Dictionary of best evaluation metrics.
+        best_test_metrics: Dictionary of best test metrics.
+        optimizer: Optimizer object containing learning rate information.
+    """
     rowd = OrderedDict()
 
     if epoch is not None:

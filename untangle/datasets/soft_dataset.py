@@ -1,8 +1,11 @@
 """Dataset that supports the 'Is one annotation enough?' datasets."""
 
 import json
+from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
+from PIL import Image
 from torch.utils import data
 from torchvision.datasets.folder import pil_loader
 
@@ -33,30 +36,26 @@ class SoftDataset(data.Dataset):
     corresponding soft labels, and can be used for training, validation, or testing.
 
     Args:
-        name (str): Name of the dataset.
-        root (Path): Root directory where the dataset is stored.
-        split (str, optional): Which split of the data to use. Defaults to 'train'.
-        transform (callable, optional): A function/transform that takes in a PIL image
+        name: Name of the dataset.
+        root: Root directory where the dataset is stored.
+        split: Which split of the data to use. Defaults to 'train'.
+        transform: A function/transform that takes in a PIL image
             and returns a transformed version. Defaults to None.
-        target_transform (callable, optional): A function/transform that takes in the
+        target_transform: A function/transform that takes in the
             target and transforms it. Defaults to None.
 
     Raises:
         RuntimeError: If no images are found in the specified root directory.
-
-    Example:
-        >>> dataset = SoftDataset('my_dataset', Path('/path/to/data'), split='train')
-        >>> image, label = dataset[0]
     """
 
     def __init__(
         self,
-        name,
-        root,
-        split="test",
-        transform=None,
-        target_transform=None,
-    ):
+        name: str,
+        root: Path,
+        split: str = "test",
+        transform: Callable | None = None,
+        target_transform: Callable | None = None,
+    ) -> None:
         dataset_path = DATASET_NAME_TO_PATH[name]
         root /= dataset_path
 
@@ -92,7 +91,15 @@ class SoftDataset(data.Dataset):
         self.target_transform = target_transform
         self.is_ood = False
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> tuple[Image.Image, np.ndarray]:
+        """Retrieves an item from the dataset.
+
+        Args:
+            index: Index of the item to retrieve.
+
+        Returns:
+            A tuple containing the image and its soft label.
+        """
         path_str = self.samples[index]
         full_path_str = str(self.root / path_str)
         target = self.soft_labels[self.filepath_to_imgid[path_str], :]
@@ -109,15 +116,25 @@ class SoftDataset(data.Dataset):
 
         return img, target
 
-    def set_ood(self):
+    def set_ood(self) -> None:
+        """Sets the dataset to use out-of-distribution transform."""
         self.is_ood = True
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Returns the length of the dataset."""
         return len(self.samples)
 
     @staticmethod
-    def load_raw_annotations(path):
-        """Casts the raw annotations into a numpy array of label votes per image."""
+    def load_raw_annotations(path: Path) -> tuple[np.ndarray, dict[str, int]]:
+        """Loads and processes raw annotations from a JSON file.
+
+        Args:
+            path: Path to the JSON file containing annotations.
+
+        Returns:
+            A tuple containing the soft labels array and a dictionary
+            mapping file paths to image IDs.
+        """
         with path.open() as f:
             raw = json.load(f)
 

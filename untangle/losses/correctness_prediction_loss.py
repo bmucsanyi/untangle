@@ -5,25 +5,25 @@ from torch import Tensor, nn
 
 
 class CorrectnessPredictionLoss(nn.Module):
-    """A custom loss function for correctness prediction in classification tasks.
+    """Custom loss function for correctness prediction in classification tasks.
 
     This loss combines a task loss (cross-entropy) with an uncertainty loss (binary
     cross-entropy) for predicting the correctness of the model's classification. It
     supports both top-1 and top-5 accuracy metrics.
 
     Args:
-        lambda_uncertainty_loss (float): The weight factor for the uncertainty loss
-            component.
-        use_top5_correctness (bool): If True, uses top-5 correctness.
-            Otherwise, uses top-1.
+        lambda_uncertainty_loss: The weight factor for the uncertainty loss component.
+        detach_uncertainty_target: If True, detaches the correctness target from the
+            computation graph.
+        use_top5_correctness: If True, uses top-5 correctness. Otherwise, uses top-1.
     """
 
     def __init__(
         self,
-        lambda_uncertainty_loss,
-        detach_uncertainty_target,
-        use_top5_correctness,
-    ):
+        lambda_uncertainty_loss: float,
+        detach_uncertainty_target: bool,
+        use_top5_correctness: bool,
+    ) -> None:
         super().__init__()
         self.task_loss = nn.CrossEntropyLoss(reduction="none")
         self.uncertainty_loss = nn.BCEWithLogitsLoss()
@@ -33,9 +33,19 @@ class CorrectnessPredictionLoss(nn.Module):
 
     def forward(
         self,
-        prediction_tuple: tuple,
+        prediction_tuple: tuple[Tensor, Tensor],
         target: Tensor,
     ) -> Tensor:
+        """Computes the combined task and uncertainty loss.
+
+        Args:
+            prediction_tuple: A tuple containing the main prediction and the
+                correctness prediction tensors.
+            target: The ground truth labels.
+
+        Returns:
+            The computed loss value.
+        """
         prediction, correctness_prediction = prediction_tuple
 
         task_loss_per_sample = self.task_loss(prediction, target)

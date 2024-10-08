@@ -7,14 +7,13 @@ import cv2
 import numpy as np
 import skimage as sk
 from numba import njit
+from numpy.random import Generator
 from PIL import Image as PILImage
 from scipy.ndimage import map_coordinates
 from scipy.ndimage import zoom as scizoom
 from skimage.filters import gaussian
 from wand.api import library as wandlibrary
 from wand.image import Image as WandImage
-
-# TODO(bmucsanyi): reformat CIFAR in the same way
 
 # Constants
 GAUSSIAN_NOISE_C = [0.08, 0.12, 0.18, 0.26, 0.38]
@@ -34,11 +33,7 @@ ZOOM_BLUR_C = [
 ]
 FOG_C = [(1.5, 2), (2, 2), (2.5, 1.7), (2.5, 1.5), (3, 1.4)]
 FROST_IMAGES = [
-    np.array(
-        PILImage.open(
-            f"untangle/transforms/assets/frost{i}.{'png' if i <= 3 else 'jpg'}"
-        )
-    )
+    cv2.imread(f"untangle/transforms/assets/frost{i}.{'png' if i <= 3 else 'jpg'}")
     for i in range(1, 7)
 ]
 FROST_C = [(1, 0.4), (0.8, 0.6), (0.7, 0.7), (0.65, 0.7), (0.6, 0.75)]
@@ -73,7 +68,19 @@ ELASTIC_C = [
 # Distortion helpers
 
 
-def disk(radius, alias_blur=0.1, dtype=np.float32):
+def disk(
+    radius: float, alias_blur: float = 0.1, dtype: np.dtype = np.float32
+) -> np.ndarray:
+    """Creates a disk-shaped kernel for image processing.
+
+    Args:
+        radius: Radius of the disk.
+        alias_blur: Blur factor to reduce aliasing.
+        dtype: Data type of the output array.
+
+    Returns:
+        Disk-shaped kernel as a numpy array.
+    """
     if radius <= 8:
         L = np.arange(-8, 8 + 1)
         ksize = (3, 3)
@@ -101,16 +108,33 @@ wandlibrary.MagickMotionBlurImage.argtypes = (
 class MotionImage(WandImage):
     """Extension of wand.image.Image class that supports motion blur."""
 
-    def motion_blur(self, radius=0.0, sigma=0.0, angle=0.0):
+    def motion_blur(
+        self, radius: float = 0.0, sigma: float = 0.0, angle: float = 0.0
+    ) -> None:
+        """Apply motion blur to the image.
+
+        Args:
+            radius: Radius of the motion blur.
+            sigma: Sigma value for the blur.
+            angle: Angle of the motion blur.
+        """
         wandlibrary.MagickMotionBlurImage(self.wand, radius, sigma, angle)
 
 
 # Modification of https://github.com/FLHerne/mapgen/blob/master/diamondsquare.py
-def plasma_fractal(mapsize=256, wibbledecay=3, rng=None):
-    """Generates a heightmap using diamond-square algorithm.
+def plasma_fractal(
+    mapsize: int = 256, wibbledecay: float = 3, rng: Generator | None = None
+) -> np.ndarray:
+    """Generates a heightmap using the diamond-square algorithm.
 
-    Returns a square 2d array, side length 'mapsize', of floats in range 0-255.
-    'mapsize' must be a power of two.
+    Args:
+        mapsize: Size of the map (must be a power of two).
+        wibbledecay: Decay factor for the wibble.
+        rng: Random number generator.
+
+    Returns:
+        Square 2D array with side length 'mapsize' of floats in range 0-255.
+        'mapsize' must be a power of two.
     """
     # Use a default RNG if none is provided
     if rng is None:
@@ -121,10 +145,10 @@ def plasma_fractal(mapsize=256, wibbledecay=3, rng=None):
     stepsize = mapsize
     wibble = 100
 
-    def wibbledmean(array):
+    def wibbledmean(array: np.ndarray) -> np.ndarray:
         return array / 4 + wibble * rng.uniform(-wibble, wibble, array.shape)
 
-    def fillsquares():
+    def fillsquares() -> None:
         cornerref = maparray[0:mapsize:stepsize, 0:mapsize:stepsize]
         squareaccum = cornerref + np.roll(cornerref, shift=-1, axis=0)
         squareaccum += np.roll(squareaccum, shift=-1, axis=1)
@@ -132,7 +156,7 @@ def plasma_fractal(mapsize=256, wibbledecay=3, rng=None):
             stepsize // 2 : mapsize : stepsize, stepsize // 2 : mapsize : stepsize
         ] = wibbledmean(squareaccum)
 
-    def filldiamonds():
+    def filldiamonds() -> None:
         mapsize = maparray.shape[0]
         drgrid = maparray[
             stepsize // 2 : mapsize : stepsize, stepsize // 2 : mapsize : stepsize
@@ -158,10 +182,20 @@ def plasma_fractal(mapsize=256, wibbledecay=3, rng=None):
         wibble /= wibbledecay
 
     maparray -= maparray.min()
+
     return maparray / maparray.max()
 
 
-def clipped_zoom(img, zoom_factor):
+def clipped_zoom(img: np.ndarray, zoom_factor: float) -> np.ndarray:
+    """Zooms the image and clips the result to the original size.
+
+    Args:
+        img: Input image.
+        zoom_factor: Zoom factor.
+
+    Returns:
+        Zoomed and clipped image.
+    """
     h = img.shape[0]
     # Ceil crop height (= crop width)
     ch = int(np.ceil(h / zoom_factor))
@@ -179,7 +213,21 @@ def clipped_zoom(img, zoom_factor):
 # Numba nopython compilation to shuffle_pixles
 # https://github.com/bethgelab/imagecorruptions/blob/master/imagecorruptions/corruptions.py
 @njit()
-def shuffle_pixels_njit_frosted_glass_blur(d0, d1, x, c, rng):
+def shuffle_pixels_njit_frosted_glass_blur(
+    d0: int, d1: int, x: np.ndarray, c: tuple, rng: Generator
+) -> np.ndarray:
+    """Shuffles pixels for the frosted glass blur effect.
+
+    Args:
+        d0: Height of the image.
+        d1: Width of the image.
+        x: Input image.
+        c: Parameters for pixel shuffling.
+        rng: Random number generator.
+
+    Returns:
+        Image with shuffled pixels.
+    """
     # Locally shuffle pixels
     for _ in range(c[2]):
         for h in range(d0 - c[1], c[1], -1):
@@ -195,7 +243,19 @@ def shuffle_pixels_njit_frosted_glass_blur(d0, d1, x, c, rng):
 # Distortions
 
 
-def gaussian_noise(x, severity=1, rng=None):
+def gaussian_noise(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies Gaussian noise to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the noise (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with Gaussian noise applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -207,7 +267,19 @@ def gaussian_noise(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def shot_noise(x, severity=1, rng=None):
+def shot_noise(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies shot noise to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the noise (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with shot noise applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -219,7 +291,19 @@ def shot_noise(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def impulse_noise(x, severity=1, rng=None):
+def impulse_noise(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies impulse noise to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the noise (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with impulse noise applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -231,7 +315,19 @@ def impulse_noise(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def speckle_noise(x, severity=1, rng=None):
+def speckle_noise(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies speckle noise to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the noise (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with speckle noise applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -243,7 +339,19 @@ def speckle_noise(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def gaussian_blur(x, severity=1, rng=None):
+def gaussian_blur(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies Gaussian blur to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the blur (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Blurred image.
+    """
     del rng
     c = GAUSSIAN_BLUR_C[severity - 1]
 
@@ -252,7 +360,19 @@ def gaussian_blur(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def frosted_glass_blur(x, severity=1, rng=None):
+def frosted_glass_blur(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies frosted glass blur to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the blur (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with frosted glass blur effect.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -271,7 +391,19 @@ def frosted_glass_blur(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def defocus_blur(x, severity=1, rng=None):
+def defocus_blur(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies defocus blur to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the blur (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Image with defocus blur applied.
+    """
     del rng
     c = DEFOCUS_BLUR_C[severity - 1]
 
@@ -285,7 +417,19 @@ def defocus_blur(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def motion_blur(x, severity=1, rng=None):
+def motion_blur(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies a motion blur to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the blur (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with motion blur applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -310,7 +454,19 @@ def motion_blur(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def zoom_blur(x, severity=1, rng=None):
+def zoom_blur(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies a zoom blur to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the blur (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Image with zoom blur applied.
+    """
     del rng
     c = ZOOM_BLUR_C[severity - 1]
 
@@ -325,7 +481,19 @@ def zoom_blur(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def fog(x, severity=1, rng=None):
+def fog(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies a fog effect to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the fog effect (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with fog effect applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -340,7 +508,20 @@ def fog(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def frost(x, severity=1, rng=None):
+def frost(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies a frost effect to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the frost effect (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with frost effect applied.
+    """
+    # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
 
@@ -353,16 +534,25 @@ def frost(x, severity=1, rng=None):
         rng.integers(0, frost.shape[0] - 224),
         rng.integers(0, frost.shape[1] - 224),
     )
-    frost = frost[x_start : x_start + 224, y_start : y_start + 224]
-
-    if frost.shape[2] == 4:  # RGBA
-        frost = frost[..., :3]
+    frost = frost[x_start : x_start + 224, y_start : y_start + 224][..., [2, 1, 0]]
 
     x = np.clip(c[0] * np.array(x) + c[1] * frost, 0, 255)
     return PILImage.fromarray(np.uint8(x))
 
 
-def snow(x, severity=1, rng=None):
+def snow(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies a snow effect to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the snow effect (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with snow effect applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -401,7 +591,19 @@ def snow(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def spatter(x, severity=1, rng=None):
+def spatter(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies a spatter effect to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the spatter effect (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Image with spatter effect applied.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
@@ -413,6 +615,7 @@ def spatter(x, severity=1, rng=None):
 
     liquid_layer = gaussian(liquid_layer, sigma=c[2])
     liquid_layer[liquid_layer < c[3]] = 0
+
     if c[5] == 0:
         liquid_layer = (liquid_layer * 255).astype(np.uint8)
         dist = 255 - cv2.Canny(liquid_layer, 50, 150)
@@ -441,7 +644,9 @@ def spatter(x, severity=1, rng=None):
         x = cv2.cvtColor(x, cv2.COLOR_BGR2BGRA)
 
         x = cv2.cvtColor(np.clip(x + m * color, 0, 1), cv2.COLOR_BGRA2BGR) * 255
+
         return PILImage.fromarray(np.uint8(x))
+
     m = np.where(liquid_layer > c[3], 1, 0)
     m = gaussian(m.astype(np.float32), sigma=c[4])
     m[m < 0.8] = 0
@@ -463,7 +668,19 @@ def spatter(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def contrast(x, severity=1, rng=None):
+def contrast(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Adjusts the contrast of the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the contrast adjustment (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Image with adjusted contrast.
+    """
     del rng
     c = CONTRAST_C[severity - 1]
 
@@ -473,7 +690,19 @@ def contrast(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def brightness(x, severity=1, rng=None):
+def brightness(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Adjusts the brightness of an image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the brightness adjustment (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Image with adjusted brightness.
+    """
     del rng
     c = BRIGHTNESS_C[severity - 1]
 
@@ -486,7 +715,19 @@ def brightness(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def saturate(x, severity=1, rng=None):
+def saturate(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Adjusts the saturation of the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the saturation adjustment (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Image with adjusted saturation.
+    """
     del rng
     c = SATURATE_C[severity - 1]
 
@@ -499,7 +740,19 @@ def saturate(x, severity=1, rng=None):
     return PILImage.fromarray(np.uint8(x))
 
 
-def jpeg(x, severity=1, rng=None):
+def jpeg(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies JPEG compression to the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the JPEG compression (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        JPEG compressed image.
+    """
     del rng
     c = JPEG_C[severity - 1]
 
@@ -510,7 +763,19 @@ def jpeg(x, severity=1, rng=None):
     return x
 
 
-def pixelate(x, severity=1, rng=None):
+def pixelate(
+    x: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Pixelates the image.
+
+    Args:
+        x: Input image.
+        severity: Severity of the pixelation (1-5).
+        rng: Random number generator (unused).
+
+    Returns:
+        Pixelated image.
+    """
     del rng
     c = PIXELATE_C[severity - 1]
 
@@ -520,13 +785,23 @@ def pixelate(x, severity=1, rng=None):
     return x
 
 
-# Mod of https://gist.github.com/erniejunior/601cdf56d2b424757de5
-def elastic(image, severity=1, rng=None):
+def elastic(
+    image: PILImage.Image, severity: int = 1, rng: Generator | None = None
+) -> PILImage.Image:
+    """Applies an elastic transformation to the image.
+
+    Args:
+        image: Input image.
+        severity: Severity of the elastic transformation (1-5).
+        rng: Random number generator.
+
+    Returns:
+        Elastically transformed image.
+    """
     # Use a default RNG if none is provided
     if rng is None:
         rng = np.random.default_rng()
 
-    # Original comment: 244 should have been 224, but ultimately nothing is incorrect
     c = ELASTIC_C[severity - 1]
 
     image = np.array(image, dtype=np.float32) / 255.0
