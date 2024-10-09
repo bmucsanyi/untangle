@@ -62,7 +62,7 @@ class EDLLoss(nn.Module):
             .mul(
                 digamma_alpha_tildes.sub(digamma_sum_alpha_tildes.unsqueeze(1))
             )  # [B, C]
-            .sum(dim=1)  # [B, 1]
+            .sum(dim=1)  # [B]
             .sub(log_b_alpha_tildes)  # [B]
             .add(self.log_b_uniform_alphas)  # [B]
         )
