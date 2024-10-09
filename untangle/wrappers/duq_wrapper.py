@@ -242,15 +242,20 @@ class DUQWrapper(SpecialWrapper):
 
         return out
 
-    def prepare_data(self, input: Tensor, target: Tensor) -> None:
+    def prepare_data(self, input: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
         """Prepares input data and target for DUQ.
 
         Args:
             input: Input tensor.
             target: Target tensor.
+
+        Returns:
+            A tuple of the transformed input and target.
         """
         input.requires_grad_(True)
         target = F.one_hot(target, self.num_classes).float()
+
+        return input, target
 
     @staticmethod
     def calc_gradient_penalty(x: Tensor, pred: Tensor) -> Tensor:
