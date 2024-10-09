@@ -201,7 +201,7 @@ class BatchedNormalizingFlowDensity(nn.Module):
         Returns:
             Tuple containing the transformed tensor and sum of log Jacobians.
         """
-        sum_log_abs_det_jacobians = torch.zeros((), device=z.device, dtype=z.dtype)
+        sum_log_abs_det_jacobians = 0
         z = z.repeat(self._c, 1, 1)
 
         for transform in self._transforms:
