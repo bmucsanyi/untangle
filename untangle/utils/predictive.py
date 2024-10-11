@@ -249,7 +249,7 @@ def probit_scale(link_function: str = "probit") -> float:
     if link_function == "probit":
         scale = 1.0
     elif link_function == "logit":
-        scale = torch.pi / 8
+        scale = LAMBDA_0
     else:
         error_message = "Invalid link function"
         raise NotImplementedError(error_message)
@@ -264,7 +264,7 @@ def gaussian_pushforward_mean(
     return_logits: bool = False,
 ) -> torch.Tensor:
     scale = probit_scale(link_function)
-    logits = means / torch.sqrt(1 / scale + vars)
+    logits = means / torch.sqrt(1 / scale ** (-1) + vars)
 
     if return_logits:
         return logits
@@ -278,7 +278,7 @@ def gaussian_pushforward_second_moment(
     scale = probit_scale(link_function)
     device = means.device
 
-    owens_t_input1 = (means / torch.sqrt(1 / scale + vars)).cpu().numpy()
+    owens_t_input1 = (means / torch.sqrt(1 / scale ** (-1) + vars)).cpu().numpy()
     owens_t_input2 = (1 / torch.sqrt(1 + 2 * scale * vars)).cpu().numpy()
 
     t_term = -2 * torch.from_numpy(owens_t(owens_t_input1, owens_t_input2)).to(device)
