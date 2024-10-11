@@ -172,6 +172,9 @@ def probit_predictive(
         msg = "Invalid output function"
         raise NotImplementedError(msg)
 
+    if return_logits:
+        return predictives
+
     sum_predictives = torch.sum(
         predictives, dim=1, keepdim=True
     )  # [batch_size, num_classes]
