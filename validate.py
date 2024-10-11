@@ -411,13 +411,13 @@ def evaluate(
                 ),
             ])
 
-            mixed_targets["gt_soft_fbar_correctnesses"] = torch.cat([
-                upstream_targets["gt_soft_fbar_correctnesses"],
-                downstream_targets["gt_hard_fbar_correctnesses"],
+            mixed_targets["gt_soft_dual_bma_correctnesses"] = torch.cat([
+                upstream_targets["gt_soft_dual_bma_correctnesses"],
+                downstream_targets["gt_hard_dual_bma_correctnesses"],
             ])
-            mixed_targets["gt_soft_fbar_correctnesses_top5"] = torch.cat([
-                upstream_targets["gt_soft_fbar_correctnesses_top5"],
-                downstream_targets["gt_hard_fbar_correctnesses_top5"],
+            mixed_targets["gt_soft_dual_bma_correctnesses_top5"] = torch.cat([
+                upstream_targets["gt_soft_dual_bma_correctnesses_top5"],
+                downstream_targets["gt_hard_dual_bma_correctnesses_top5"],
             ])
 
             mixed_targets["gt_soft_bma_correctnesses"] = torch.cat([
@@ -438,13 +438,13 @@ def evaluate(
                 downstream_targets["gt_soft_labels"],
             ])
 
-            mixed_targets["gt_soft_fbar_correctnesses"] = torch.cat([
-                upstream_targets["gt_hard_fbar_correctnesses"],
-                downstream_targets["gt_soft_fbar_correctnesses"],
+            mixed_targets["gt_soft_dual_bma_correctnesses"] = torch.cat([
+                upstream_targets["gt_hard_dual_bma_correctnesses"],
+                downstream_targets["gt_soft_dual_bma_correctnesses"],
             ])
-            mixed_targets["gt_soft_fbar_correctnesses_top5"] = torch.cat([
-                upstream_targets["gt_hard_fbar_correctnesses_top5"],
-                downstream_targets["gt_soft_fbar_correctnesses_top5"],
+            mixed_targets["gt_soft_dual_bma_correctnesses_top5"] = torch.cat([
+                upstream_targets["gt_hard_dual_bma_correctnesses_top5"],
+                downstream_targets["gt_soft_dual_bma_correctnesses_top5"],
             ])
 
             mixed_targets["gt_soft_bma_correctnesses"] = torch.cat([
@@ -706,18 +706,20 @@ def evaluate_on_correctness_prediction(
 
     key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
-    gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
+    gt_hard_dual_bma_correctnesses_original = targets[
+        "gt_hard_dual_bma_correctnesses_original"
+    ]
     gt_hard_bma_correctnesses_original = targets["gt_hard_bma_correctnesses_original"]
-    gt_hard_fbar_correctnesses = targets["gt_hard_fbar_correctnesses"]
+    gt_hard_dual_bma_correctnesses = targets["gt_hard_dual_bma_correctnesses"]
     gt_hard_bma_correctnesses = targets["gt_hard_bma_correctnesses"]
 
-    gt_hard_fbar_correctnesses_original_top5 = targets[
-        "gt_hard_fbar_correctnesses_original_top5"
+    gt_hard_dual_bma_correctnesses_original_top5 = targets[
+        "gt_hard_dual_bma_correctnesses_original_top5"
     ]
     gt_hard_bma_correctnesses_original_top5 = targets[
         "gt_hard_bma_correctnesses_original_top5"
     ]
-    gt_hard_fbar_correctnesses_top5 = targets["gt_hard_fbar_correctnesses_top5"]
+    gt_hard_dual_bma_correctnesses_top5 = targets["gt_hard_dual_bma_correctnesses_top5"]
     gt_hard_bma_correctnesses_top5 = targets["gt_hard_bma_correctnesses_top5"]
 
     for estimator_name, estimate in estimates.items():
@@ -728,11 +730,11 @@ def evaluate_on_correctness_prediction(
         estimate = -estimate
 
         metrics[
-            f"{key_prefix}{estimator_name}_auroc_hard_fbar_correctness_original"
-        ] = auroc(gt_hard_fbar_correctnesses_original, estimate).item()
-        metrics[f"{key_prefix}{estimator_name}_auroc_hard_fbar_correctness"] = auroc(
-            gt_hard_fbar_correctnesses, estimate
-        ).item()
+            f"{key_prefix}{estimator_name}_auroc_hard_dual_bma_correctness_original"
+        ] = auroc(gt_hard_dual_bma_correctnesses_original, estimate).item()
+        metrics[f"{key_prefix}{estimator_name}_auroc_hard_dual_bma_correctness"] = (
+            auroc(gt_hard_dual_bma_correctnesses, estimate).item()
+        )
         metrics[f"{key_prefix}{estimator_name}_auroc_hard_bma_correctness_original"] = (
             auroc(gt_hard_bma_correctnesses_original, estimate).item()
         )
@@ -741,11 +743,11 @@ def evaluate_on_correctness_prediction(
         ).item()
 
         metrics[
-            f"{key_prefix}{estimator_name}_auroc_hard_fbar_correctness_original_top5"
-        ] = auroc(gt_hard_fbar_correctnesses_original_top5, estimate).item()
-        metrics[f"{key_prefix}{estimator_name}_auroc_hard_fbar_correctness_top5"] = (
-            auroc(gt_hard_fbar_correctnesses_top5, estimate).item()
-        )
+            f"{key_prefix}{estimator_name}_auroc_hard_dual_bma_correctness_original_top5"
+        ] = auroc(gt_hard_dual_bma_correctnesses_original_top5, estimate).item()
+        metrics[
+            f"{key_prefix}{estimator_name}_auroc_hard_dual_bma_correctness_top5"
+        ] = auroc(gt_hard_dual_bma_correctnesses_top5, estimate).item()
         metrics[
             f"{key_prefix}{estimator_name}_auroc_hard_bma_correctness_original_top5"
         ] = auroc(gt_hard_bma_correctnesses_original_top5, estimate).item()
@@ -754,11 +756,11 @@ def evaluate_on_correctness_prediction(
         )
 
     # Performance metrics
-    metrics[f"{key_prefix}hard_fbar_accuracy_original"] = (
-        targets["gt_hard_fbar_correctnesses_original"].float().mean().item()
+    metrics[f"{key_prefix}hard_dual_bma_accuracy_original"] = (
+        targets["gt_hard_dual_bma_correctnesses_original"].float().mean().item()
     )
-    metrics[f"{key_prefix}hard_fbar_accuracy"] = (
-        targets["gt_hard_fbar_correctnesses"].float().mean().item()
+    metrics[f"{key_prefix}hard_dual_bma_accuracy"] = (
+        targets["gt_hard_dual_bma_correctnesses"].float().mean().item()
     )
     metrics[f"{key_prefix}hard_bma_accuracy_original"] = (
         targets["gt_hard_bma_correctnesses_original"].float().mean().item()
@@ -767,11 +769,11 @@ def evaluate_on_correctness_prediction(
         targets["gt_hard_bma_correctnesses"].float().mean().item()
     )
 
-    metrics[f"{key_prefix}hard_fbar_accuracy_original_top5"] = (
-        targets["gt_hard_fbar_correctnesses_original_top5"].float().mean().item()
+    metrics[f"{key_prefix}hard_dual_bma_accuracy_original_top5"] = (
+        targets["gt_hard_dual_bma_correctnesses_original_top5"].float().mean().item()
     )
-    metrics[f"{key_prefix}hard_fbar_accuracy_top5"] = (
-        targets["gt_hard_fbar_correctnesses_top5"].float().mean().item()
+    metrics[f"{key_prefix}hard_dual_bma_accuracy_top5"] = (
+        targets["gt_hard_dual_bma_correctnesses_top5"].float().mean().item()
     )
     metrics[f"{key_prefix}hard_bma_accuracy_original_top5"] = (
         targets["gt_hard_bma_correctnesses_original_top5"].float().mean().item()
@@ -781,15 +783,15 @@ def evaluate_on_correctness_prediction(
     )
 
     if is_soft_dataset:
-        metrics[f"{key_prefix}soft_fbar_accuracy"] = (
-            targets["gt_soft_fbar_correctnesses"].mean().item()
+        metrics[f"{key_prefix}soft_dual_bma_accuracy"] = (
+            targets["gt_soft_dual_bma_correctnesses"].mean().item()
         )
         metrics[f"{key_prefix}soft_bma_accuracy"] = (
             targets["gt_soft_bma_correctnesses"].mean().item()
         )
 
-        metrics[f"{key_prefix}soft_fbar_accuracy_top5"] = (
-            targets["gt_soft_fbar_correctnesses_top5"].mean().item()
+        metrics[f"{key_prefix}soft_dual_bma_accuracy_top5"] = (
+            targets["gt_soft_dual_bma_correctnesses_top5"].mean().item()
         )
         metrics[f"{key_prefix}soft_bma_accuracy_top5"] = (
             targets["gt_soft_bma_correctnesses_top5"].mean().item()
@@ -831,86 +833,96 @@ def evaluate_on_abstained_prediction(
 
     key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
-    gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
-    gt_hard_fbar_correctnesses = targets["gt_hard_fbar_correctnesses"]
+    gt_hard_dual_bma_correctnesses_original = targets[
+        "gt_hard_dual_bma_correctnesses_original"
+    ]
+    gt_hard_dual_bma_correctnesses = targets["gt_hard_dual_bma_correctnesses"]
     gt_hard_bma_correctnesses_original = targets["gt_hard_bma_correctnesses_original"]
     gt_hard_bma_correctnesses = targets["gt_hard_bma_correctnesses"]
 
-    gt_hard_fbar_correctnesses_original_top5 = targets[
-        "gt_hard_fbar_correctnesses_original_top5"
+    gt_hard_dual_bma_correctnesses_original_top5 = targets[
+        "gt_hard_dual_bma_correctnesses_original_top5"
     ]
-    gt_hard_fbar_correctnesses_top5 = targets["gt_hard_fbar_correctnesses_top5"]
+    gt_hard_dual_bma_correctnesses_top5 = targets["gt_hard_dual_bma_correctnesses_top5"]
     gt_hard_bma_correctnesses_original_top5 = targets[
         "gt_hard_bma_correctnesses_original_top5"
     ]
     gt_hard_bma_correctnesses_top5 = targets["gt_hard_bma_correctnesses_top5"]
 
     if is_soft_dataset:
-        gt_soft_fbar_correctnesses = targets["gt_soft_fbar_correctnesses"]
+        gt_soft_dual_bma_correctnesses = targets["gt_soft_dual_bma_correctnesses"]
         gt_soft_bma_correctnesses = targets["gt_soft_bma_correctnesses"]
 
-        gt_soft_fbar_correctnesses_top5 = targets["gt_soft_fbar_correctnesses_top5"]
+        gt_soft_dual_bma_correctnesses_top5 = targets[
+            "gt_soft_dual_bma_correctnesses_top5"
+        ]
         gt_soft_bma_correctnesses_top5 = targets["gt_soft_bma_correctnesses_top5"]
 
     for estimator_name, estimate in estimates.items():
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_original"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc_original"] = (
             area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses_original
+                estimate, gt_hard_dual_bma_correctnesses_original
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc"] = (
-            area_under_risk_coverage_curve(estimate, gt_hard_fbar_correctnesses).item()
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc"] = (
+            area_under_risk_coverage_curve(
+                estimate, gt_hard_dual_bma_correctnesses
+            ).item()
         )
         metrics[
-            f"{key_prefix}{estimator_name}_cumulative_hard_fbar_abstinence_auc_original"
-        ] = 1 - metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_original"]
-        metrics[f"{key_prefix}{estimator_name}_cumulative_hard_fbar_abstinence_auc"] = (
-            1 - metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc"]
-        )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_eaurc_original"] = (
+            f"{key_prefix}{estimator_name}_cumulative_hard_dual_bma_abstinence_auc_original"
+        ] = 1 - metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc_original"]
+        metrics[
+            f"{key_prefix}{estimator_name}_cumulative_hard_dual_bma_abstinence_auc"
+        ] = 1 - metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc"]
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_eaurc_original"] = (
             excess_area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses_original
+                estimate, gt_hard_dual_bma_correctnesses_original
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_eaurc"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_eaurc"] = (
             excess_area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses
+                estimate, gt_hard_dual_bma_correctnesses
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aulc_original"] = (
-            area_under_lift_curve(estimate, gt_hard_fbar_correctnesses_original).item()
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aulc_original"] = (
+            area_under_lift_curve(
+                estimate, gt_hard_dual_bma_correctnesses_original
+            ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aulc"] = area_under_lift_curve(
-            estimate, gt_hard_fbar_correctnesses
-        ).item()
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_raulc_original"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aulc"] = (
+            area_under_lift_curve(estimate, gt_hard_dual_bma_correctnesses).item()
+        )
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_raulc_original"] = (
             relative_area_under_lift_curve(
-                estimate, gt_hard_fbar_correctnesses_original
+                estimate, gt_hard_dual_bma_correctnesses_original
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_raulc"] = (
-            relative_area_under_lift_curve(estimate, gt_hard_fbar_correctnesses).item()
-        )
-        metrics[
-            f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_95_accuracy_original"
-        ] = coverage_for_accuracy(
-            estimate, gt_hard_fbar_correctnesses_original, accuracy=0.95
-        ).item()
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_95_accuracy"] = (
-            coverage_for_accuracy(
-                estimate, gt_hard_fbar_correctnesses, accuracy=0.95
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_raulc"] = (
+            relative_area_under_lift_curve(
+                estimate, gt_hard_dual_bma_correctnesses
             ).item()
         )
         metrics[
-            f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_99_accuracy_original"
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_95_accuracy_original"
         ] = coverage_for_accuracy(
-            estimate, gt_hard_fbar_correctnesses_original, accuracy=0.99
+            estimate, gt_hard_dual_bma_correctnesses_original, accuracy=0.95
         ).item()
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_99_accuracy"] = (
-            coverage_for_accuracy(
-                estimate, gt_hard_fbar_correctnesses, accuracy=0.99
-            ).item()
-        )
+        metrics[
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_95_accuracy"
+        ] = coverage_for_accuracy(
+            estimate, gt_hard_dual_bma_correctnesses, accuracy=0.95
+        ).item()
+        metrics[
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_99_accuracy_original"
+        ] = coverage_for_accuracy(
+            estimate, gt_hard_dual_bma_correctnesses_original, accuracy=0.99
+        ).item()
+        metrics[
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_99_accuracy"
+        ] = coverage_for_accuracy(
+            estimate, gt_hard_dual_bma_correctnesses, accuracy=0.99
+        ).item()
 
         metrics[f"{key_prefix}{estimator_name}_hard_bma_aurc_original"] = (
             area_under_risk_coverage_curve(
@@ -971,69 +983,72 @@ def evaluate_on_abstained_prediction(
             ).item()
         )
 
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_original_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc_original_top5"] = (
             area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses_original_top5
+                estimate, gt_hard_dual_bma_correctnesses_original_top5
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc_top5"] = (
             area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses_top5
+                estimate, gt_hard_dual_bma_correctnesses_top5
             ).item()
         )
         metrics[
-            f"{key_prefix}{estimator_name}_cumulative_hard_fbar_abstinence_auc_original_top5"
-        ] = 1 - metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_original_top5"]
+            f"{key_prefix}{estimator_name}_cumulative_hard_dual_bma_abstinence_auc_original_top5"
+        ] = (
+            1
+            - metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc_original_top5"]
+        )
         metrics[
-            f"{key_prefix}{estimator_name}_cumulative_hard_fbar_abstinence_auc_top5"
-        ] = 1 - metrics[f"{key_prefix}{estimator_name}_hard_fbar_aurc_top5"]
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_eaurc_original_top5"] = (
+            f"{key_prefix}{estimator_name}_cumulative_hard_dual_bma_abstinence_auc_top5"
+        ] = 1 - metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aurc_top5"]
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_eaurc_original_top5"] = (
             excess_area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses_original_top5
+                estimate, gt_hard_dual_bma_correctnesses_original_top5
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_eaurc_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_eaurc_top5"] = (
             excess_area_under_risk_coverage_curve(
-                estimate, gt_hard_fbar_correctnesses_top5
+                estimate, gt_hard_dual_bma_correctnesses_top5
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aulc_original_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aulc_original_top5"] = (
             area_under_lift_curve(
-                estimate, gt_hard_fbar_correctnesses_original_top5
+                estimate, gt_hard_dual_bma_correctnesses_original_top5
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_aulc_top5"] = (
-            area_under_lift_curve(estimate, gt_hard_fbar_correctnesses_top5).item()
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_aulc_top5"] = (
+            area_under_lift_curve(estimate, gt_hard_dual_bma_correctnesses_top5).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_raulc_original_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_raulc_original_top5"] = (
             relative_area_under_lift_curve(
-                estimate, gt_hard_fbar_correctnesses_original_top5
+                estimate, gt_hard_dual_bma_correctnesses_original_top5
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_hard_fbar_raulc_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_hard_dual_bma_raulc_top5"] = (
             relative_area_under_lift_curve(
-                estimate, gt_hard_fbar_correctnesses_top5
+                estimate, gt_hard_dual_bma_correctnesses_top5
             ).item()
         )
         metrics[
-            f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_95_accuracy_original_top5"
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_95_accuracy_original_top5"
         ] = coverage_for_accuracy(
-            estimate, gt_hard_fbar_correctnesses_original_top5, accuracy=0.95
+            estimate, gt_hard_dual_bma_correctnesses_original_top5, accuracy=0.95
         ).item()
         metrics[
-            f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_95_accuracy_top5"
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_95_accuracy_top5"
         ] = coverage_for_accuracy(
-            estimate, gt_hard_fbar_correctnesses_top5, accuracy=0.95
+            estimate, gt_hard_dual_bma_correctnesses_top5, accuracy=0.95
         ).item()
         metrics[
-            f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_99_accuracy_original_top5"
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_99_accuracy_original_top5"
         ] = coverage_for_accuracy(
-            estimate, gt_hard_fbar_correctnesses_original_top5, accuracy=0.99
+            estimate, gt_hard_dual_bma_correctnesses_original_top5, accuracy=0.99
         ).item()
         metrics[
-            f"{key_prefix}{estimator_name}_hard_fbar_coverage_for_99_accuracy_top5"
+            f"{key_prefix}{estimator_name}_hard_dual_bma_coverage_for_99_accuracy_top5"
         ] = coverage_for_accuracy(
-            estimate, gt_hard_fbar_correctnesses_top5, accuracy=0.99
+            estimate, gt_hard_dual_bma_correctnesses_top5, accuracy=0.99
         ).item()
 
         metrics[f"{key_prefix}{estimator_name}_hard_bma_aurc_original_top5"] = (
@@ -1102,36 +1117,36 @@ def evaluate_on_abstained_prediction(
         ).item()
 
         if is_soft_dataset:
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_aurc"] = (
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_aurc"] = (
                 area_under_risk_coverage_curve(
-                    estimate, gt_soft_fbar_correctnesses
+                    estimate, gt_soft_dual_bma_correctnesses
                 ).item()
             )
             metrics[
-                f"{key_prefix}{estimator_name}_cumulative_soft_fbar_abstinence_auc"
-            ] = 1 - metrics[f"{key_prefix}{estimator_name}_soft_fbar_aurc"]
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_eaurc"] = (
+                f"{key_prefix}{estimator_name}_cumulative_soft_dual_bma_abstinence_auc"
+            ] = 1 - metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_aurc"]
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_eaurc"] = (
                 excess_area_under_risk_coverage_curve(
-                    estimate, gt_soft_fbar_correctnesses
+                    estimate, gt_soft_dual_bma_correctnesses
                 ).item()
             )
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_aulc"] = (
-                area_under_lift_curve(estimate, gt_soft_fbar_correctnesses).item()
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_aulc"] = (
+                area_under_lift_curve(estimate, gt_soft_dual_bma_correctnesses).item()
             )
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_raulc"] = (
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_raulc"] = (
                 relative_area_under_lift_curve(
-                    estimate, gt_soft_fbar_correctnesses
+                    estimate, gt_soft_dual_bma_correctnesses
                 ).item()
             )
             metrics[
-                f"{key_prefix}{estimator_name}_soft_fbar_coverage_for_95_accuracy"
+                f"{key_prefix}{estimator_name}_soft_dual_bma_coverage_for_95_accuracy"
             ] = coverage_for_accuracy(
-                estimate, gt_soft_fbar_correctnesses, accuracy=0.95
+                estimate, gt_soft_dual_bma_correctnesses, accuracy=0.95
             ).item()
             metrics[
-                f"{key_prefix}{estimator_name}_soft_fbar_coverage_for_99_accuracy"
+                f"{key_prefix}{estimator_name}_soft_dual_bma_coverage_for_99_accuracy"
             ] = coverage_for_accuracy(
-                estimate, gt_soft_fbar_correctnesses, accuracy=0.99
+                estimate, gt_soft_dual_bma_correctnesses, accuracy=0.99
             ).item()
 
             metrics[f"{key_prefix}{estimator_name}_soft_bma_aurc"] = (
@@ -1166,36 +1181,38 @@ def evaluate_on_abstained_prediction(
                 estimate, gt_soft_bma_correctnesses, accuracy=0.99
             ).item()
 
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_aurc_top5"] = (
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_aurc_top5"] = (
                 area_under_risk_coverage_curve(
-                    estimate, gt_soft_fbar_correctnesses_top5
+                    estimate, gt_soft_dual_bma_correctnesses_top5
                 ).item()
             )
             metrics[
-                f"{key_prefix}{estimator_name}_cumulative_soft_fbar_abstinence_auc_top5"
-            ] = 1 - metrics[f"{key_prefix}{estimator_name}_soft_fbar_aurc_top5"]
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_eaurc_top5"] = (
+                f"{key_prefix}{estimator_name}_cumulative_soft_dual_bma_abstinence_auc_top5"
+            ] = 1 - metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_aurc_top5"]
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_eaurc_top5"] = (
                 excess_area_under_risk_coverage_curve(
-                    estimate, gt_soft_fbar_correctnesses_top5
+                    estimate, gt_soft_dual_bma_correctnesses_top5
                 ).item()
             )
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_aulc_top5"] = (
-                area_under_lift_curve(estimate, gt_soft_fbar_correctnesses_top5).item()
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_aulc_top5"] = (
+                area_under_lift_curve(
+                    estimate, gt_soft_dual_bma_correctnesses_top5
+                ).item()
             )
-            metrics[f"{key_prefix}{estimator_name}_soft_fbar_raulc_top5"] = (
+            metrics[f"{key_prefix}{estimator_name}_soft_dual_bma_raulc_top5"] = (
                 relative_area_under_lift_curve(
-                    estimate, gt_soft_fbar_correctnesses_top5
+                    estimate, gt_soft_dual_bma_correctnesses_top5
                 ).item()
             )
             metrics[
-                f"{key_prefix}{estimator_name}_soft_fbar_coverage_for_95_accuracy_top5"
+                f"{key_prefix}{estimator_name}_soft_dual_bma_coverage_for_95_accuracy_top5"
             ] = coverage_for_accuracy(
-                estimate, gt_soft_fbar_correctnesses_top5, accuracy=0.95
+                estimate, gt_soft_dual_bma_correctnesses_top5, accuracy=0.95
             ).item()
             metrics[
-                f"{key_prefix}{estimator_name}_soft_fbar_coverage_for_99_accuracy_top5"
+                f"{key_prefix}{estimator_name}_soft_dual_bma_coverage_for_99_accuracy_top5"
             ] = coverage_for_accuracy(
-                estimate, gt_soft_fbar_correctnesses_top5, accuracy=0.99
+                estimate, gt_soft_dual_bma_correctnesses_top5, accuracy=0.99
             ).item()
 
             metrics[f"{key_prefix}{estimator_name}_soft_bma_aurc_top5"] = (
@@ -1293,7 +1310,7 @@ def evaluate_on_proper_scoring_and_calibration(
     # Proper scoring and calibration for correctness of prediction
     correctness_estimator_names = [
         "one_minus_expected_max_probs",
-        "one_minus_max_probs_of_fbar",
+        "one_minus_max_probs_of_dual_bma",
         "one_minus_max_probs_of_bma",
     ]
 
@@ -1303,25 +1320,29 @@ def evaluate_on_proper_scoring_and_calibration(
     if isinstance(model, BaseCorrectnessPredictionWrapper):
         correctness_estimator_names.append("error_probabilities")
 
-    gt_hard_fbar_correctnesses_original = targets["gt_hard_fbar_correctnesses_original"]
-    gt_hard_fbar_correctnesses = targets["gt_hard_fbar_correctnesses"]
+    gt_hard_dual_bma_correctnesses_original = targets[
+        "gt_hard_dual_bma_correctnesses_original"
+    ]
+    gt_hard_dual_bma_correctnesses = targets["gt_hard_dual_bma_correctnesses"]
     gt_hard_bma_correctnesses_original = targets["gt_hard_bma_correctnesses_original"]
     gt_hard_bma_correctnesses = targets["gt_hard_bma_correctnesses"]
 
-    gt_hard_fbar_correctnesses_original_top5 = targets[
-        "gt_hard_fbar_correctnesses_original_top5"
+    gt_hard_dual_bma_correctnesses_original_top5 = targets[
+        "gt_hard_dual_bma_correctnesses_original_top5"
     ]
-    gt_hard_fbar_correctnesses_top5 = targets["gt_hard_fbar_correctnesses_top5"]
+    gt_hard_dual_bma_correctnesses_top5 = targets["gt_hard_dual_bma_correctnesses_top5"]
     gt_hard_bma_correctnesses_original_top5 = targets[
         "gt_hard_bma_correctnesses_original_top5"
     ]
     gt_hard_bma_correctnesses_top5 = targets["gt_hard_bma_correctnesses_top5"]
 
     if is_soft_dataset:
-        gt_soft_fbar_correctnesses = targets["gt_soft_fbar_correctnesses"]
+        gt_soft_dual_bma_correctnesses = targets["gt_soft_dual_bma_correctnesses"]
         gt_soft_bma_correctnesses = targets["gt_soft_bma_correctnesses"]
 
-        gt_soft_fbar_correctnesses_top5 = targets["gt_soft_fbar_correctnesses_top5"]
+        gt_soft_dual_bma_correctnesses_top5 = targets[
+            "gt_soft_dual_bma_correctnesses_top5"
+        ]
         gt_soft_bma_correctnesses_top5 = targets["gt_soft_bma_correctnesses_top5"]
 
     for estimator_name in correctness_estimator_names:
@@ -1331,45 +1352,47 @@ def evaluate_on_proper_scoring_and_calibration(
 
         # {Hard, Soft}-label correctness
         metrics[
-            f"{key_prefix}{estimator_name}_log_prob_score_hard_fbar_correctness_original"
-        ] = binary_log_probability(estimate, gt_hard_fbar_correctnesses_original).item()
+            f"{key_prefix}{estimator_name}_log_prob_score_hard_dual_bma_correctness_original"
+        ] = binary_log_probability(
+            estimate, gt_hard_dual_bma_correctnesses_original
+        ).item()
         metrics[
-            f"{key_prefix}{estimator_name}_log_prob_score_hard_fbar_correctness"
-        ] = binary_log_probability(estimate, gt_hard_fbar_correctnesses).item()
+            f"{key_prefix}{estimator_name}_log_prob_score_hard_dual_bma_correctness"
+        ] = binary_log_probability(estimate, gt_hard_dual_bma_correctnesses).item()
         metrics[
-            f"{key_prefix}{estimator_name}_brier_score_hard_fbar_correctness_original"
-        ] = binary_brier(estimate, gt_hard_fbar_correctnesses_original).item()
-        metrics[f"{key_prefix}{estimator_name}_brier_score_hard_fbar_correctness"] = (
-            binary_brier(estimate, gt_hard_fbar_correctnesses).item()
-        )
-        metrics[f"{key_prefix}{estimator_name}_ece_hard_fbar_correctness_original"] = (
+            f"{key_prefix}{estimator_name}_brier_score_hard_dual_bma_correctness_original"
+        ] = binary_brier(estimate, gt_hard_dual_bma_correctnesses_original).item()
+        metrics[
+            f"{key_prefix}{estimator_name}_brier_score_hard_dual_bma_correctness"
+        ] = binary_brier(estimate, gt_hard_dual_bma_correctnesses).item()
+        metrics[
+            f"{key_prefix}{estimator_name}_ece_hard_dual_bma_correctness_original"
+        ] = calibration_error(
+            confidences=estimate,
+            correctnesses=gt_hard_dual_bma_correctnesses_original,
+            num_bins=15,
+            norm="l1",
+        ).item()
+        metrics[f"{key_prefix}{estimator_name}_ece_hard_dual_bma_correctness"] = (
             calibration_error(
                 confidences=estimate,
-                correctnesses=gt_hard_fbar_correctnesses_original,
+                correctnesses=gt_hard_dual_bma_correctnesses,
                 num_bins=15,
                 norm="l1",
             ).item()
         )
-        metrics[f"{key_prefix}{estimator_name}_ece_hard_fbar_correctness"] = (
+        metrics[
+            f"{key_prefix}{estimator_name}_mce_hard_dual_bma_correctness_original"
+        ] = calibration_error(
+            confidences=estimate,
+            correctnesses=gt_hard_dual_bma_correctnesses_original,
+            num_bins=15,
+            norm="inf",
+        ).item()
+        metrics[f"{key_prefix}{estimator_name}_mce_hard_dual_bma_correctness"] = (
             calibration_error(
                 confidences=estimate,
-                correctnesses=gt_hard_fbar_correctnesses,
-                num_bins=15,
-                norm="l1",
-            ).item()
-        )
-        metrics[f"{key_prefix}{estimator_name}_mce_hard_fbar_correctness_original"] = (
-            calibration_error(
-                confidences=estimate,
-                correctnesses=gt_hard_fbar_correctnesses_original,
-                num_bins=15,
-                norm="inf",
-            ).item()
-        )
-        metrics[f"{key_prefix}{estimator_name}_mce_hard_fbar_correctness"] = (
-            calibration_error(
-                confidences=estimate,
-                correctnesses=gt_hard_fbar_correctnesses,
+                correctnesses=gt_hard_dual_bma_correctnesses,
                 num_bins=15,
                 norm="inf",
             ).item()
@@ -1421,47 +1444,47 @@ def evaluate_on_proper_scoring_and_calibration(
         )
 
         metrics[
-            f"{key_prefix}{estimator_name}_log_prob_score_hard_fbar_correctness_original_top5"
+            f"{key_prefix}{estimator_name}_log_prob_score_hard_dual_bma_correctness_original_top5"
         ] = binary_log_probability(
-            estimate, gt_hard_fbar_correctnesses_original_top5
+            estimate, gt_hard_dual_bma_correctnesses_original_top5
         ).item()
         metrics[
-            f"{key_prefix}{estimator_name}_log_prob_score_hard_fbar_correctness_top5"
-        ] = binary_log_probability(estimate, gt_hard_fbar_correctnesses_top5).item()
+            f"{key_prefix}{estimator_name}_log_prob_score_hard_dual_bma_correctness_top5"
+        ] = binary_log_probability(estimate, gt_hard_dual_bma_correctnesses_top5).item()
         metrics[
-            f"{key_prefix}{estimator_name}_brier_score_hard_fbar_correctness_original_top5"
-        ] = binary_brier(estimate, gt_hard_fbar_correctnesses_original_top5).item()
+            f"{key_prefix}{estimator_name}_brier_score_hard_dual_bma_correctness_original_top5"
+        ] = binary_brier(estimate, gt_hard_dual_bma_correctnesses_original_top5).item()
         metrics[
-            f"{key_prefix}{estimator_name}_brier_score_hard_fbar_correctness_top5"
-        ] = binary_brier(estimate, gt_hard_fbar_correctnesses_top5).item()
+            f"{key_prefix}{estimator_name}_brier_score_hard_dual_bma_correctness_top5"
+        ] = binary_brier(estimate, gt_hard_dual_bma_correctnesses_top5).item()
         metrics[
-            f"{key_prefix}{estimator_name}_ece_hard_fbar_correctness_original_top5"
+            f"{key_prefix}{estimator_name}_ece_hard_dual_bma_correctness_original_top5"
         ] = calibration_error(
             confidences=estimate,
-            correctnesses=gt_hard_fbar_correctnesses_original_top5,
+            correctnesses=gt_hard_dual_bma_correctnesses_original_top5,
             num_bins=15,
             norm="l1",
         ).item()
-        metrics[f"{key_prefix}{estimator_name}_ece_hard_fbar_correctness_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_ece_hard_dual_bma_correctness_top5"] = (
             calibration_error(
                 confidences=estimate,
-                correctnesses=gt_hard_fbar_correctnesses_top5,
+                correctnesses=gt_hard_dual_bma_correctnesses_top5,
                 num_bins=15,
                 norm="l1",
             ).item()
         )
         metrics[
-            f"{key_prefix}{estimator_name}_mce_hard_fbar_correctness_original_top5"
+            f"{key_prefix}{estimator_name}_mce_hard_dual_bma_correctness_original_top5"
         ] = calibration_error(
             confidences=estimate,
-            correctnesses=gt_hard_fbar_correctnesses_original_top5,
+            correctnesses=gt_hard_dual_bma_correctnesses_original_top5,
             num_bins=15,
             norm="inf",
         ).item()
-        metrics[f"{key_prefix}{estimator_name}_mce_hard_fbar_correctness_top5"] = (
+        metrics[f"{key_prefix}{estimator_name}_mce_hard_dual_bma_correctness_top5"] = (
             calibration_error(
                 confidences=estimate,
-                correctnesses=gt_hard_fbar_correctnesses_top5,
+                correctnesses=gt_hard_dual_bma_correctnesses_top5,
                 num_bins=15,
                 norm="inf",
             ).item()
@@ -1516,23 +1539,23 @@ def evaluate_on_proper_scoring_and_calibration(
 
         if is_soft_dataset:
             metrics[
-                f"{key_prefix}{estimator_name}_log_prob_score_soft_fbar_correctness"
-            ] = binary_log_probability(estimate, gt_soft_fbar_correctnesses).item()
+                f"{key_prefix}{estimator_name}_log_prob_score_soft_dual_bma_correctness"
+            ] = binary_log_probability(estimate, gt_soft_dual_bma_correctnesses).item()
             metrics[
-                f"{key_prefix}{estimator_name}_brier_score_soft_fbar_correctness"
-            ] = binary_brier(estimate, gt_soft_fbar_correctnesses).item()
-            metrics[f"{key_prefix}{estimator_name}_ece_soft_fbar_correctness"] = (
+                f"{key_prefix}{estimator_name}_brier_score_soft_dual_bma_correctness"
+            ] = binary_brier(estimate, gt_soft_dual_bma_correctnesses).item()
+            metrics[f"{key_prefix}{estimator_name}_ece_soft_dual_bma_correctness"] = (
                 calibration_error(
                     confidences=estimate,
-                    correctnesses=gt_soft_fbar_correctnesses,
+                    correctnesses=gt_soft_dual_bma_correctnesses,
                     num_bins=15,
                     norm="l1",
                 ).item()
             )
-            metrics[f"{key_prefix}{estimator_name}_mce_soft_fbar_correctness"] = (
+            metrics[f"{key_prefix}{estimator_name}_mce_soft_dual_bma_correctness"] = (
                 calibration_error(
                     confidences=estimate,
-                    correctnesses=gt_soft_fbar_correctnesses,
+                    correctnesses=gt_soft_dual_bma_correctnesses,
                     num_bins=15,
                     norm="inf",
                 ).item()
@@ -1562,27 +1585,29 @@ def evaluate_on_proper_scoring_and_calibration(
             )
 
             metrics[
-                f"{key_prefix}{estimator_name}_log_prob_score_soft_fbar_correctness_top5"
-            ] = binary_log_probability(estimate, gt_soft_fbar_correctnesses_top5).item()
+                f"{key_prefix}{estimator_name}_log_prob_score_soft_dual_bma_correctness_top5"
+            ] = binary_log_probability(
+                estimate, gt_soft_dual_bma_correctnesses_top5
+            ).item()
             metrics[
-                f"{key_prefix}{estimator_name}_brier_score_soft_fbar_correctness_top5"
-            ] = binary_brier(estimate, gt_soft_fbar_correctnesses_top5).item()
-            metrics[f"{key_prefix}{estimator_name}_ece_soft_fbar_correctness_top5"] = (
-                calibration_error(
-                    confidences=estimate,
-                    correctnesses=gt_soft_fbar_correctnesses_top5,
-                    num_bins=15,
-                    norm="l1",
-                ).item()
-            )
-            metrics[f"{key_prefix}{estimator_name}_mce_soft_fbar_correctness_top5"] = (
-                calibration_error(
-                    confidences=estimate,
-                    correctnesses=gt_soft_fbar_correctnesses_top5,
-                    num_bins=15,
-                    norm="inf",
-                ).item()
-            )
+                f"{key_prefix}{estimator_name}_brier_score_soft_dual_bma_correctness_top5"
+            ] = binary_brier(estimate, gt_soft_dual_bma_correctnesses_top5).item()
+            metrics[
+                f"{key_prefix}{estimator_name}_ece_soft_dual_bma_correctness_top5"
+            ] = calibration_error(
+                confidences=estimate,
+                correctnesses=gt_soft_dual_bma_correctnesses_top5,
+                num_bins=15,
+                norm="l1",
+            ).item()
+            metrics[
+                f"{key_prefix}{estimator_name}_mce_soft_dual_bma_correctness_top5"
+            ] = calibration_error(
+                confidences=estimate,
+                correctnesses=gt_soft_dual_bma_correctnesses_top5,
+                num_bins=15,
+                norm="inf",
+            ).item()
 
             metrics[
                 f"{key_prefix}{estimator_name}_log_prob_score_soft_bma_correctness_top5"
@@ -1611,19 +1636,21 @@ def evaluate_on_proper_scoring_and_calibration(
     gt_hard_labels_original = targets["gt_hard_labels_original"]
     gt_hard_labels = targets["gt_hard_labels"]
 
-    metrics[f"{key_prefix}log_prob_score_hard_fbar_aleatoric_original"] = (
+    metrics[f"{key_prefix}log_prob_score_hard_dual_bma_aleatoric_original"] = (
         multiclass_log_probability(
-            log_probs["log_fbars"], gt_hard_labels_original
+            log_probs["log_dual_bmas"], gt_hard_labels_original
         ).item()
     )
-    metrics[f"{key_prefix}log_prob_score_hard_fbar_aleatoric"] = (
-        multiclass_log_probability(log_probs["log_fbars"], gt_hard_labels).item()
+    metrics[f"{key_prefix}log_prob_score_hard_dual_bma_aleatoric"] = (
+        multiclass_log_probability(log_probs["log_dual_bmas"], gt_hard_labels).item()
     )
-    metrics[f"{key_prefix}brier_score_hard_fbar_aleatoric_original"] = multiclass_brier(
-        log_probs["log_fbars"], gt_hard_labels_original, is_soft_targets=False
-    ).item()
-    metrics[f"{key_prefix}brier_score_hard_fbar_aleatoric"] = multiclass_brier(
-        log_probs["log_fbars"], gt_hard_labels, is_soft_targets=False
+    metrics[f"{key_prefix}brier_score_hard_dual_bma_aleatoric_original"] = (
+        multiclass_brier(
+            log_probs["log_dual_bmas"], gt_hard_labels_original, is_soft_targets=False
+        ).item()
+    )
+    metrics[f"{key_prefix}brier_score_hard_dual_bma_aleatoric"] = multiclass_brier(
+        log_probs["log_dual_bmas"], gt_hard_labels, is_soft_targets=False
     ).item()
 
     metrics[f"{key_prefix}log_prob_score_hard_bma_aleatoric_original"] = (
@@ -1644,11 +1671,13 @@ def evaluate_on_proper_scoring_and_calibration(
     if is_soft_dataset:
         gt_soft_labels = targets["gt_soft_labels"]
 
-        metrics[f"{key_prefix}log_prob_score_soft_fbar_aleatoric"] = (
-            multiclass_log_probability(log_probs["log_fbars"], gt_soft_labels).item()
+        metrics[f"{key_prefix}log_prob_score_soft_dual_bma_aleatoric"] = (
+            multiclass_log_probability(
+                log_probs["log_dual_bmas"], gt_soft_labels
+            ).item()
         )
-        metrics[f"{key_prefix}brier_score_soft_fbar_aleatoric"] = multiclass_brier(
-            log_probs["log_fbars"], gt_soft_labels, is_soft_targets=True
+        metrics[f"{key_prefix}brier_score_soft_dual_bma_aleatoric"] = multiclass_brier(
+            log_probs["log_dual_bmas"], gt_soft_labels, is_soft_targets=True
         ).item()
 
         metrics[f"{key_prefix}log_prob_score_soft_bma_aleatoric"] = (
@@ -1690,14 +1719,16 @@ def evaluate_on_bregman(
 
     key_prefix = f"mixed_{args.dataset_id.replace('/', '_')}_" if is_mixed_eval else ""
 
-    gt_predictives_bregman_fbar = targets["gt_predictives_bregman_fbar"]
+    gt_predictives_bregman_dual_bma = targets["gt_predictives_bregman_dual_bma"]
     gt_predictives_bregman_bma = targets["gt_predictives_bregman_bma"]
 
-    gt_total_predictives_bregman_fbar = targets["gt_total_predictives_bregman_fbar"]
+    gt_total_predictives_bregman_dual_bma = targets[
+        "gt_total_predictives_bregman_dual_bma"
+    ]
     gt_total_predictives_bregman_bma = targets["gt_total_predictives_bregman_bma"]
 
     if is_soft_dataset:
-        gt_biases_bregman_fbar = targets["gt_biases_bregman_fbar"]
+        gt_biases_bregman_dual_bma = targets["gt_biases_bregman_dual_bma"]
         gt_biases_bregman_bma = targets["gt_biases_bregman_bma"]
 
     if is_soft_dataset:
@@ -1732,24 +1763,24 @@ def evaluate_on_bregman(
                 multi_label_indices, estimate
             ).item()
 
-        metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_pu_fbar"] = (
-            spearmanr(estimate, gt_predictives_bregman_fbar).item()
+        metrics[
+            f"{key_prefix}{estimator_name}_rank_correlation_bregman_pu_dual_bma"
+        ] = spearmanr(estimate, gt_predictives_bregman_dual_bma).item()
+        metrics[f"{key_prefix}{estimator_name}_mse_bregman_pu_dual_bma"] = (
+            (estimate - gt_predictives_bregman_dual_bma).square().mean().item()
         )
-        metrics[f"{key_prefix}{estimator_name}_mse_bregman_pu_fbar"] = (
-            (estimate - gt_predictives_bregman_fbar).square().mean().item()
-        )
-        metrics[f"{key_prefix}{estimator_name}_mae_bregman_pu_fbar"] = (
-            (estimate - gt_predictives_bregman_fbar).abs().mean().item()
+        metrics[f"{key_prefix}{estimator_name}_mae_bregman_pu_dual_bma"] = (
+            (estimate - gt_predictives_bregman_dual_bma).abs().mean().item()
         )
 
         metrics[
-            f"{key_prefix}{estimator_name}_rank_correlation_bregman_total_pu_fbar"
-        ] = spearmanr(estimate, gt_total_predictives_bregman_fbar).item()
-        metrics[f"{key_prefix}{estimator_name}_mse_bregman_total_pu_fbar"] = (
-            (estimate - gt_total_predictives_bregman_fbar).square().mean().item()
+            f"{key_prefix}{estimator_name}_rank_correlation_bregman_total_pu_dual_bma"
+        ] = spearmanr(estimate, gt_total_predictives_bregman_dual_bma).item()
+        metrics[f"{key_prefix}{estimator_name}_mse_bregman_total_pu_dual_bma"] = (
+            (estimate - gt_total_predictives_bregman_dual_bma).square().mean().item()
         )
-        metrics[f"{key_prefix}{estimator_name}_mae_bregman_total_pu_fbar"] = (
-            (estimate - gt_total_predictives_bregman_fbar).abs().mean().item()
+        metrics[f"{key_prefix}{estimator_name}_mae_bregman_total_pu_dual_bma"] = (
+            (estimate - gt_total_predictives_bregman_dual_bma).abs().mean().item()
         )
 
         metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_pu_bma"] = (
@@ -1773,14 +1804,14 @@ def evaluate_on_bregman(
         )
 
         if is_soft_dataset:
-            metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_b_fbar"] = (
-                spearmanr(estimate, gt_biases_bregman_fbar).item()
+            metrics[
+                f"{key_prefix}{estimator_name}_rank_correlation_bregman_b_dual_bma"
+            ] = spearmanr(estimate, gt_biases_bregman_dual_bma).item()
+            metrics[f"{key_prefix}{estimator_name}_mse_bregman_b_dual_bma"] = (
+                (estimate - gt_biases_bregman_dual_bma).square().mean().item()
             )
-            metrics[f"{key_prefix}{estimator_name}_mse_bregman_b_fbar"] = (
-                (estimate - gt_biases_bregman_fbar).square().mean().item()
-            )
-            metrics[f"{key_prefix}{estimator_name}_mae_bregman_b_fbar"] = (
-                (estimate - gt_biases_bregman_fbar).abs().mean().item()
+            metrics[f"{key_prefix}{estimator_name}_mae_bregman_b_dual_bma"] = (
+                (estimate - gt_biases_bregman_dual_bma).abs().mean().item()
             )
 
             metrics[f"{key_prefix}{estimator_name}_rank_correlation_bregman_b_bma"] = (
@@ -2016,14 +2047,16 @@ def evaluate_on_correlation_of_decompositions(
     )
 
     # Bregman decomposition GTs
-    gt_predictives_bregman_fbar = targets["gt_predictives_bregman_fbar"]
+    gt_predictives_bregman_dual_bma = targets["gt_predictives_bregman_dual_bma"]
     gt_predictives_bregman_bma = targets["gt_predictives_bregman_bma"]
 
-    gt_total_predictives_bregman_fbar = targets["gt_total_predictives_bregman_fbar"]
+    gt_total_predictives_bregman_dual_bma = targets[
+        "gt_total_predictives_bregman_dual_bma"
+    ]
     gt_total_predictives_bregman_bma = targets["gt_total_predictives_bregman_bma"]
 
     if is_soft_dataset:
-        gt_biases_bregman_fbar = targets["gt_biases_bregman_fbar"]
+        gt_biases_bregman_dual_bma = targets["gt_biases_bregman_dual_bma"]
         gt_biases_bregman_bma = targets["gt_biases_bregman_bma"]
 
     if is_soft_dataset:
@@ -2049,11 +2082,11 @@ def evaluate_on_correlation_of_decompositions(
         )
 
     if can_evaluate_au_b:
-        metrics[f"{key_prefix}rank_correlation_bregman_au_b_fbar"] = float(
-            spearmanr(gt_aleatorics_bregman, gt_biases_bregman_fbar)
+        metrics[f"{key_prefix}rank_correlation_bregman_au_b_dual_bma"] = float(
+            spearmanr(gt_aleatorics_bregman, gt_biases_bregman_dual_bma)
         )
-        metrics[f"{key_prefix}correlation_bregman_au_b_fbar"] = float(
-            pearsonr(gt_aleatorics_bregman, gt_biases_bregman_fbar)
+        metrics[f"{key_prefix}correlation_bregman_au_b_dual_bma"] = float(
+            pearsonr(gt_aleatorics_bregman, gt_biases_bregman_dual_bma)
         )
 
         metrics[f"{key_prefix}rank_correlation_bregman_au_b_bma"] = float(
@@ -2064,11 +2097,11 @@ def evaluate_on_correlation_of_decompositions(
         )
 
     if can_evaluate_au_pu:
-        metrics[f"{key_prefix}rank_correlation_bregman_au_pu_fbar"] = float(
-            spearmanr(gt_aleatorics_bregman, gt_predictives_bregman_fbar)
+        metrics[f"{key_prefix}rank_correlation_bregman_au_pu_dual_bma"] = float(
+            spearmanr(gt_aleatorics_bregman, gt_predictives_bregman_dual_bma)
         )
-        metrics[f"{key_prefix}correlation_bregman_au_pu_fbar"] = float(
-            pearsonr(gt_aleatorics_bregman, gt_predictives_bregman_fbar)
+        metrics[f"{key_prefix}correlation_bregman_au_pu_dual_bma"] = float(
+            pearsonr(gt_aleatorics_bregman, gt_predictives_bregman_dual_bma)
         )
 
         metrics[f"{key_prefix}rank_correlation_bregman_au_pu_bma"] = float(
@@ -2078,11 +2111,11 @@ def evaluate_on_correlation_of_decompositions(
             pearsonr(gt_aleatorics_bregman, gt_predictives_bregman_bma)
         )
 
-        metrics[f"{key_prefix}rank_correlation_bregman_au_total_pu_fbar"] = float(
-            spearmanr(gt_aleatorics_bregman, gt_total_predictives_bregman_fbar)
+        metrics[f"{key_prefix}rank_correlation_bregman_au_total_pu_dual_bma"] = float(
+            spearmanr(gt_aleatorics_bregman, gt_total_predictives_bregman_dual_bma)
         )
-        metrics[f"{key_prefix}correlation_bregman_au_total_pu_fbar"] = float(
-            pearsonr(gt_aleatorics_bregman, gt_total_predictives_bregman_fbar)
+        metrics[f"{key_prefix}correlation_bregman_au_total_pu_dual_bma"] = float(
+            pearsonr(gt_aleatorics_bregman, gt_total_predictives_bregman_dual_bma)
         )
 
         metrics[f"{key_prefix}rank_correlation_bregman_au_total_pu_bma"] = float(
@@ -2093,11 +2126,11 @@ def evaluate_on_correlation_of_decompositions(
         )
 
     if can_evaluate_b_pu:
-        metrics[f"{key_prefix}rank_correlation_bregman_b_pu_fbar"] = float(
-            spearmanr(gt_biases_bregman_fbar, gt_predictives_bregman_fbar)
+        metrics[f"{key_prefix}rank_correlation_bregman_b_pu_dual_bma"] = float(
+            spearmanr(gt_biases_bregman_dual_bma, gt_predictives_bregman_dual_bma)
         )
-        metrics[f"{key_prefix}correlation_bregman_b_pu_fbar"] = float(
-            pearsonr(gt_biases_bregman_fbar, gt_predictives_bregman_fbar)
+        metrics[f"{key_prefix}correlation_bregman_b_pu_dual_bma"] = float(
+            pearsonr(gt_biases_bregman_dual_bma, gt_predictives_bregman_dual_bma)
         )
 
         metrics[f"{key_prefix}rank_correlation_bregman_b_pu_bma"] = float(
@@ -2107,11 +2140,11 @@ def evaluate_on_correlation_of_decompositions(
             pearsonr(gt_biases_bregman_bma, gt_predictives_bregman_bma)
         )
 
-        metrics[f"{key_prefix}rank_correlation_bregman_b_total_pu_fbar"] = float(
-            spearmanr(gt_biases_bregman_fbar, gt_total_predictives_bregman_fbar)
+        metrics[f"{key_prefix}rank_correlation_bregman_b_total_pu_dual_bma"] = float(
+            spearmanr(gt_biases_bregman_dual_bma, gt_total_predictives_bregman_dual_bma)
         )
-        metrics[f"{key_prefix}correlation_bregman_b_total_pu_fbar"] = float(
-            pearsonr(gt_biases_bregman_fbar, gt_total_predictives_bregman_fbar)
+        metrics[f"{key_prefix}correlation_bregman_b_total_pu_dual_bma"] = float(
+            pearsonr(gt_biases_bregman_dual_bma, gt_total_predictives_bregman_dual_bma)
         )
 
         metrics[f"{key_prefix}rank_correlation_bregman_b_total_pu_bma"] = float(
@@ -2122,11 +2155,11 @@ def evaluate_on_correlation_of_decompositions(
         )
 
     if can_evaluate_eu_b:
-        metrics[f"{key_prefix}rank_correlation_bregman_eu_b_fbar"] = float(
-            spearmanr(gt_epistemics_bregman, gt_biases_bregman_fbar)
+        metrics[f"{key_prefix}rank_correlation_bregman_eu_b_dual_bma"] = float(
+            spearmanr(gt_epistemics_bregman, gt_biases_bregman_dual_bma)
         )
-        metrics[f"{key_prefix}correlation_bregman_eu_b_fbar"] = float(
-            pearsonr(gt_epistemics_bregman, gt_biases_bregman_fbar)
+        metrics[f"{key_prefix}correlation_bregman_eu_b_dual_bma"] = float(
+            pearsonr(gt_epistemics_bregman, gt_biases_bregman_dual_bma)
         )
 
         metrics[f"{key_prefix}rank_correlation_bregman_eu_b_bma"] = float(
@@ -2136,11 +2169,11 @@ def evaluate_on_correlation_of_decompositions(
             pearsonr(gt_epistemics_bregman, gt_biases_bregman_bma)
         )
 
-    metrics[f"{key_prefix}rank_correlation_bregman_eu_pu_fbar"] = float(
-        spearmanr(gt_epistemics_bregman, gt_predictives_bregman_fbar)
+    metrics[f"{key_prefix}rank_correlation_bregman_eu_pu_dual_bma"] = float(
+        spearmanr(gt_epistemics_bregman, gt_predictives_bregman_dual_bma)
     )
-    metrics[f"{key_prefix}correlation_bregman_eu_pu_fbar"] = float(
-        pearsonr(gt_epistemics_bregman, gt_predictives_bregman_fbar)
+    metrics[f"{key_prefix}correlation_bregman_eu_pu_dual_bma"] = float(
+        pearsonr(gt_epistemics_bregman, gt_predictives_bregman_dual_bma)
     )
 
     metrics[f"{key_prefix}rank_correlation_bregman_eu_pu_bma"] = float(
@@ -2150,11 +2183,11 @@ def evaluate_on_correlation_of_decompositions(
         pearsonr(gt_epistemics_bregman, gt_predictives_bregman_bma)
     )
 
-    metrics[f"{key_prefix}rank_correlation_bregman_eu_total_pu_fbar"] = float(
-        spearmanr(gt_epistemics_bregman, gt_total_predictives_bregman_fbar)
+    metrics[f"{key_prefix}rank_correlation_bregman_eu_total_pu_dual_bma"] = float(
+        spearmanr(gt_epistemics_bregman, gt_total_predictives_bregman_dual_bma)
     )
-    metrics[f"{key_prefix}correlation_bregman_eu_total_pu_fbar"] = float(
-        pearsonr(gt_epistemics_bregman, gt_total_predictives_bregman_fbar)
+    metrics[f"{key_prefix}correlation_bregman_eu_total_pu_dual_bma"] = float(
+        pearsonr(gt_epistemics_bregman, gt_total_predictives_bregman_dual_bma)
     )
 
     metrics[f"{key_prefix}rank_correlation_bregman_eu_total_pu_bma"] = float(
@@ -2175,7 +2208,7 @@ def forward_general_model_on_loader(
     device: torch.device,
     storage_device: torch.device,
     args: argparse.Namespace,
-    log_fbars: Tensor,
+    log_dual_bmas: Tensor,
     log_bmas: Tensor,
     gt_epistemics_bregman: Tensor,
     time_forward_m: AverageMeter,
@@ -2183,9 +2216,9 @@ def forward_general_model_on_loader(
     expected_entropies_plus_expected_divergences: Tensor,
     one_minus_expected_max_probs: Tensor,
     entropies_of_bma: Tensor,
-    entropies_of_fbar: Tensor,
+    entropies_of_dual_bma: Tensor,
     one_minus_max_probs_of_bma: Tensor,
-    one_minus_max_probs_of_fbar: Tensor,
+    one_minus_max_probs_of_dual_bma: Tensor,
     jensen_shannon_divergences: Tensor,
     dempster_shafer_values: Tensor,
     expected_variances_of_probs: Tensor,
@@ -2198,11 +2231,11 @@ def forward_general_model_on_loader(
     expected_variances_of_internal_probs: Tensor,
     expected_variances_of_internal_logits: Tensor,
     gt_aleatorics_bregman: Tensor,
-    gt_biases_bregman_fbar: Tensor,
+    gt_biases_bregman_dual_bma: Tensor,
     gt_biases_bregman_bma: Tensor,
-    gt_predictives_bregman_fbar: Tensor,
+    gt_predictives_bregman_dual_bma: Tensor,
     gt_predictives_bregman_bma: Tensor,
-    gt_total_predictives_bregman_fbar: Tensor,
+    gt_total_predictives_bregman_dual_bma: Tensor,
     gt_total_predictives_bregman_bma: Tensor,
     gt_soft_labels: Tensor,
     gt_hard_labels: Tensor,
@@ -2218,7 +2251,7 @@ def forward_general_model_on_loader(
         device: The device to use for computation.
         storage_device: The device to use for storing results.
         args: Additional arguments.
-        log_fbars: Tensor to store log f-bar values.
+        log_dual_bmas: Tensor to store log dual BMA values.
         log_bmas: Tensor to store log BMA values.
         gt_epistemics_bregman: Tensor to store ground truth epistemic uncertainties.
         time_forward_m: AverageMeter to track forward pass time.
@@ -2228,9 +2261,10 @@ def forward_general_model_on_loader(
         one_minus_expected_max_probs: Tensor to store 1 minus expected max
             probabilities.
         entropies_of_bma: Tensor to store entropies of BMA.
-        entropies_of_fbar: Tensor to store entropies of f-bar.
+        entropies_of_dual_bma: Tensor to store entropies of the dual BMA.
         one_minus_max_probs_of_bma: Tensor to store 1 minus max probabilities of BMA.
-        one_minus_max_probs_of_fbar: Tensor to store 1 minus max probabilities of f-bar.
+        one_minus_max_probs_of_dual_bma: Tensor to store 1 minus max probabilities of
+            the dual BMA.
         jensen_shannon_divergences: Tensor to store Jensen-Shannon divergences.
         dempster_shafer_values: Tensor to store Dempster-Shafer values.
         expected_variances_of_probs: Tensor to store expected variances of
@@ -2246,14 +2280,15 @@ def forward_general_model_on_loader(
         expected_variances_of_internal_logits: Tensor to store expected variances of
             internal logits.
         gt_aleatorics_bregman: Tensor to store ground truth aleatoric uncertainties.
-        gt_biases_bregman_fbar: Tensor to store ground truth Bregman biases for f-bar.
+        gt_biases_bregman_dual_bma: Tensor to store ground truth Bregman biases for the
+            dual BMA.
         gt_biases_bregman_bma: Tensor to store ground truth Bregman biases for BMA.
-        gt_predictives_bregman_fbar: Tensor to store ground truth Bregman predictive
-            uncertainties for f-bar.
+        gt_predictives_bregman_dual_bma: Tensor to store ground truth Bregman predictive
+            uncertainties for the dual BMA.
         gt_predictives_bregman_bma: Tensor to store ground truth Bregman predictive
             uncertainties for BMA.
-        gt_total_predictives_bregman_fbar: Tensor to store ground truth Bregman total
-            predictive uncertainties for f-bar.
+        gt_total_predictives_bregman_dual_bma: Tensor to store ground truth Bregman
+            total predictive uncertainties for the dual BMA.
         gt_total_predictives_bregman_bma: Tensor to store ground truth Bregman total
             predictive uncertainties for BMA.
         gt_soft_labels: Tensor to store ground truth soft labels.
@@ -2303,7 +2338,7 @@ def forward_general_model_on_loader(
             inference_dict=inference_dict,
             indices=indices,
             batch_size=batch_size,
-            log_fbars=log_fbars,
+            log_dual_bmas=log_dual_bmas,
             log_bmas=log_bmas,
             gt_epistemics_bregman=gt_epistemics_bregman,
             time_forward_m=time_forward_m,
@@ -2311,9 +2346,9 @@ def forward_general_model_on_loader(
             expected_entropies_plus_expected_divergences=expected_entropies_plus_expected_divergences,
             one_minus_expected_max_probs=one_minus_expected_max_probs,
             entropies_of_bma=entropies_of_bma,
-            entropies_of_fbar=entropies_of_fbar,
+            entropies_of_dual_bma=entropies_of_dual_bma,
             one_minus_max_probs_of_bma=one_minus_max_probs_of_bma,
-            one_minus_max_probs_of_fbar=one_minus_max_probs_of_fbar,
+            one_minus_max_probs_of_dual_bma=one_minus_max_probs_of_dual_bma,
             jensen_shannon_divergences=jensen_shannon_divergences,
             dempster_shafer_values=dempster_shafer_values,
             expected_variances_of_probs=expected_variances_of_probs,
@@ -2364,24 +2399,24 @@ def forward_general_model_on_loader(
             prob = prob.to(storage_device)
             gt_aleatorics_bregman[indices] = entropy(prob)
 
-        log_fbar = inference_dict["log_fbar"]
+        log_dual_bma = inference_dict["log_dual_bma"]
         log_bma = inference_dict["log_bma"]
         if is_soft_dataset:
             log_prob = prob.log()
             min_real = torch.finfo(log_prob.dtype).min
             log_prob = torch.clamp(log_prob, min=min_real)
 
-            gt_biases_bregman_fbar[indices] = kl_divergence(log_prob, log_fbar)
+            gt_biases_bregman_dual_bma[indices] = kl_divergence(log_prob, log_dual_bma)
             gt_biases_bregman_bma[indices] = kl_divergence(log_prob, log_bma)
-            gt_predictives_bregman_fbar[indices] = (
-                gt_aleatorics_bregman[indices] + gt_biases_bregman_fbar[indices]
+            gt_predictives_bregman_dual_bma[indices] = (
+                gt_aleatorics_bregman[indices] + gt_biases_bregman_dual_bma[indices]
             )
             gt_predictives_bregman_bma[indices] = (
                 gt_aleatorics_bregman[indices] + gt_biases_bregman_bma[indices]
             )
-            gt_total_predictives_bregman_fbar[indices] = (
+            gt_total_predictives_bregman_dual_bma[indices] = (
                 gt_aleatorics_bregman[indices]
-                + gt_biases_bregman_fbar[indices]
+                + gt_biases_bregman_dual_bma[indices]
                 + gt_epistemics_bregman[indices]
             )
             gt_total_predictives_bregman_bma[indices] = (
@@ -2395,14 +2430,14 @@ def forward_general_model_on_loader(
         else:
             gt_hard_labels_original[indices] = label.to(storage_device)
             gt_hard_labels[indices] = label.to(storage_device)
-            gt_predictives_bregman_fbar[indices] = F.cross_entropy(
-                log_fbar, label.to(storage_device)
+            gt_predictives_bregman_dual_bma[indices] = F.cross_entropy(
+                log_dual_bma, label.to(storage_device)
             )
             gt_predictives_bregman_bma[indices] = F.cross_entropy(
                 log_bma, label.to(storage_device)
             )
-            gt_total_predictives_bregman_fbar[indices] = F.cross_entropy(
-                log_fbar, label.to(storage_device)
+            gt_total_predictives_bregman_dual_bma[indices] = F.cross_entropy(
+                log_dual_bma, label.to(storage_device)
             )
             gt_total_predictives_bregman_bma[indices] = F.cross_entropy(
                 log_bma, label.to(storage_device)
@@ -2420,7 +2455,7 @@ def forward_deep_ensemble_on_loader(
     storage_device: torch.device,
     num_samples: int,
     args: argparse.Namespace,
-    log_fbars: Tensor,
+    log_dual_bmas: Tensor,
     log_bmas: Tensor,
     gt_epistemics_bregman: Tensor,
     time_forward_m: AverageMeter,
@@ -2428,19 +2463,19 @@ def forward_deep_ensemble_on_loader(
     expected_entropies_plus_expected_divergences: Tensor,
     one_minus_expected_max_probs: Tensor,
     entropies_of_bma: Tensor,
-    entropies_of_fbar: Tensor,
+    entropies_of_dual_bma: Tensor,
     one_minus_max_probs_of_bma: Tensor,
-    one_minus_max_probs_of_fbar: Tensor,
+    one_minus_max_probs_of_dual_bma: Tensor,
     jensen_shannon_divergences: Tensor,
     dempster_shafer_values: Tensor,
     expected_variances_of_probs: Tensor,
     expected_variances_of_logits: Tensor,
     gt_aleatorics_bregman: Tensor,
-    gt_biases_bregman_fbar: Tensor,
+    gt_biases_bregman_dual_bma: Tensor,
     gt_biases_bregman_bma: Tensor,
-    gt_predictives_bregman_fbar: Tensor,
+    gt_predictives_bregman_dual_bma: Tensor,
     gt_predictives_bregman_bma: Tensor,
-    gt_total_predictives_bregman_fbar: Tensor,
+    gt_total_predictives_bregman_dual_bma: Tensor,
     gt_total_predictives_bregman_bma: Tensor,
     gt_soft_labels: Tensor,
     gt_hard_labels: Tensor,
@@ -2460,7 +2495,7 @@ def forward_deep_ensemble_on_loader(
         storage_device: The device to use for storing results.
         num_samples: Number of samples.
         args: Additional arguments.
-        log_fbars: Tensor to store log f-bar values.
+        log_dual_bmas: Tensor to store log dual BMA values.
         log_bmas: Tensor to store log BMA values.
         gt_epistemics_bregman: Tensor to store ground truth epistemic uncertainties.
         time_forward_m: AverageMeter to track forward pass time.
@@ -2470,23 +2505,25 @@ def forward_deep_ensemble_on_loader(
         one_minus_expected_max_probs: Tensor to store 1 minus expected max
             probabilities.
         entropies_of_bma: Tensor to store entropies of BMA.
-        entropies_of_fbar: Tensor to store entropies of f-bar.
+        entropies_of_dual_bma: Tensor to store entropies of the dual BMA.
         one_minus_max_probs_of_bma: Tensor to store 1 minus max probabilities of BMA.
-        one_minus_max_probs_of_fbar: Tensor to store 1 minus max probabilities of f-bar.
+        one_minus_max_probs_of_dual_bma: Tensor to store 1 minus max probabilities of
+            the dual BMA.
         jensen_shannon_divergences: Tensor to store Jensen-Shannon divergences.
         dempster_shafer_values: Tensor to store Dempster-Shafer values.
         expected_variances_of_probs: Tensor to store expected variances of
             probabilities.
         expected_variances_of_logits: Tensor to store expected variances of logits.
         gt_aleatorics_bregman: Tensor to store ground truth aleatoric uncertainties.
-        gt_biases_bregman_fbar: Tensor to store ground truth Bregman biases for f-bar.
+        gt_biases_bregman_dual_bma: Tensor to store ground truth Bregman biases for
+            the dual BMA.
         gt_biases_bregman_bma: Tensor to store ground truth Bregman biases for BMA.
-        gt_predictives_bregman_fbar: Tensor to store ground truth Bregman predictive
-            uncertainties for f-bar.
+        gt_predictives_bregman_dual_bma: Tensor to store ground truth Bregman predictive
+            uncertainties for the dual BMA.
         gt_predictives_bregman_bma: Tensor to store ground truth Bregman predictive
             uncertainties for BMA.
-        gt_total_predictives_bregman_fbar: Tensor to store ground truth Bregman total
-            predictive uncertainties for f-bar.
+        gt_total_predictives_bregman_dual_bma: Tensor to store ground truth Bregman
+            total predictive uncertainties for the dual BMA.
         gt_total_predictives_bregman_bma: Tensor to store ground truth Bregman total
             predictive uncertainties for BMA.
         gt_soft_labels: Tensor to store ground truth soft labels.
@@ -2553,7 +2590,7 @@ def forward_deep_ensemble_on_loader(
             inference_dict=inference_dict,
             indices=indices,
             batch_size=batch_size,
-            log_fbars=log_fbars,
+            log_dual_bmas=log_dual_bmas,
             log_bmas=log_bmas,
             gt_epistemics_bregman=gt_epistemics_bregman,
             time_forward_m=time_forward_m,
@@ -2561,9 +2598,9 @@ def forward_deep_ensemble_on_loader(
             expected_entropies_plus_expected_divergences=expected_entropies_plus_expected_divergences,
             one_minus_expected_max_probs=one_minus_expected_max_probs,
             entropies_of_bma=entropies_of_bma,
-            entropies_of_fbar=entropies_of_fbar,
+            entropies_of_dual_bma=entropies_of_dual_bma,
             one_minus_max_probs_of_bma=one_minus_max_probs_of_bma,
-            one_minus_max_probs_of_fbar=one_minus_max_probs_of_fbar,
+            one_minus_max_probs_of_dual_bma=one_minus_max_probs_of_dual_bma,
             jensen_shannon_divergences=jensen_shannon_divergences,
             dempster_shafer_values=dempster_shafer_values,
             expected_variances_of_probs=expected_variances_of_probs,
@@ -2579,23 +2616,23 @@ def forward_deep_ensemble_on_loader(
             prob = prob.to(storage_device)
             gt_aleatorics_bregman[indices] = entropy(prob)
 
-        log_fbar = inference_dict["log_fbar"]
+        log_dual_bma = inference_dict["log_dual_bma"]
         log_bma = inference_dict["log_bma"]
         if is_soft_dataset:
             log_prob = prob.log()
             min_real = torch.finfo(log_prob.dtype).min
             log_prob = torch.clamp(log_prob, min=min_real)
-            gt_biases_bregman_fbar[indices] = kl_divergence(log_prob, log_fbar)
+            gt_biases_bregman_dual_bma[indices] = kl_divergence(log_prob, log_dual_bma)
             gt_biases_bregman_bma[indices] = kl_divergence(log_prob, log_bma)
-            gt_predictives_bregman_fbar[indices] = (
-                gt_aleatorics_bregman[indices] + gt_biases_bregman_fbar[indices]
+            gt_predictives_bregman_dual_bma[indices] = (
+                gt_aleatorics_bregman[indices] + gt_biases_bregman_dual_bma[indices]
             )
             gt_predictives_bregman_bma[indices] = (
                 gt_aleatorics_bregman[indices] + gt_biases_bregman_bma[indices]
             )
-            gt_total_predictives_bregman_fbar[indices] = (
+            gt_total_predictives_bregman_dual_bma[indices] = (
                 gt_aleatorics_bregman[indices]
-                + gt_biases_bregman_fbar[indices]
+                + gt_biases_bregman_dual_bma[indices]
                 + gt_epistemics_bregman[indices]
             )
             gt_total_predictives_bregman_bma[indices] = (
@@ -2611,10 +2648,12 @@ def forward_deep_ensemble_on_loader(
             gt_hard_labels_original[indices] = label
             gt_hard_labels[indices] = label
 
-            gt_predictives_bregman_fbar[indices] = F.cross_entropy(log_fbar, label)
+            gt_predictives_bregman_dual_bma[indices] = F.cross_entropy(
+                log_dual_bma, label
+            )
             gt_predictives_bregman_bma[indices] = F.cross_entropy(log_bma, label)
-            gt_total_predictives_bregman_fbar[indices] = F.cross_entropy(
-                log_fbar, label
+            gt_total_predictives_bregman_dual_bma[indices] = F.cross_entropy(
+                log_dual_bma, label
             )
             gt_total_predictives_bregman_bma[indices] = F.cross_entropy(log_bma, label)
 
@@ -2631,31 +2670,33 @@ def calc_correctnesses(
         targets: Dictionary of targets to update with correctness metrics.
         is_soft: Whether the dataset uses soft labels.
     """
-    predicted_labels_fbar = log_probs["log_fbars"].argmax(dim=1)
+    predicted_labels_dual_bma = log_probs["log_dual_bmas"].argmax(dim=1)
 
-    targets["gt_hard_fbar_correctnesses_original"] = predicted_labels_fbar.eq(
+    targets["gt_hard_dual_bma_correctnesses_original"] = predicted_labels_dual_bma.eq(
         targets["gt_hard_labels_original"]
     ).int()
-    targets["gt_hard_fbar_correctnesses"] = predicted_labels_fbar.eq(
+    targets["gt_hard_dual_bma_correctnesses"] = predicted_labels_dual_bma.eq(
         targets["gt_hard_labels"]
     ).int()
 
-    _, predicted_labels_fbar_top5 = torch.topk(log_probs["log_fbars"], 5, dim=1)
+    _, predicted_labels_dual_bma_top5 = torch.topk(log_probs["log_dual_bmas"], 5, dim=1)
     expanded_gt_hard_labels_original = (
         targets["gt_hard_labels_original"]
         .unsqueeze(dim=1)
-        .expand_as(predicted_labels_fbar_top5)
+        .expand_as(predicted_labels_dual_bma_top5)
     )
-    targets["gt_hard_fbar_correctnesses_original_top5"] = (
-        predicted_labels_fbar_top5.eq(expanded_gt_hard_labels_original)
+    targets["gt_hard_dual_bma_correctnesses_original_top5"] = (
+        predicted_labels_dual_bma_top5.eq(expanded_gt_hard_labels_original)
         .max(dim=1)[0]
         .int()
     )
     expanded_gt_hard_labels = (
-        targets["gt_hard_labels"].unsqueeze(dim=1).expand_as(predicted_labels_fbar_top5)
+        targets["gt_hard_labels"]
+        .unsqueeze(dim=1)
+        .expand_as(predicted_labels_dual_bma_top5)
     )
-    targets["gt_hard_fbar_correctnesses_top5"] = (
-        predicted_labels_fbar_top5.eq(expanded_gt_hard_labels).max(dim=1)[0].int()
+    targets["gt_hard_dual_bma_correctnesses_top5"] = (
+        predicted_labels_dual_bma_top5.eq(expanded_gt_hard_labels).max(dim=1)[0].int()
     )
 
     predicted_labels_bma = log_probs["log_bmas"].argmax(dim=1)
@@ -2677,18 +2718,18 @@ def calc_correctnesses(
     )
 
     if is_soft:
-        targets["gt_soft_fbar_correctnesses"] = (
+        targets["gt_soft_dual_bma_correctnesses"] = (
             targets["gt_soft_labels"]
-            .gather(dim=1, index=predicted_labels_fbar.unsqueeze(dim=1))
+            .gather(dim=1, index=predicted_labels_dual_bma.unsqueeze(dim=1))
             .squeeze(dim=1)
         )
 
-        indexed_gt_soft_labels_fbar = targets["gt_soft_labels"].gather(
-            dim=1, index=predicted_labels_fbar_top5
+        indexed_gt_soft_labels_dual_bma = targets["gt_soft_labels"].gather(
+            dim=1, index=predicted_labels_dual_bma_top5
         )
-        targets["gt_soft_fbar_correctnesses_top5"] = indexed_gt_soft_labels_fbar.max(
-            dim=1
-        )[0]
+        targets["gt_soft_dual_bma_correctnesses_top5"] = (
+            indexed_gt_soft_labels_dual_bma.max(dim=1)[0]
+        )
 
         targets["gt_soft_bma_correctnesses"] = (
             targets["gt_soft_labels"]
@@ -2796,9 +2837,9 @@ def get_bundle(
         estimates["gt_aleatorics_bregman"] = gt_aleatorics_bregman
 
         # Bregman Bias
-        gt_biases_bregman_fbar = torch.empty(num_samples, device=storage_device)
-        targets["gt_biases_bregman_fbar"] = gt_biases_bregman_fbar
-        estimates["gt_biases_bregman_fbar"] = gt_biases_bregman_fbar
+        gt_biases_bregman_dual_bma = torch.empty(num_samples, device=storage_device)
+        targets["gt_biases_bregman_dual_bma"] = gt_biases_bregman_dual_bma
+        estimates["gt_biases_bregman_dual_bma"] = gt_biases_bregman_dual_bma
 
         gt_biases_bregman_bma = torch.empty(num_samples, device=storage_device)
         targets["gt_biases_bregman_bma"] = gt_biases_bregman_bma
@@ -2806,13 +2847,19 @@ def get_bundle(
 
     # Estimate containers
     # Predictive uncertainty (Bregman)
-    gt_predictives_bregman_fbar = torch.empty(num_samples, device=storage_device)
-    targets["gt_predictives_bregman_fbar"] = gt_predictives_bregman_fbar
-    estimates["gt_predictives_bregman_fbar"] = gt_predictives_bregman_fbar
+    gt_predictives_bregman_dual_bma = torch.empty(num_samples, device=storage_device)
+    targets["gt_predictives_bregman_dual_bma"] = gt_predictives_bregman_dual_bma
+    estimates["gt_predictives_bregman_dual_bma"] = gt_predictives_bregman_dual_bma
 
-    gt_total_predictives_bregman_fbar = torch.empty(num_samples, device=storage_device)
-    targets["gt_total_predictives_bregman_fbar"] = gt_total_predictives_bregman_fbar
-    estimates["gt_total_predictives_bregman_fbar"] = gt_total_predictives_bregman_fbar
+    gt_total_predictives_bregman_dual_bma = torch.empty(
+        num_samples, device=storage_device
+    )
+    targets["gt_total_predictives_bregman_dual_bma"] = (
+        gt_total_predictives_bregman_dual_bma
+    )
+    estimates["gt_total_predictives_bregman_dual_bma"] = (
+        gt_total_predictives_bregman_dual_bma
+    )
 
     gt_predictives_bregman_bma = torch.empty(num_samples, device=storage_device)
     targets["gt_predictives_bregman_bma"] = gt_predictives_bregman_bma
@@ -2830,8 +2877,8 @@ def get_bundle(
     time_forward_m = AverageMeter()
     times["time_forward_m"] = time_forward_m
 
-    log_fbars = torch.empty(num_samples, model.num_classes, device=storage_device)
-    log_probs["log_fbars"] = log_fbars
+    log_dual_bmas = torch.empty(num_samples, model.num_classes, device=storage_device)
+    log_probs["log_dual_bmas"] = log_dual_bmas
 
     log_bmas = torch.empty(num_samples, model.num_classes, device=storage_device)
     log_probs["log_bmas"] = log_bmas
@@ -2845,12 +2892,12 @@ def get_bundle(
     # Predictive Uncertainty
     entropies_of_bma = torch.empty(num_samples, device=storage_device)
     estimates["entropies_of_bma"] = entropies_of_bma
-    entropies_of_fbar = torch.empty(num_samples, device=storage_device)
-    estimates["entropies_of_fbar"] = entropies_of_fbar
+    entropies_of_dual_bma = torch.empty(num_samples, device=storage_device)
+    estimates["entropies_of_dual_bma"] = entropies_of_dual_bma
     one_minus_max_probs_of_bma = torch.empty(num_samples, device=storage_device)
     estimates["one_minus_max_probs_of_bma"] = one_minus_max_probs_of_bma
-    one_minus_max_probs_of_fbar = torch.empty(num_samples, device=storage_device)
-    estimates["one_minus_max_probs_of_fbar"] = one_minus_max_probs_of_fbar
+    one_minus_max_probs_of_dual_bma = torch.empty(num_samples, device=storage_device)
+    estimates["one_minus_max_probs_of_dual_bma"] = one_minus_max_probs_of_dual_bma
     expected_entropies_plus_expected_divergences = torch.empty(
         num_samples, device=storage_device
     )
@@ -2922,7 +2969,7 @@ def get_bundle(
             storage_device=storage_device,
             num_samples=num_samples,
             args=args,
-            log_fbars=log_fbars,
+            log_dual_bmas=log_dual_bmas,
             log_bmas=log_bmas,
             gt_epistemics_bregman=gt_epistemics_bregman,
             time_forward_m=time_forward_m,
@@ -2930,19 +2977,19 @@ def get_bundle(
             expected_entropies_plus_expected_divergences=expected_entropies_plus_expected_divergences,
             one_minus_expected_max_probs=one_minus_expected_max_probs,
             entropies_of_bma=entropies_of_bma,
-            entropies_of_fbar=entropies_of_fbar,
+            entropies_of_dual_bma=entropies_of_dual_bma,
             one_minus_max_probs_of_bma=one_minus_max_probs_of_bma,
-            one_minus_max_probs_of_fbar=one_minus_max_probs_of_fbar,
+            one_minus_max_probs_of_dual_bma=one_minus_max_probs_of_dual_bma,
             jensen_shannon_divergences=jensen_shannon_divergences,
             dempster_shafer_values=dempster_shafer_values,
             expected_variances_of_probs=expected_variances_of_probs,
             expected_variances_of_logits=expected_variances_of_logits,
             gt_aleatorics_bregman=gt_aleatorics_bregman,
-            gt_biases_bregman_fbar=gt_biases_bregman_fbar,
+            gt_biases_bregman_dual_bma=gt_biases_bregman_dual_bma,
             gt_biases_bregman_bma=gt_biases_bregman_bma,
-            gt_predictives_bregman_fbar=gt_predictives_bregman_fbar,
+            gt_predictives_bregman_dual_bma=gt_predictives_bregman_dual_bma,
             gt_predictives_bregman_bma=gt_predictives_bregman_bma,
-            gt_total_predictives_bregman_fbar=gt_total_predictives_bregman_fbar,
+            gt_total_predictives_bregman_dual_bma=gt_total_predictives_bregman_dual_bma,
             gt_total_predictives_bregman_bma=gt_total_predictives_bregman_bma,
             gt_soft_labels=gt_soft_labels,
             gt_hard_labels=gt_hard_labels,
@@ -2957,7 +3004,7 @@ def get_bundle(
             device=device,
             storage_device=storage_device,
             args=args,
-            log_fbars=log_fbars,
+            log_dual_bmas=log_dual_bmas,
             log_bmas=log_bmas,
             gt_epistemics_bregman=gt_epistemics_bregman,
             time_forward_m=time_forward_m,
@@ -2965,9 +3012,9 @@ def get_bundle(
             expected_entropies_plus_expected_divergences=expected_entropies_plus_expected_divergences,
             one_minus_expected_max_probs=one_minus_expected_max_probs,
             entropies_of_bma=entropies_of_bma,
-            entropies_of_fbar=entropies_of_fbar,
+            entropies_of_dual_bma=entropies_of_dual_bma,
             one_minus_max_probs_of_bma=one_minus_max_probs_of_bma,
-            one_minus_max_probs_of_fbar=one_minus_max_probs_of_fbar,
+            one_minus_max_probs_of_dual_bma=one_minus_max_probs_of_dual_bma,
             jensen_shannon_divergences=jensen_shannon_divergences,
             dempster_shafer_values=dempster_shafer_values,
             expected_variances_of_probs=expected_variances_of_probs,
@@ -2980,11 +3027,11 @@ def get_bundle(
             expected_variances_of_internal_probs=expected_variances_of_internal_probs,
             expected_variances_of_internal_logits=expected_variances_of_internal_logits,
             gt_aleatorics_bregman=gt_aleatorics_bregman,
-            gt_biases_bregman_fbar=gt_biases_bregman_fbar,
+            gt_biases_bregman_dual_bma=gt_biases_bregman_dual_bma,
             gt_biases_bregman_bma=gt_biases_bregman_bma,
-            gt_predictives_bregman_fbar=gt_predictives_bregman_fbar,
+            gt_predictives_bregman_dual_bma=gt_predictives_bregman_dual_bma,
             gt_predictives_bregman_bma=gt_predictives_bregman_bma,
-            gt_total_predictives_bregman_fbar=gt_total_predictives_bregman_fbar,
+            gt_total_predictives_bregman_dual_bma=gt_total_predictives_bregman_dual_bma,
             gt_total_predictives_bregman_bma=gt_total_predictives_bregman_bma,
             gt_soft_labels=gt_soft_labels,
             gt_hard_labels=gt_hard_labels,
@@ -3103,8 +3150,8 @@ def convert_inference_dict_dirichlet(
     log_bma = mean_alphas.log().clamp(min=min_real)
     converted_inference_dict["log_bma"] = log_bma
 
-    log_fbar = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
-    converted_inference_dict["log_fbar"] = log_fbar
+    log_dual_bma = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
+    converted_inference_dict["log_dual_bma"] = log_dual_bma
 
     digamma_term = torch.digamma(alphas + 1) - torch.digamma(sum_alphas + 1).unsqueeze(
         1
@@ -3112,7 +3159,7 @@ def convert_inference_dict_dirichlet(
     expected_entropy = -mean_alphas.mul(digamma_term).sum(dim=1)  # [B]
     converted_inference_dict["expected_entropy"] = expected_entropy
 
-    expected_divergence = kl_divergence(log_fbar, log_probs.permute(1, 0, 2)).mean(
+    expected_divergence = kl_divergence(log_dual_bma, log_probs.permute(1, 0, 2)).mean(
         dim=0
     )
     converted_inference_dict["expected_divergence"] = expected_divergence
@@ -3134,16 +3181,16 @@ def convert_inference_dict_dirichlet(
     entropy_of_bma = entropy(mean_alphas)
     converted_inference_dict["entropy_of_bma"] = entropy_of_bma
 
-    fbar = log_fbar.exp()
+    dual_bma = log_dual_bma.exp()
 
-    entropy_of_fbar = entropy(fbar)
-    converted_inference_dict["entropy_of_fbar"] = entropy_of_fbar
+    entropy_of_dual_bma = entropy(dual_bma)
+    converted_inference_dict["entropy_of_dual_bma"] = entropy_of_dual_bma
 
     max_prob_of_bma = mean_alphas.max(dim=-1)[0]
     converted_inference_dict["max_prob_of_bma"] = max_prob_of_bma
 
-    max_prob_of_fbar = fbar.max(dim=-1)[0]
-    converted_inference_dict["max_prob_of_fbar"] = max_prob_of_fbar
+    max_prob_of_dual_bma = dual_bma.max(dim=-1)[0]
+    converted_inference_dict["max_prob_of_dual_bma"] = max_prob_of_dual_bma
 
     jensen_shannon_divergence = entropy_of_bma - expected_entropy
     converted_inference_dict["jensen_shannon_divergence"] = jensen_shannon_divergence
@@ -3185,10 +3232,10 @@ def convert_inference_dict_general(
     else:
         converted_inference_dict["expected_variance_of_probs"] = 0.0
 
-    log_fbar = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
+    log_dual_bma = F.log_softmax(log_probs.mean(dim=1), dim=-1)  # [B, C]
 
-    fbar = log_fbar.exp()
-    converted_inference_dict["log_fbar"] = log_fbar
+    dual_bma = log_dual_bma.exp()
+    converted_inference_dict["log_dual_bma"] = log_dual_bma
 
     bma = probs.mean(dim=1)  # [B, C]
 
@@ -3199,7 +3246,7 @@ def convert_inference_dict_general(
     expected_entropy = entropy(probs).mean(dim=-1)
     converted_inference_dict["expected_entropy"] = expected_entropy
 
-    expected_divergence = kl_divergence(log_fbar, log_probs.permute(1, 0, 2)).mean(
+    expected_divergence = kl_divergence(log_dual_bma, log_probs.permute(1, 0, 2)).mean(
         dim=0
     )
     converted_inference_dict["expected_divergence"] = expected_divergence
@@ -3211,14 +3258,14 @@ def convert_inference_dict_general(
 
     converted_inference_dict["entropy_of_bma"] = entropy_of_bma
 
-    entropy_of_fbar = entropy(fbar)
-    converted_inference_dict["entropy_of_fbar"] = entropy_of_fbar
+    entropy_of_dual_bma = entropy(dual_bma)
+    converted_inference_dict["entropy_of_dual_bma"] = entropy_of_dual_bma
 
     max_prob_of_bma = bma.max(dim=-1)[0]
     converted_inference_dict["max_prob_of_bma"] = max_prob_of_bma
 
-    max_prob_of_fbar = fbar.max(dim=-1)[0]
-    converted_inference_dict["max_prob_of_fbar"] = max_prob_of_fbar
+    max_prob_of_dual_bma = dual_bma.max(dim=-1)[0]
+    converted_inference_dict["max_prob_of_dual_bma"] = max_prob_of_dual_bma
 
     jensen_shannon_divergence = entropy_of_bma - expected_entropy
     converted_inference_dict["jensen_shannon_divergence"] = jensen_shannon_divergence
@@ -3231,7 +3278,7 @@ def update_logit_based(
     inference_dict: dict[str, Tensor],
     indices: slice,
     batch_size: int,
-    log_fbars: Tensor,
+    log_dual_bmas: Tensor,
     log_bmas: Tensor,
     gt_epistemics_bregman: Tensor,
     time_forward_m: AverageMeter,
@@ -3239,9 +3286,9 @@ def update_logit_based(
     expected_entropies_plus_expected_divergences: Tensor,
     one_minus_expected_max_probs: Tensor,
     entropies_of_bma: Tensor,
-    entropies_of_fbar: Tensor,
+    entropies_of_dual_bma: Tensor,
     one_minus_max_probs_of_bma: Tensor,
-    one_minus_max_probs_of_fbar: Tensor,
+    one_minus_max_probs_of_dual_bma: Tensor,
     jensen_shannon_divergences: Tensor,
     dempster_shafer_values: Tensor,
     expected_variances_of_probs: Tensor,
@@ -3253,7 +3300,7 @@ def update_logit_based(
         inference_dict: Dictionary containing inference results.
         indices: Slice object for indexing tensors.
         batch_size: Size of the current batch.
-        log_fbars: Tensor to store log f-bar values.
+        log_dual_bmas: Tensor to store log dual BMA values.
         log_bmas: Tensor to store log BMA values.
         gt_epistemics_bregman: Tensor to store ground truth epistemic uncertainties.
         time_forward_m: AverageMeter to track forward pass time.
@@ -3263,16 +3310,17 @@ def update_logit_based(
         one_minus_expected_max_probs: Tensor to store 1 minus expected max
             probabilities.
         entropies_of_bma: Tensor to store entropies of BMA.
-        entropies_of_fbar: Tensor to store entropies of f-bar.
+        entropies_of_dual_bma: Tensor to store entropies of the dual BMA.
         one_minus_max_probs_of_bma: Tensor to store 1 minus max probabilities of BMA.
-        one_minus_max_probs_of_fbar: Tensor to store 1 minus max probabilities of f-bar.
+        one_minus_max_probs_of_dual_bma: Tensor to store 1 minus max probabilities of
+            the dual BMA.
         jensen_shannon_divergences: Tensor to store Jensen-Shannon divergences.
         dempster_shafer_values: Tensor to store Dempster-Shafer values.
         expected_variances_of_probs: Tensor to store expected variances of
             probabilities.
         expected_variances_of_logits: Tensor to store expected variances of logits.
     """
-    log_fbars[indices] = inference_dict["log_fbar"]
+    log_dual_bmas[indices] = inference_dict["log_dual_bma"]
     log_bmas[indices] = inference_dict["log_bma"]
     gt_epistemics_bregman[indices] = inference_dict["expected_divergence"]
 
@@ -3284,9 +3332,11 @@ def update_logit_based(
     )
     one_minus_expected_max_probs[indices] = 1 - inference_dict["expected_max_prob"]
     entropies_of_bma[indices] = inference_dict["entropy_of_bma"]
-    entropies_of_fbar[indices] = inference_dict["entropy_of_fbar"]
+    entropies_of_dual_bma[indices] = inference_dict["entropy_of_dual_bma"]
     one_minus_max_probs_of_bma[indices] = 1 - inference_dict["max_prob_of_bma"]
-    one_minus_max_probs_of_fbar[indices] = 1 - inference_dict["max_prob_of_fbar"]
+    one_minus_max_probs_of_dual_bma[indices] = (
+        1 - inference_dict["max_prob_of_dual_bma"]
+    )
     jensen_shannon_divergences[indices] = inference_dict["jensen_shannon_divergence"]
     dempster_shafer_values[indices] = inference_dict["dempster_shafer_value"]
     expected_variances_of_probs[indices] = inference_dict["expected_variance_of_probs"]
