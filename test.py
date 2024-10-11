@@ -23,6 +23,7 @@ from untangle.utils import (
     excess_area_under_risk_coverage_curve,
     get_activation,
     get_mom_dirichlet_approximation,
+    get_dirichlet,
     get_predictive,
     multiclass_brier,
     multiclass_log_probability,
@@ -1386,6 +1387,7 @@ def convert_inference_res(inference_res, time_forward, args):
         if link != "softmax":
             for suffix in suffixes:
                 predictive_name = f"{link}_{suffix}"
+                dirichlet_fn = get_dirichlet(predictive_name)
                 alpha = get_mom_dirichlet_approximation(mean, var, link)
                 handle_alpha(alpha, converted_inference_res, suffix)
 

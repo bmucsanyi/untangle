@@ -50,6 +50,7 @@ from .predictive import (
     get_likelihood,
     get_mom_dirichlet_approximation,
     get_predictive,
+    get_dirichlet,
 )
 from .random import set_random_seed
 from .replace import (

@@ -125,6 +125,61 @@ def probit_link_sigmoid_output(
     )
 
 
+def logit_link_normcdf_output_dirichlet(
+    mean: torch.Tensor, var: torch.Tensor
+) -> torch.Tensor:
+    return get_mom_dirichlet_approximation(
+        mean,
+        var,
+        link_function="logit",
+        output_function="normcdf",
+    )
+
+
+def logit_link_sigmoid_output_dirichlet(
+    mean: torch.Tensor, var: torch.Tensor
+) -> torch.Tensor:
+    return get_mom_dirichlet_approximation(
+        mean,
+        var,
+        link_function="logit",
+        output_function="sigmoid",
+    )
+
+
+def logit_link_sigmoid_product_output_dirichlet(
+    mean: torch.Tensor, var: torch.Tensor
+) -> torch.Tensor:
+    return get_mom_dirichlet_approximation(
+        mean,
+        var,
+        link_function="logit",
+        output_function="sigmoid_product",
+    )
+
+
+def probit_link_normcdf_output_dirichlet(
+    mean: torch.Tensor, var: torch.Tensor
+) -> torch.Tensor:
+    return get_mom_dirichlet_approximation(
+        mean,
+        var,
+        link_function="probit",
+        output_function="normcdf",
+    )
+
+
+def probit_link_sigmoid_output_dirichlet(
+    mean: torch.Tensor, var: torch.Tensor
+) -> torch.Tensor:
+    return get_mom_dirichlet_approximation(
+        mean,
+        var,
+        link_function="probit",
+        output_function="sigmoid",
+    )
+
+
 def probit_link_mc(
     mean: torch.Tensor,
     var: torch.Tensor,
@@ -388,6 +443,19 @@ def get_predictive(predictive, use_correction, num_mc_samples):
         predictive_fn = partial(predictive_fn, use_correction=use_correction)
 
     return predictive_fn
+
+
+DIRICHLET_DICT = {
+    "logit_link_normcdf_output": logit_link_normcdf_output_dirichlet,
+    "logit_link_sigmoid_output": logit_link_sigmoid_output_dirichlet,
+    "logit_link_sigmoid_product_output": logit_link_sigmoid_product_output_dirichlet,
+    "probit_link_normcdf_output": probit_link_normcdf_output_dirichlet,
+    "probit_link_sigmoid_output": probit_link_sigmoid_output_dirichlet,
+}
+
+
+def get_dirichlet(dirichlet):
+    return DIRICHLET_DICT[dirichlet]
 
 
 def get_likelihood(predictive):
