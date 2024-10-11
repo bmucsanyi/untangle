@@ -159,6 +159,8 @@ def probit_predictive(
     predictives = gaussian_pushforward_mean(
         mean, var, link_function, output_function, return_logits=return_logits
     )  # [batch_size, num_classes]
+    if return_logits:
+        return predictives
     sum_predictives = torch.sum(
         predictives, dim=1, keepdim=True
     )  # [batch_size, num_classes]
@@ -249,12 +251,12 @@ def gaussian_pushforward_mean(
     return_logits: bool = False,
 ) -> torch.Tensor:
     scale = probit_scale(link_function)
-    if output_function == "normcdf":
-        logits = means / torch.sqrt(1 / scale ** (-1) + vars)
+    if "normcdf" in output_function:
+        logits = means / torch.sqrt(1 / scale + vars)
         if return_logits:
             return logits
         predictives = ndtr(logits.double()).float()
-    elif output_function == "sigmoid":
+    elif "sigmoid" in output_function:
         scale = probit_scale(link_function)
         logits = means / torch.sqrt(1 + scale * vars)
         if return_logits:
@@ -268,25 +270,45 @@ def gaussian_pushforward_mean(
 
 
 def gaussian_pushforward_second_moment(
-    means: torch.Tensor, vars: torch.Tensor, link_function: str = "probit"
+    means: torch.Tensor,
+    vars: torch.Tensor,
+    link_function: str = "probit",
+    output_function: str = "normcdf",
 ) -> torch.Tensor:
     scale = probit_scale(link_function)
-    device = means.device
+    if output_function == "sigmoid_product":
+        if link_function == "logit":
+            s = gaussian_pushforward_mean(means, vars, "logit", "sigmoid")
 
-    owens_t_input1 = (means / torch.sqrt(1 / scale ** (-1) + vars)).cpu().numpy()
-    owens_t_input2 = (1 / torch.sqrt(1 + 2 * scale * vars)).cpu().numpy()
+            second_moment = s - s * (1 - s) / torch.sqrt(
+                1 + scale * vars
+            )  # = s * (1 - s) * (1 - 1 / torch.sqrt(1 + scale * vars)) + s**2
+        else:
+            msg = "Invalid link function for sigmoid_product"
+            raise NotImplementedError(msg)
+    else:
+        device = means.device
 
-    t_term = -2 * torch.from_numpy(owens_t(owens_t_input1, owens_t_input2)).to(device)
-    p_term = gaussian_pushforward_mean(means, vars, link_function)
+        owens_t_input1 = (means / torch.sqrt(1 / scale + vars)).cpu().numpy()
+        owens_t_input2 = (1 / torch.sqrt(1 + 2 * scale * vars)).cpu().numpy()
 
-    return p_term + t_term
+        t_term = -2 * torch.from_numpy(owens_t(owens_t_input1, owens_t_input2)).to(
+            device
+        )
+        p_term = gaussian_pushforward_mean(means, vars, link_function, output_function)
+        second_moment = p_term + t_term
+
+    return second_moment
 
 
 def get_mom_beta_approximation(
-    means: torch.Tensor, vars: torch.Tensor, link_function: str = "probit"
+    means: torch.Tensor,
+    vars: torch.Tensor,
+    link_function: str = "probit",
+    output_function: str = "normcdf",
 ) -> torch.Tensor:
-    M1 = gaussian_pushforward_mean(means, vars, link_function)
-    M2 = gaussian_pushforward_second_moment(means, vars, link_function)
+    M1 = gaussian_pushforward_mean(means, vars, link_function, output_function)
+    M2 = gaussian_pushforward_second_moment(means, vars, link_function, output_function)
 
     beta_params = torch.ones((*means.shape, 2), device=means.device)
     L = (M1 - M2) / (M2 - M1**2)
@@ -296,10 +318,13 @@ def get_mom_beta_approximation(
 
 
 def get_mom_dirichlet_approximation(
-    means: torch.Tensor, vars: torch.Tensor, link_function: str = "probit"
+    means: torch.Tensor,
+    vars: torch.Tensor,
+    link_function: str = "probit",
+    output_function: str = "normcdf",
 ) -> torch.Tensor:
-    M1 = gaussian_pushforward_mean(means, vars, link_function)
-    M2 = gaussian_pushforward_second_moment(means, vars, link_function)
+    M1 = gaussian_pushforward_mean(means, vars, link_function, output_function)
+    M2 = gaussian_pushforward_second_moment(means, vars, link_function, output_function)
     S1 = torch.sum(M1, dim=-1, keepdim=True)
     S = torch.maximum(S1, torch.ones(S1.shape, device=S1.device))
     LP = torch.mean(torch.log((M1 * S - M2) / (M2 - M1**2)), dim=-1, keepdim=True)
