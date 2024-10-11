@@ -156,25 +156,9 @@ def probit_predictive(
     return_logits: bool = False,
 ) -> torch.Tensor:
     """Predictive distribution with the probit link function or approximation."""
-    if output_function == "normcdf":
-        predictives = gaussian_pushforward_mean(
-            mean, var, link_function, return_logits=return_logits
-        )  # [batch_size, num_classes]
-    elif output_function == "sigmoid":
-        scale = probit_scale(link_function)
-        logits = mean / torch.sqrt(1 + scale * var)
-
-        if return_logits:
-            return logits
-
-        predictives = F.sigmoid(logits)
-    else:
-        msg = "Invalid output function"
-        raise NotImplementedError(msg)
-
-    if return_logits:
-        return predictives
-
+    predictives = gaussian_pushforward_mean(
+        mean, var, link_function, output_function, return_logits=return_logits
+    )  # [batch_size, num_classes]
     sum_predictives = torch.sum(
         predictives, dim=1, keepdim=True
     )  # [batch_size, num_classes]
@@ -260,16 +244,27 @@ def gaussian_pushforward_mean(
     means: torch.Tensor,
     vars: torch.Tensor,
     link_function: str = "probit",
+    output_function: str = "normcdf",
     *,
     return_logits: bool = False,
 ) -> torch.Tensor:
     scale = probit_scale(link_function)
-    logits = means / torch.sqrt(1 / scale ** (-1) + vars)
+    if output_function == "normcdf":
+        logits = means / torch.sqrt(1 / scale ** (-1) + vars)
+        if return_logits:
+            return logits
+        predictives = ndtr(logits.double()).float()
+    elif output_function == "sigmoid":
+        scale = probit_scale(link_function)
+        logits = means / torch.sqrt(1 + scale * vars)
+        if return_logits:
+            return logits
+        predictives = F.sigmoid(logits)
+    else:
+        msg = "Invalid output function"
+        raise NotImplementedError(msg)
 
-    if return_logits:
-        return logits
-
-    return ndtr(logits.double()).float()
+    return predictives
 
 
 def gaussian_pushforward_second_moment(
