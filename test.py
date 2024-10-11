@@ -1388,7 +1388,7 @@ def convert_inference_res(inference_res, time_forward, args):
             for suffix in suffixes:
                 predictive_name = f"{link}_{suffix}"
                 dirichlet_fn = get_dirichlet(predictive_name)
-                alpha = get_mom_dirichlet_approximation(mean, var, link)
+                alpha = dirichlet_fn(mean, var)
                 handle_alpha(alpha, converted_inference_res, suffix)
 
     elif len(inference_res) == 1 and inference_res[0].ndim == 3:
