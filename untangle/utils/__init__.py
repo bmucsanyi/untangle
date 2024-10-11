@@ -103,6 +103,7 @@ __all__ = [
     "get_likelihood",
     "get_mom_dirichlet_approximation",
     "get_predictive",
+    "get_dirichlet",
     "get_ranks",
     "hard_target_transform",
     "init_distributed_device",
