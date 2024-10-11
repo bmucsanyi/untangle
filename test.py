@@ -1155,22 +1155,49 @@ def get_bundle(
     if isinstance(model, EDLWrapper | PostNetWrapper) or (
         is_distributional and link != "softmax"
     ):
-        log_bmas = torch.empty(num_samples, model.num_classes, device=storage_device)
-        log_probs["dirichlet_log_bmas"] = log_bmas
-        expected_entropies = torch.empty(num_samples, device=storage_device)
-        estimates["dirichlet_expected_entropies"] = expected_entropies
-        entropies_of_bma = torch.empty(num_samples, device=storage_device)
-        estimates["dirichlet_entropies_of_bma"] = entropies_of_bma
-        one_minus_max_probs_of_bma = torch.empty(num_samples, device=storage_device)
-        estimates["dirichlet_one_minus_max_probs_of_bma"] = one_minus_max_probs_of_bma
-        jensen_shannon_divergences = torch.empty(num_samples, device=storage_device)
-        estimates["dirichlet_jensen_shannon_divergences"] = jensen_shannon_divergences
+        if is_distributional:
+            if link == "probit":
+                suffixes = ["link_normcdf_output", "link_sigmoid_output", "link_mc"]
+            elif link == "logit":
+                suffixes = [
+                    "link_normcdf_output",
+                    "link_sigmoid_output",
+                    "link_sigmoid_product_output",
+                    "link_mc",
+                ]
+        else:
+            suffixes = ["edl"]
+
+        for suffix in suffixes:
+            log_bmas = torch.empty(
+                num_samples, model.num_classes, device=storage_device
+            )
+            log_probs[f"{suffix}_dirichlet_log_bmas"] = log_bmas
+            expected_entropies = torch.empty(num_samples, device=storage_device)
+            estimates[f"{suffix}_dirichlet_expected_entropies"] = expected_entropies
+            entropies_of_bma = torch.empty(num_samples, device=storage_device)
+            estimates[f"{suffix}_dirichlet_entropies_of_bma"] = entropies_of_bma
+            one_minus_max_probs_of_bma = torch.empty(num_samples, device=storage_device)
+            estimates[f"{suffix}_dirichlet_one_minus_max_probs_of_bma"] = (
+                one_minus_max_probs_of_bma
+            )
+            jensen_shannon_divergences = torch.empty(num_samples, device=storage_device)
+            estimates[f"{suffix}_dirichlet_jensen_shannon_divergences"] = (
+                jensen_shannon_divergences
+            )
 
     if is_distributional:
         if link == "softmax":
             suffixes = ["laplace_bridge", "mean_field", "mc"]
-        else:  # link in {"logit", "probit"}
-            suffixes = ["link_normcdf_output", "link_sigmoid_output", "mc"]
+        elif link == "probit":
+            suffixes = ["link_normcdf_output", "link_sigmoid_output", "link_mc"]
+        elif link == "logit":
+            suffixes = [
+                "link_normcdf_output",
+                "link_sigmoid_output",
+                "link_sigmoid_product_output",
+                "link_mc",
+            ]
 
         for suffix in suffixes:
             log_bmas = torch.empty(
@@ -1265,31 +1292,33 @@ def handle_samples(logits, converted_inference_res, act_fn, num_samples):
     converted_inference_res[f"mc_{i}_jensen_shannon_divergences"] = jsds
 
 
-def handle_alpha(alpha, converted_inference_res):
+def handle_alpha(alpha, converted_inference_res, prefix):
     min_real = torch.finfo(alpha.dtype).min
 
     sum_alphas = alpha.sum(dim=1)  # [B]
     mean_alphas = alpha.div(sum_alphas.unsqueeze(1))  # [B, C]
 
     log_bmas = mean_alphas.log().clamp(min=min_real)
-    converted_inference_res["dirichlet_log_bmas"] = log_bmas
+    converted_inference_res[f"{prefix}_dirichlet_log_bmas"] = log_bmas
 
     digamma_term = torch.digamma(alpha + 1) - torch.digamma(sum_alphas + 1).unsqueeze(
         1
     )  # [B, C]
     expected_entropies = -mean_alphas.mul(digamma_term).sum(dim=1)  # [B]
-    converted_inference_res["dirichlet_expected_entropies"] = expected_entropies
+    converted_inference_res[f"{prefix}_dirichlet_expected_entropies"] = (
+        expected_entropies
+    )
 
     entropies_of_bma = entropy(mean_alphas)
-    converted_inference_res["dirichlet_entropies_of_bma"] = entropies_of_bma
+    converted_inference_res[f"{prefix}_dirichlet_entropies_of_bma"] = entropies_of_bma
 
     one_minus_max_probs_of_bma = 1 - mean_alphas.max(dim=-1)[0]
-    converted_inference_res["dirichlet_one_minus_max_probs_of_bma"] = (
+    converted_inference_res[f"{prefix}_dirichlet_one_minus_max_probs_of_bma"] = (
         one_minus_max_probs_of_bma
     )
 
     jsd = entropies_of_bma - expected_entropies
-    converted_inference_res["dirichlet_jensen_shannon_divergences"] = jsd
+    converted_inference_res[f"{prefix}_dirichlet_jensen_shannon_divergences"] = jsd
 
 
 def handle_bma(bma, converted_inference_res, prefix):
@@ -1358,7 +1387,7 @@ def convert_inference_res(inference_res, time_forward, args):
             for suffix in suffixes:
                 predictive_name = f"{link}_{suffix}"
                 alpha = get_mom_dirichlet_approximation(mean, var, link)
-                handle_alpha(alpha, converted_inference_res)
+                handle_alpha(alpha, converted_inference_res, suffix)
 
     elif len(inference_res) == 1 and inference_res[0].ndim == 3:
         samples = inference_res[0]
@@ -1367,7 +1396,7 @@ def convert_inference_res(inference_res, time_forward, args):
             handle_samples(samples, converted_inference_res, act_fn, i)
     elif len(inference_res) == 1 and inference_res[0].ndim == 2:
         alpha = inference_res[0]
-        handle_alpha(alpha, converted_inference_res)
+        handle_alpha(alpha, converted_inference_res, "edl")
     else:
         msg = "Invalid inference_res structure"
         raise ValueError(msg)
