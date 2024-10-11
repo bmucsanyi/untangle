@@ -371,6 +371,7 @@ PREDICTIVE_DICT = {
     "softmax_mc": softmax_mc,
     "logit_link_normcdf_output": logit_link_normcdf_output,
     "logit_link_sigmoid_output": logit_link_sigmoid_output,
+    "logit_link_sigmoid_product_output": logit_link_sigmoid_output,
     "logit_link_mc": logit_link_mc,
     "probit_link_normcdf_output": probit_link_normcdf_output,
     "probit_link_sigmoid_output": probit_link_sigmoid_output,

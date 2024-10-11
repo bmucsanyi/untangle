@@ -1324,8 +1324,15 @@ def convert_inference_res(inference_res, time_forward, args):
         link = args.predictive.split("_")[0]
         if link == "softmax":
             suffixes = ["laplace_bridge", "mean_field", "mc"]
-        else:  # link in {"logit", "probit"}
+        elif link == "probit":
             suffixes = ["link_normcdf_output", "link_sigmoid_output", "link_mc"]
+        elif link == "logit":
+            suffixes = [
+                "link_normcdf_output",
+                "link_sigmoid_output",
+                "link_sigmoid_product_output",
+                "link_mc",
+            ]
 
         for suffix in suffixes:
             predictive_name = f"{link}_{suffix}"
@@ -1348,8 +1355,11 @@ def convert_inference_res(inference_res, time_forward, args):
                 handle_bma(bma, converted_inference_res, suffix)
 
         if link != "softmax":
-            alpha = get_mom_dirichlet_approximation(mean, var, link)
-            handle_alpha(alpha, converted_inference_res)
+            for suffix in suffixes:
+                predictive_name = f"{link}_{suffix}"
+                alpha = get_mom_dirichlet_approximation(mean, var, link)
+                handle_alpha(alpha, converted_inference_res)
+
     elif len(inference_res) == 1 and inference_res[0].ndim == 3:
         samples = inference_res[0]
         act_fn = get_activation(args.predictive)
