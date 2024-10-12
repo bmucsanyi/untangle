@@ -44,7 +44,7 @@ class SoftImageNet(ImageNet):
 
         self.is_ood = False
 
-    def __getitem__(self, index: int) -> tuple[Tensor | np.ndarray, np.ndarray]:
+    def __getitem__(self, index: int) -> tuple[Tensor | np.ndarray, Tensor]:
         """Retrieves an item from the dataset.
 
         Args:
