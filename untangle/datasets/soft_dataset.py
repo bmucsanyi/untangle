@@ -5,7 +5,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
+import torch
 from PIL import Image
+from torch import Tensor
 from torch.utils import data
 from torchvision.datasets.folder import pil_loader
 
@@ -60,12 +62,7 @@ class SoftDataset(data.Dataset):
         root /= dataset_path
 
         # Load the soft labels
-        self.soft_labels, self.filepath_to_imgid = self.load_raw_annotations(
-            root / "annotations.json"
-        )
-        self.soft_labels = np.concatenate(
-            [self.soft_labels, self.soft_labels.argmax(axis=-1, keepdims=True)], axis=-1
-        )
+        self.load_raw_annotations(root / "annotations.json")
 
         self.root = root.parent
         self.samples = self.filepath_to_imgid.keys()
@@ -91,7 +88,7 @@ class SoftDataset(data.Dataset):
         self.target_transform = target_transform
         self.is_ood = False
 
-    def __getitem__(self, index: int) -> tuple[Image.Image, np.ndarray]:
+    def __getitem__(self, index: int) -> tuple[Image.Image, Tensor]:
         """Retrieves an item from the dataset.
 
         Args:
@@ -124,16 +121,11 @@ class SoftDataset(data.Dataset):
         """Returns the length of the dataset."""
         return len(self.samples)
 
-    @staticmethod
-    def load_raw_annotations(path: Path) -> tuple[np.ndarray, dict[str, int]]:
+    def load_raw_annotations(self, path: Path) -> None:
         """Loads and processes raw annotations from a JSON file.
 
         Args:
             path: Path to the JSON file containing annotations.
-
-        Returns:
-            A tuple containing the soft labels array and a dictionary
-            mapping file paths to image IDs.
         """
         with path.open() as f:
             raw = json.load(f)
@@ -157,12 +149,16 @@ class SoftDataset(data.Dataset):
             unique_labels = sorted(set(labels))
             class_name_to_label_id = {label: i for i, label in enumerate(unique_labels)}
 
-            soft_labels = np.zeros(
-                (len(unique_img_file_path), len(unique_labels)), dtype=np.int64
+            soft_labels = torch.zeros(
+                (len(unique_img_file_path), len(unique_labels)), dtype=torch.int64
             )
             for filepath, classname in zip(img_filepath, labels, strict=True):
                 soft_labels[
                     file_path_to_img_id[filepath], class_name_to_label_id[classname]
                 ] += 1
 
-            return soft_labels, file_path_to_img_id
+            soft_labels = torch.cat(
+                (soft_labels, soft_labels.argmax(axis=-1, keepdims=True)), axis=-1
+            )
+            self.soft_labels = soft_labels
+            self.file_path_to_img_id = file_path_to_img_id
