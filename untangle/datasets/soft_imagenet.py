@@ -36,7 +36,7 @@ class SoftImageNet(ImageNet):
         if label_root is None:
             label_root = root
 
-        self.soft_labels, self.filepath_to_softid = self.load_raw_annotations(
+        self.soft_labels = self.load_raw_annotations(
             path_soft_labels=label_root / "raters.npz",
             path_real_labels=label_root / "real.json",
         )
@@ -60,7 +60,7 @@ class SoftImageNet(ImageNet):
         elif self.transform is not None:
             img = self.transform(img)
 
-        converted_index = self.filepath_to_softid[Path(self.samples[index][0]).name]
+        converted_index = int(path[-13:-5]) - 1
         soft_target = self.soft_labels[converted_index, :]
         augmented_target = np.concatenate([soft_target, [original_target]])
 
@@ -76,7 +76,7 @@ class SoftImageNet(ImageNet):
     @staticmethod
     def load_raw_annotations(
         path_soft_labels: Path, path_real_labels: Path
-    ) -> tuple[np.ndarray, dict[str, int]]:
+    ) -> np.ndarray:
         """Loads the raw annotations from raters.npz from reassessed-imagenet.
 
         Adapted from uncertainty-baselines/baselines/jft/data_uncertainty_utils.py#L87.
@@ -86,8 +86,7 @@ class SoftImageNet(ImageNet):
             path_real_labels: Path to the real labels file (real.json).
 
         Returns:
-            A tuple containing the soft labels array and a dictionary mapping
-            file paths to image IDs.
+            The soft labels array.
         """
         data = np.load(path_soft_labels)
 
@@ -125,13 +124,6 @@ class SoftImageNet(ImageNet):
 
         # Merge soft and hard labels
         unique_img_filepath = list(new_soft_labels.keys())
-        filepath_to_imgid = dict(
-            zip(
-                unique_img_filepath,
-                list(np.arange(0, len(unique_img_filepath))),
-                strict=False,
-            )
-        )
         soft_labels_array = np.zeros((len(unique_img_filepath), 1000), dtype=np.int64)
         for idx, img in enumerate(unique_img_filepath):
             if img in soft_labels and soft_labels[img].sum() > 0:
@@ -145,4 +137,4 @@ class SoftImageNet(ImageNet):
         # the raters could not determine any new one. We hand 0 matrices out for them.
         # They should be ignored in computing the metrics
 
-        return soft_labels_array, filepath_to_imgid
+        return soft_labels_array
