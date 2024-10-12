@@ -119,7 +119,7 @@ class SoftImageNet(ImageNet):
 
         # Merge soft and hard labels
         soft_labels_array = torch.zeros((len(self.samples), 1001), dtype=torch.int64)
-        for path, target in enumerate(self.samples):
+        for path, target in self.samples:
             converted_index = int(path[-13:-5]) - 1
             img_filename = path.split("/")[-1]
             if img_filename in soft_labels and soft_labels[img_filename].sum() > 0:
