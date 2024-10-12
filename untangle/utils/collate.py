@@ -48,15 +48,7 @@ def fast_collate(
         return tensor, targets
 
     if isinstance(batch[0][0], np.ndarray):
-        if isinstance(batch[0][1], int):
-            targets = torch.from_numpy(np.array([b[1] for b in batch], dtype=np.int64))
-        elif isinstance(batch[0][1], Tensor):
-            targets = torch.stack([b[1] for b in batch], dim=0)
-        elif isinstance(batch[0][1], np.ndarray):
-            targets = torch.from_numpy(np.stack([b[1] for b in batch], axis=0))
-        else:
-            msg = "Invalid labels provided"
-            raise TypeError(msg)
+        targets = torch.from_numpy(np.array([b[1] for b in batch], dtype=np.int64))
 
         tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
 
@@ -66,15 +58,7 @@ def fast_collate(
         return tensor, targets
 
     if isinstance(batch[0][0], Tensor):
-        if isinstance(batch[0][1], int):
-            targets = torch.from_numpy(np.array([b[1] for b in batch], dtype=np.int64))
-        elif isinstance(batch[0][1], Tensor):
-            targets = torch.stack([b[1] for b in batch], dim=0)
-        elif isinstance(batch[0][1], np.ndarray):
-            targets = torch.from_numpy(np.stack([b[1] for b in batch], axis=0))
-        else:
-            msg = "Invalid labels provided"
-            raise TypeError(msg)
+        targets = torch.from_numpy(np.array([b[1] for b in batch], dtype=np.int64))
 
         tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
 
