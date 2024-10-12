@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image
+import torch
+from torch import Tensor
 
 from .imagenet import ImageNet
 
@@ -36,14 +37,14 @@ class SoftImageNet(ImageNet):
         if label_root is None:
             label_root = root
 
-        self.soft_labels = self.load_raw_annotations(
+        self.load_raw_annotations(
             path_soft_labels=label_root / "raters.npz",
             path_real_labels=label_root / "real.json",
         )
 
         self.is_ood = False
 
-    def __getitem__(self, index: int) -> tuple[Image.Image, np.ndarray]:
+    def __getitem__(self, index: int) -> tuple[Tensor | np.ndarray, np.ndarray]:
         """Retrieves an item from the dataset.
 
         Args:
@@ -52,7 +53,7 @@ class SoftImageNet(ImageNet):
         Returns:
             A tuple containing the image and its augmented soft label.
         """
-        path, original_target = self.samples[index]
+        path, _ = self.samples[index]
         img = self.loader(path)
         if self.transform is not None and self.is_ood:
             rng = np.random.default_rng(seed=index)
@@ -62,21 +63,19 @@ class SoftImageNet(ImageNet):
 
         converted_index = int(path[-13:-5]) - 1
         soft_target = self.soft_labels[converted_index, :]
-        augmented_target = np.concatenate([soft_target, [original_target]])
 
         if self.target_transform is not None:
-            augmented_target = self.target_transform(augmented_target)
+            soft_target = self.target_transform(soft_target)
 
-        return img, augmented_target
+        return img, soft_target
 
     def set_ood(self) -> None:
         """Sets the dataset to use out-of-distribution transform."""
         self.is_ood = True
 
-    @staticmethod
     def load_raw_annotations(
-        path_soft_labels: Path, path_real_labels: Path
-    ) -> np.ndarray:
+        self, path_soft_labels: Path, path_real_labels: Path
+    ) -> None:
         """Loads the raw annotations from raters.npz from reassessed-imagenet.
 
         Adapted from uncertainty-baselines/baselines/jft/data_uncertainty_utils.py#L87.
@@ -84,57 +83,57 @@ class SoftImageNet(ImageNet):
         Args:
             path_soft_labels: Path to the soft labels file (raters.npz).
             path_real_labels: Path to the real labels file (real.json).
-
-        Returns:
-            The soft labels array.
         """
         data = np.load(path_soft_labels)
 
         summed_ratings = np.sum(data["tensor"], axis=0)  # 0 is the annotator axis
         yes_prob = summed_ratings[:, 2]
-        # This gives a [questions] np array.
-        # It gives how often the question "Is image X of class Y" was
-        # answered with "yes".
+        # This gives a [questions] np array. It gives how often the question "Is image
+        # X of class Y" was answered with "yes".
 
         # We now need to summarize these questions across the images and labels
         num_labels = 1000
         soft_labels = {}
-        for idx, (file_name, label_id) in enumerate(data["info"]):
+        for index, (file_name, label_id) in enumerate(data["info"]):
             if file_name not in soft_labels:
-                soft_labels[file_name] = np.zeros(num_labels, dtype=np.int64)
-            added_label = np.zeros(num_labels, dtype=np.int64)
-            added_label[int(label_id)] = yes_prob[idx]
+                soft_labels[file_name] = torch.zeros(num_labels, dtype=torch.int64)
+            added_label = torch.zeros(num_labels, dtype=torch.int64)
+            added_label[int(label_id)] = yes_prob[index]
             soft_labels[file_name] += added_label
 
         # Questions were only asked about 24889 images, and of those 1067 have no single
-        # yes vote at any label
-        # We will fill up (some of) the missing ones by taking the ImageNet Real Labels
+        # yes vote at any label. We will fill up (some of) the missing ones by taking
+        # the ImageNet Real Labels
         new_soft_labels = {}
         with path_real_labels.open() as f:
             real_labels = json.load(f)
-        for idx, label in enumerate(real_labels):
+        for index, label in enumerate(real_labels):
             key = "ILSVRC2012_val_"
-            key += (8 - len(str(idx + 1))) * "0" + str(idx + 1) + ".JPEG"
+            key += (8 - len(str(index + 1))) * "0" + str(index + 1) + ".JPEG"
             if len(label) > 0:
-                one_hot_label = np.zeros(num_labels, dtype=np.int64)
+                one_hot_label = torch.zeros(num_labels, dtype=torch.int64)
                 one_hot_label[label] = 1
                 new_soft_labels[key] = one_hot_label
             else:
-                new_soft_labels[key] = np.zeros(num_labels)
+                new_soft_labels[key] = torch.zeros(num_labels, dtype=torch.int64)
 
         # Merge soft and hard labels
-        unique_img_filepath = list(new_soft_labels.keys())
-        soft_labels_array = np.zeros((len(unique_img_filepath), 1000), dtype=np.int64)
-        for idx, img in enumerate(unique_img_filepath):
-            if img in soft_labels and soft_labels[img].sum() > 0:
-                final_soft_label = soft_labels[img]
+        soft_labels_array = torch.zeros((len(self.samples), 1001), dtype=torch.int64)
+        for path, target in enumerate(self.samples):
+            converted_index = int(path[-13:-5]) - 1
+            img_filename = path.split("/")[-1]
+            if img_filename in soft_labels and soft_labels[img_filename].sum() > 0:
+                final_soft_label = soft_labels[img_filename]
             else:
-                final_soft_label = new_soft_labels[img]
-            soft_labels_array[idx, :] = final_soft_label
+                final_soft_label = new_soft_labels[img_filename]
+
+            soft_labels_array[converted_index, :1000] = final_soft_label
+            soft_labels_array[converted_index, 1000] = target
 
         # Note that 750 of the 50000 images in soft_labels_array will still not have a
-        # label at all. These are ones where the old imagenet label was false and also
-        # the raters could not determine any new one. We hand 0 matrices out for them.
-        # They should be ignored in computing the metrics
+        # new label. These are ones where the old ImageNet label was false and also
+        # the raters could not determine any new one. We hand 0 vectors out for them.
+        # They should be ignored in computing the metrics. They will still have the
+        # old ImageNet label as the last entry, however.
 
-        return soft_labels_array
+        self.soft_labels = soft_labels_array

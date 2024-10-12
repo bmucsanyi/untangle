@@ -197,7 +197,7 @@ def create_transform(
 
 
 def hard_target_transform(
-    target: np.ndarray | Tensor,
+    target: np.ndarray | Tensor | int,
 ) -> np.ndarray | Tensor:
     """Transforms the target to a hard label if it's a soft label.
 
