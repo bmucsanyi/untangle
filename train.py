@@ -1212,6 +1212,7 @@ def train_one_epoch(
         A dictionary containing the average loss for the epoch.
     """
     update_time_m = AverageMeter()
+    data_time_m = AverageMeter()
     losses_m = AverageMeter()
 
     model.train()
@@ -1224,7 +1225,7 @@ def train_one_epoch(
     last_batch_idx = num_batches - 1
     last_batch_idx_to_accumulate = num_batches - last_accumulation_steps
 
-    update_start_time = time.perf_counter()
+    data_start_time = update_start_time = time.perf_counter()
     optimizer.zero_grad()
 
     if isinstance(model, SNGPWrapper) and args.gp_cov_momentum < 0:
@@ -1250,6 +1251,8 @@ def train_one_epoch(
 
         if args.channels_last:
             input = input.contiguous(memory_format=torch.channels_last)
+
+        data_time_m.update(time.perf_counter() - data_start_time)
 
         if isinstance(model, DUQWrapper):
             input, target = model.prepare_data(input, target)
@@ -1277,13 +1280,14 @@ def train_one_epoch(
         losses_m.update(loss.item() * accumulation_steps, input.shape[0])
 
         if not need_update:
+            data_start_time = time.perf_counter()
             continue
 
         num_updates += 1
         optimizer.zero_grad()
 
         time_now = time.perf_counter()
-        update_time_m.update(time.perf_counter() - update_start_time)
+        update_time_m.update(time_now - update_start_time)
         update_start_time = time_now
 
         if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
@@ -1297,12 +1301,15 @@ def train_one_epoch(
                 f"Train: {epoch} [{update_idx:>4d}/{updates_per_epoch} "
                 f"({100 * update_idx / (updates_per_epoch - 1):>3.0f}%)]  "
                 f"Loss: {losses_m.avg:#.3g}  "
-                f"Time: {update_time_m.avg:.3f}s  "
+                f"Update Time: {update_time_m.avg:.3f}s  "
+                f"Data Time: {data_time_m.avg:.3f}s  "
                 f"LR: {lr:.3e}  "
             )
 
         if lr_scheduler is not None:
             lr_scheduler.step_update(num_updates=num_updates, metric=losses_m.avg)
+
+        data_start_time = time.perf_counter()
 
     return {"loss": losses_m.avg}
 
