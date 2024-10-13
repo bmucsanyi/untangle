@@ -93,7 +93,7 @@ class SoftImageNet(ImageNet):
 
         # We now need to summarize these questions across the images and labels
         num_labels = 1000
-        soft_labels = np.zeros((len(self.samples), num_labels), dtype=np.int64)
+        soft_labels = np.zeros((len(self.samples), num_labels + 1), dtype=np.int64)
 
         for index, (file_name, label_id) in enumerate(data["info"]):
             converted_index = int(file_name[-13:-5]) - 1
@@ -110,8 +110,9 @@ class SoftImageNet(ImageNet):
                 soft_labels[index, label] = 1
 
         # Add original labels
-        original_labels = np.array([target for _, target in self.samples])
-        soft_labels = np.column_stack((soft_labels, original_labels))
+        for path, target in self.samples:
+            converted_index = int(path[-13:-5]) - 1
+            soft_labels[converted_index, -1] = target
 
         # Note that 750 of the 50000 images in soft_labels_array will still not have a
         # new label. These are ones where the old ImageNet label was false and also
