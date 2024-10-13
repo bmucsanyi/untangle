@@ -93,42 +93,25 @@ class SoftImageNet(ImageNet):
 
         # We now need to summarize these questions across the images and labels
         num_labels = 1000
-        soft_labels = {}
+        soft_labels = np.zeros((len(self.samples), num_labels), dtype=np.int64)
+
         for index, (file_name, label_id) in enumerate(data["info"]):
-            if file_name not in soft_labels:
-                soft_labels[file_name] = torch.zeros(num_labels, dtype=torch.int64)
-            added_label = torch.zeros(num_labels, dtype=torch.int64)
-            added_label[int(label_id)] = yes_prob[index]
-            soft_labels[file_name] += added_label
+            converted_index = int(file_name[-13:-5]) - 1
+            soft_labels[converted_index, int(label_id)] += yes_prob[index]
 
         # Questions were only asked about 24889 images, and of those 1067 have no single
         # yes vote at any label. We will fill up (some of) the missing ones by taking
         # the ImageNet Real Labels
-        new_soft_labels = {}
         with path_real_labels.open() as f:
             real_labels = json.load(f)
+
         for index, label in enumerate(real_labels):
-            key = "ILSVRC2012_val_"
-            key += (8 - len(str(index + 1))) * "0" + str(index + 1) + ".JPEG"
-            if len(label) > 0:
-                one_hot_label = torch.zeros(num_labels, dtype=torch.int64)
-                one_hot_label[label] = 1
-                new_soft_labels[key] = one_hot_label
-            else:
-                new_soft_labels[key] = torch.zeros(num_labels, dtype=torch.int64)
+            if len(label) > 0 and np.sum(soft_labels[index]) == 0:
+                soft_labels[index, label] = 1
 
-        # Merge soft and hard labels
-        soft_labels_array = torch.zeros((len(self.samples), 1001), dtype=torch.int64)
-        for path, target in self.samples:
-            converted_index = int(path[-13:-5]) - 1
-            img_filename = path.split("/")[-1]
-            if img_filename in soft_labels and soft_labels[img_filename].sum() > 0:
-                final_soft_label = soft_labels[img_filename]
-            else:
-                final_soft_label = new_soft_labels[img_filename]
-
-            soft_labels_array[converted_index, :1000] = final_soft_label
-            soft_labels_array[converted_index, 1000] = target
+        # Add original labels
+        original_labels = np.array([target for _, target in self.samples])
+        soft_labels = np.column_stack((soft_labels, original_labels))
 
         # Note that 750 of the 50000 images in soft_labels_array will still not have a
         # new label. These are ones where the old ImageNet label was false and also
@@ -136,4 +119,4 @@ class SoftImageNet(ImageNet):
         # They should be ignored in computing the metrics. They will still have the
         # old ImageNet label as the last entry, however.
 
-        self.soft_labels = soft_labels_array
+        self.soft_labels = torch.from_numpy(soft_labels)
