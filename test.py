@@ -22,7 +22,6 @@ from untangle.utils import (
     entropy,
     excess_area_under_risk_coverage_curve,
     get_activation,
-    get_mom_dirichlet_approximation,
     get_dirichlet,
     get_predictive,
     multiclass_brier,
@@ -1386,6 +1385,9 @@ def convert_inference_res(inference_res, time_forward, args):
 
         if link != "softmax":
             for suffix in suffixes:
+                if suffix.endswith("mc"):
+                    continue
+
                 predictive_name = f"{link}_{suffix}"
                 dirichlet_fn = get_dirichlet(predictive_name)
                 alpha = dirichlet_fn(mean, var)
