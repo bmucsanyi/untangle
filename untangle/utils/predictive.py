@@ -216,12 +216,10 @@ def probit_predictive(
     )  # [batch_size, num_classes]
     if return_logits:
         return predictives
-    sum_predictives = torch.sum(
-        predictives, dim=1, keepdim=True
-    )  # [batch_size, num_classes]
+    sum_predictives = torch.sum(predictives, dim=1, keepdim=True)  # [batch_size, 1]
     predictives = predictives / sum_predictives  # [batch_size, num_classes]
 
-    return predictives
+    return predictives.clamp(min=1e-10)
 
 
 def beta_predictive(beta_params: torch.Tensor) -> torch.Tensor:
