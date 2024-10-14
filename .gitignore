@@ -4,6 +4,9 @@
 *.pyc
 *.pt
 *.zip
+*.txt
+*.json
+*.npz
 
 # Files
 .envrc
