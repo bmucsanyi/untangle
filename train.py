@@ -289,7 +289,8 @@ def setup_scheduler(
 
         logger.info(f"Scheduled epochs: {num_epochs}.")
         logger.info(
-            f'LR stepped per {"epoch" if lr_scheduler.t_in_epochs else "update"}.'
+            "Learning rate stepped per "
+            f'{"epoch" if lr_scheduler.t_in_epochs else "update"}.'
         )
 
     return lr_scheduler, num_epochs
@@ -395,11 +396,11 @@ def train(
                 is_soft_dataset="soft" in args.dataset_id,
                 args=args,
             )
-            accuracy_key = "id_eval_hard_bma_accuracy_original"
-            logger.info(f"{accuracy_key}: {eval_metrics[accuracy_key]}")
-            logger.info(f"{eval_metric}: {eval_metrics[eval_metric]}")
+            eval_accuracy = "id_eval_hard_bma_accuracy_original"
+            logger.info(f"Eval accuracy: {eval_metrics[eval_accuracy]:.4f}")
+            logger.info(f"Eval metric: {eval_metrics[eval_metric]:.4f}")
 
-            if eval_metrics[accuracy_key] < min_accuracy(args.dataset):
+            if eval_metrics[eval_accuracy] < min_accuracy(args.dataset):
                 # Random AUROC for poor models to meaningfully aid hyperparam sweep
                 eval_metrics[eval_metric] = 0.5
 
@@ -438,9 +439,7 @@ def train(
             )
 
         time_end_epoch = time.perf_counter()
-        logger.info(
-            f"Epoch {epoch} took " f"{time_end_epoch - time_start_epoch} seconds."
-        )
+        logger.info(f"Epoch {epoch} took {time_end_epoch - time_start_epoch} seconds.")
 
     return best_eval_metric, best_epoch
 
@@ -537,7 +536,7 @@ def test(
         )
 
     time_end_test = time.perf_counter()
-    logger.info(f"Tests took " f"{time_end_test - time_start_test} seconds.")
+    logger.info(f"Tests took {time_end_test - time_start_test:.4f} seconds.")
 
 
 def main() -> None:
@@ -663,7 +662,7 @@ def main() -> None:
     lr_scheduler, num_epochs = setup_scheduler(optimizer, train_loader, args)
 
     time_end_setup = time.perf_counter()
-    logger.info(f"Setup took {time_end_setup - time_start_setup} seconds.")
+    logger.info(f"Setup took {time_end_setup - time_start_setup:.4f} seconds.")
 
     try:
         if num_epochs > 0:
@@ -687,7 +686,7 @@ def main() -> None:
 
             if not isinstance(model, SWAGWrapper):
                 logger.info(
-                    f"Best eval metric: {best_eval_metric} (epoch {best_epoch})."
+                    f"Best eval metric: {best_eval_metric:.4f} (epoch {best_epoch})."
                 )
 
         if args.evaluate_on_test_sets:
@@ -1293,17 +1292,19 @@ def train_one_epoch(
         if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
             model.update_stats()
 
-        if update_idx % args.log_interval == 0:
+        if update_idx % args.log_interval == 0 or batch_idx == len(loader) - 1:
             lrl = [param_group["lr"] for param_group in optimizer.param_groups]
             lr = sum(lrl) / len(lrl)
 
+            pad_len = len(str(updates_per_epoch))
+
             logger.info(
-                f"Train: {epoch} [{update_idx:>4d}/{updates_per_epoch} "
+                f"Train: {epoch} [{update_idx:>{pad_len}d}/{updates_per_epoch} "
                 f"({100 * update_idx / (updates_per_epoch - 1):>3.0f}%)]  "
                 f"Loss: {losses_m.avg:#.3g}  "
                 f"Update Time: {update_time_m.avg:.3f}s  "
                 f"Data Time: {data_time_m.avg:.3f}s  "
-                f"LR: {lr:.3e}  "
+                f"Learning Rate: {lr:.3e}  "
             )
 
         if lr_scheduler is not None:

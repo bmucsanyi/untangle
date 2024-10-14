@@ -82,8 +82,8 @@ class CheckpointSaver:
             )
 
             checkpoints_str = "Current checkpoints:\n"
-            for checkpoint_file in self.checkpoint_files:
-                checkpoints_str += f"\t{checkpoint_file}\n"
+            for checkpoint_path, checkpoint_metric in self.checkpoint_files:
+                checkpoints_str += f"\t{checkpoint_path}: {checkpoint_metric:.4f}\n"
             logger.info(checkpoints_str)
 
             if self.best_metric is None or self.cmp(metric, self.best_metric):
