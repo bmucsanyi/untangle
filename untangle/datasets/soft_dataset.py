@@ -65,7 +65,7 @@ class SoftDataset(data.Dataset):
         self.load_raw_annotations(root / "annotations.json")
 
         self.root = root.parent
-        self.samples = self.filepath_to_imgid.keys()
+        self.samples = self.file_path_to_img_id.keys()
 
         # Restrict self.samples to val/test
         current_folds = []
@@ -99,7 +99,7 @@ class SoftDataset(data.Dataset):
         """
         path_str = self.samples[index]
         full_path_str = str(self.root / path_str)
-        target = self.soft_labels[self.filepath_to_imgid[path_str], :]
+        target = self.soft_labels[self.file_path_to_img_id[path_str], :]
         img = pil_loader(full_path_str)
 
         if self.transform is not None and self.is_ood:
@@ -149,16 +149,16 @@ class SoftDataset(data.Dataset):
             unique_labels = sorted(set(labels))
             class_name_to_label_id = {label: i for i, label in enumerate(unique_labels)}
 
-            soft_labels = torch.zeros(
-                (len(unique_img_file_path), len(unique_labels)), dtype=torch.int64
+            soft_labels = np.zeros(
+                (len(unique_img_file_path), len(unique_labels)), dtype=np.int64
             )
             for filepath, classname in zip(img_filepath, labels, strict=True):
                 soft_labels[
                     file_path_to_img_id[filepath], class_name_to_label_id[classname]
                 ] += 1
 
-            soft_labels = torch.cat(
+            soft_labels = np.concatenate(
                 (soft_labels, soft_labels.argmax(axis=-1, keepdims=True)), axis=-1
             )
-            self.soft_labels = soft_labels
+            self.soft_labels = torch.from_numpy(soft_labels)
             self.file_path_to_img_id = file_path_to_img_id
