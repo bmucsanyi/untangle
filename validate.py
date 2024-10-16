@@ -96,6 +96,7 @@ def evaluate_on_ood_uniform_test_loaders(
                 is_upstream_dataset=False,
                 is_test_dataset=True,
                 is_soft_dataset=is_soft_dataset,
+                only_ood_detection=True,
                 args=args,
             )
 
@@ -162,6 +163,7 @@ def evaluate_on_ood_varied_test_loaders(
             is_upstream_dataset=False,
             is_test_dataset=True,
             is_soft_dataset=is_soft_dataset,
+            only_ood_detection=False,
             args=args,
         )
 
@@ -219,7 +221,7 @@ def flatten_ood_uniform_metrics(
     for name, results_subset in results.items():
         for ood_transform_type, results_subsubset in results_subset.items():
             for key, value in results_subsubset.items():
-                flattened_results[f"{key_prefix}_{name}_{ood_transform_type}_{key}"] = (
+                flattened_results[f"{key_prefix}_{ood_transform_type}_{name}_{key}"] = (
                     value
                 )
 
@@ -242,7 +244,7 @@ def flatten_ood_varied_metrics(
     flattened_results = {}
     for name, results_subset in results.items():
         for key, value in results_subset.items():
-            flattened_results[f"{key_prefix}_{name}_varied_{key}"] = value
+            flattened_results[f"{key_prefix}_varied_{name}_{key}"] = value
 
     return flattened_results
 
@@ -260,6 +262,7 @@ def evaluate(
     is_upstream_dataset: bool,
     is_test_dataset: bool,
     is_soft_dataset: bool,
+    only_ood_detection: bool,
     args: argparse.Namespace,
 ) -> dict[str, float]:
     """Evaluates the model on a given loader.
@@ -276,11 +279,16 @@ def evaluate(
         is_upstream_dataset: Whether it's an upstream dataset.
         is_test_dataset: Whether it's a test dataset.
         is_soft_dataset: Whether the dataset uses soft labels.
+        only_ood_detection: Whether to only evaluate OOD detection.
         args: Additional arguments.
 
     Returns:
         A dictionary of evaluation metrics.
     """
+    if only_ood_detection and not is_test_dataset:
+        msg = "Option to only evaluate OOD detection requires a test dataset"
+        raise ValueError(msg)
+
     model.eval()
 
     estimates, log_probs, targets, times = get_bundle(
@@ -295,32 +303,34 @@ def evaluate(
 
     metrics = times
 
-    if is_test_dataset:
-        ood_prefix = "id" if is_upstream_dataset else "ood"
-        save_prefix = f"{ood_prefix}_test_{loader_name}_"
+    if not only_ood_detection:
+        if is_test_dataset:
+            ood_prefix = "id" if is_upstream_dataset else "ood"
+            save_prefix = f"{ood_prefix}_test_{loader_name}_"
 
-        metrics = evaluate_on_tasks(
-            model=model,
-            estimates=estimates,
-            log_probs=log_probs,
-            targets=targets,
-            metrics=metrics,
-            is_soft_dataset=is_soft_dataset,
-            save_prefix=save_prefix,
-            output_dir=output_dir,
-            args=args,
-        )
-    else:
-        metrics = evaluate_on_validation_metrics(
-            estimates=estimates,
-            targets=targets,
-            metrics=metrics,
-            args=args,
-        )
+            metrics = evaluate_on_tasks(
+                model=model,
+                estimates=estimates,
+                log_probs=log_probs,
+                targets=targets,
+                metrics=metrics,
+                is_soft_dataset=is_soft_dataset,
+                save_prefix=save_prefix,
+                output_dir=output_dir,
+                only_ood_detection=only_ood_detection,
+                args=args,
+            )
+        else:
+            metrics = evaluate_on_validation_metrics(
+                estimates=estimates,
+                targets=targets,
+                metrics=metrics,
+                args=args,
+            )
 
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
-    if is_upstream_dataset and is_test_dataset and output_dir is not None:
+    if is_upstream_dataset and is_test_dataset:
         # Save ingredients to disk
         max_num_indices = len(targets["gt_hard_labels"])
         num_indices = min(max_num_indices, args.max_num_id_ood_test_samples // 2)
@@ -346,7 +356,7 @@ def evaluate(
             upstream_dict,
             data_dir / f"upstream_dict_{os.environ.get('SLURM_JOBID')}.pt",
         )
-    elif is_test_dataset and output_dir is not None:
+    elif is_test_dataset:
         # Load ingredients from disk
         upstream_dict = torch.load(
             data_dir / f"upstream_dict_{os.environ.get('SLURM_JOBID')}.pt",
@@ -476,6 +486,7 @@ def evaluate(
             is_soft_dataset=is_soft_dataset,
             save_prefix=save_prefix,
             output_dir=output_dir,
+            only_ood_detection=only_ood_detection,
             args=args,
             is_soft_upstream_dataset=is_soft_upstream_dataset,
         )
@@ -597,6 +608,7 @@ def evaluate_on_tasks(
     is_soft_dataset: bool,
     save_prefix: str,
     output_dir: Path,
+    only_ood_detection: bool,
     args: argparse.Namespace,
     is_soft_upstream_dataset: bool | None = None,
 ) -> dict[str, float]:
@@ -611,12 +623,25 @@ def evaluate_on_tasks(
         is_soft_dataset: Whether the dataset uses soft labels.
         save_prefix: Prefix for saving results.
         output_dir: Directory to save output.
+        only_ood_detection: Whether to only evaluate OOD detection.
         args: Additional arguments.
         is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
 
     Returns:
         Updated metrics dictionary.
     """
+    is_mixed_eval = is_soft_upstream_dataset is not None
+
+    if is_mixed_eval:
+        metrics |= evaluate_on_ood_detection(
+            estimates=estimates,
+            targets=targets,
+            args=args,
+        )
+
+    if only_ood_detection:
+        return metrics
+
     metrics |= evaluate_on_correctness_prediction(
         estimates=estimates,
         targets=targets,
@@ -631,15 +656,6 @@ def evaluate_on_tasks(
         args=args,
         is_soft_upstream_dataset=is_soft_upstream_dataset,
     )
-
-    is_mixed_eval = is_soft_upstream_dataset is not None
-    if is_mixed_eval:
-        metrics |= evaluate_on_ood_detection(
-            estimates=estimates,
-            targets=targets,
-            args=args,
-        )
-
     metrics |= evaluate_on_proper_scoring_and_calibration(
         model=model,
         estimates=estimates,

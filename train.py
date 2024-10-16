@@ -395,6 +395,7 @@ def train(
                 is_upstream_dataset=True,
                 is_test_dataset=False,
                 is_soft_dataset="soft" in args.dataset_id,
+                only_ood_detection=False,
                 args=args,
             )
             eval_accuracy = "id_eval_hard_bma_accuracy_original"
@@ -461,7 +462,6 @@ def load_best_checkpoint(saver: CheckpointSaver, model: nn.Module) -> None:
 def test(
     num_epochs: int,
     model: nn.Module,
-    optimizer: Optimizer,
     train_loader: DataLoader | PrefetchLoader,
     hard_id_eval_loader: DataLoader | PrefetchLoader,
     varied_s2_eval_loader: DataLoader | PrefetchLoader,
@@ -529,10 +529,7 @@ def test(
     )
 
     if args.log_wandb:
-        log_wandb(
-            best_test_metrics=best_test_metrics,
-            optimizer=optimizer,
-        )
+        log_wandb(best_test_metrics=best_test_metrics)
 
     time_end_test = time.perf_counter()
     logger.info(f"Tests took {time_end_test - time_start_test:.4f} seconds.")
@@ -692,7 +689,6 @@ def main() -> None:
             test(
                 num_epochs=num_epochs,
                 model=model,
-                optimizer=optimizer,
                 train_loader=train_loader,
                 hard_id_eval_loader=hard_id_eval_loader,
                 varied_s2_eval_loader=varied_s2_eval_loader,
@@ -753,6 +749,7 @@ def evaluate_on_test_sets(
         is_upstream_dataset=True,
         is_test_dataset=True,
         is_soft_dataset="soft" in args.dataset_id,
+        only_ood_detection=False,
         args=args,
     )
 
@@ -930,7 +927,7 @@ def create_datasets(
     dataset_locations_ood_test = {}
     for severity in args.severities:
         dataset_name = args.dataset_id.replace("/", "_")
-        dataset_locations_ood_test[f"{dataset_name}S{severity}"] = args.data_dir_id
+        dataset_locations_ood_test[f"{dataset_name}_s{severity}"] = args.data_dir_id
 
     id_test_dataset = create_dataset(
         name=args.dataset_id,
