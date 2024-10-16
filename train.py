@@ -1218,10 +1218,10 @@ def train_one_epoch(
     accumulation_steps = args.accumulation_steps
     current_accumulation_steps = accumulation_steps
     num_batches = len(loader)
-    last_accumulation_steps = num_batches % accumulation_steps
     updates_per_epoch = ceil(num_batches / accumulation_steps)
     num_updates = epoch * updates_per_epoch
     last_batch_idx = num_batches - 1
+    last_accumulation_steps = num_batches % accumulation_steps
     first_batch_idx_of_last_accumulation = num_batches - last_accumulation_steps
 
     data_start_time = update_start_time = time.perf_counter()
@@ -1239,7 +1239,7 @@ def train_one_epoch(
 
     for batch_idx, (input, target) in enumerate(loader):
         last_batch = batch_idx == last_batch_idx
-        need_update = last_batch or (batch_idx + 1) % current_accumulation_steps == 0
+        need_update = last_batch or (batch_idx + 1) % accumulation_steps == 0
         update_idx = batch_idx // accumulation_steps
 
         if batch_idx == first_batch_idx_of_last_accumulation:
