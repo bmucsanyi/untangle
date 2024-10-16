@@ -1303,7 +1303,7 @@ def train_one_epoch(
 
             logger.info(
                 f"Train: {epoch} [{update_idx + 1:>{pad_len}d}/{updates_per_epoch} "
-                f"({100 * (update_idx + 1) / updates_per_epoch:>3.1f}%)]  "
+                f"({100 * (update_idx + 1) / updates_per_epoch:>5.1f}%)]  "
                 f"Loss: {losses_m.avg:#.3g}  "
                 f"Update Time: {update_time_m.avg:.3f}s  "
                 f"Data Time: {data_time_m.avg:.3f}s  "
