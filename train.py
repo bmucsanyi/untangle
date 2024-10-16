@@ -7,6 +7,7 @@ import time
 from argparse import Namespace
 from collections.abc import Callable
 from functools import partial
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -1215,12 +1216,13 @@ def train_one_epoch(
     model.train()
 
     accumulation_steps = args.accumulation_steps
+    current_accumulation_steps = accumulation_steps
     num_batches = len(loader)
     last_accumulation_steps = num_batches % accumulation_steps
-    updates_per_epoch = (num_batches + accumulation_steps - 1) // accumulation_steps
+    updates_per_epoch = ceil(num_batches / accumulation_steps)
     num_updates = epoch * updates_per_epoch
     last_batch_idx = num_batches - 1
-    last_batch_idx_to_accumulate = num_batches - last_accumulation_steps
+    first_batch_idx_of_last_accumulation = num_batches - last_accumulation_steps
 
     data_start_time = update_start_time = time.perf_counter()
     optimizer.zero_grad()
@@ -1237,11 +1239,11 @@ def train_one_epoch(
 
     for batch_idx, (input, target) in enumerate(loader):
         last_batch = batch_idx == last_batch_idx
-        need_update = last_batch or (batch_idx + 1) % accumulation_steps == 0
+        need_update = last_batch or (batch_idx + 1) % current_accumulation_steps == 0
         update_idx = batch_idx // accumulation_steps
 
-        if batch_idx >= last_batch_idx_to_accumulate:
-            accumulation_steps = last_accumulation_steps
+        if batch_idx == first_batch_idx_of_last_accumulation:
+            current_accumulation_steps = last_accumulation_steps
 
         if not args.prefetcher:
             input, target = input.to(device), target.to(device)
@@ -1261,7 +1263,7 @@ def train_one_epoch(
             loss_fn=loss_fn,
             lambda_gradient_penalty=args.lambda_gradient_penalty,
             amp_autocast=amp_autocast,
-            accumulation_steps=accumulation_steps,
+            accumulation_steps=current_accumulation_steps,
         )
 
         backward(
@@ -1274,7 +1276,7 @@ def train_one_epoch(
             loss=loss,
         )
 
-        losses_m.update(loss.item() * accumulation_steps, input.shape[0])
+        losses_m.update(loss.item() * current_accumulation_steps, input.shape[0])
 
         if not need_update:
             data_start_time = time.perf_counter()
@@ -1290,15 +1292,18 @@ def train_one_epoch(
         if isinstance(model, SWAGWrapper) and batch_idx in checkpoint_batches:
             model.update_stats()
 
-        if update_idx % args.log_interval == 0 or batch_idx == len(loader) - 1:
+        if (update_idx + 1) % args.log_interval == 0 or update_idx in {
+            0,
+            updates_per_epoch - 1,
+        }:
             lrl = [param_group["lr"] for param_group in optimizer.param_groups]
             lr = sum(lrl) / len(lrl)
 
             pad_len = len(str(updates_per_epoch))
 
             logger.info(
-                f"Train: {epoch} [{update_idx:>{pad_len}d}/{updates_per_epoch} "
-                f"({100 * update_idx / (updates_per_epoch - 1):>3.0f}%)]  "
+                f"Train: {epoch} [{update_idx + 1:>{pad_len}d}/{updates_per_epoch} "
+                f"({100 * (update_idx + 1) / updates_per_epoch:>3.0f}%)]  "
                 f"Loss: {losses_m.avg:#.3g}  "
                 f"Update Time: {update_time_m.avg:.3f}s  "
                 f"Data Time: {data_time_m.avg:.3f}s  "
