@@ -231,6 +231,8 @@ def get_per_transform_ood_detection_results(
             if metric_name.endswith("auroc_oodness"):
                 filtered_metrics[ood_transform_type][metric_name] = metric_value
 
+    return filtered_metrics
+
 
 def flatten_ood_uniform_metrics(
     results: dict[str, dict[str, dict[str, float]]], key_prefix: str
