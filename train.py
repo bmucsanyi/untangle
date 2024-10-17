@@ -395,7 +395,6 @@ def train(
                 is_upstream_dataset=True,
                 is_test_dataset=False,
                 is_soft_dataset="soft" in args.dataset_id,
-                only_ood_detection=False,
                 args=args,
             )
             eval_accuracy = "id_eval_hard_bma_accuracy_original"
@@ -749,7 +748,6 @@ def evaluate_on_test_sets(
         is_upstream_dataset=True,
         is_test_dataset=True,
         is_soft_dataset="soft" in args.dataset_id,
-        only_ood_detection=False,
         args=args,
     )
 
