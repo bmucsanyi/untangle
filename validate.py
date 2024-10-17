@@ -227,7 +227,7 @@ def get_per_transform_ood_detection_results(
     for ood_transform_type, ood_transform_type_metrics in metrics.items():
         filtered_metrics[ood_transform_type] = {}
 
-        for metric_name, metric_value in ood_transform_type_metrics:
+        for metric_name, metric_value in ood_transform_type_metrics.items():
             if metric_name.endswith("auroc_oodness"):
                 filtered_metrics[ood_transform_type][metric_name] = metric_value
 
