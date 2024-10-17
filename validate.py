@@ -80,11 +80,12 @@ def evaluate_on_ood_uniform_test_loaders(
 
     for name, loader_subset in loaders.items():
         metrics[name] = {}
+        per_ood_transform_type_metrics = {}
         for ood_transform_type, loader in loader_subset.items():
             logger.info(f"Evaluating {name} - {ood_transform_type}...")
             time_eval_start = time.perf_counter()
 
-            metrics[name][ood_transform_type] = evaluate(
+            per_ood_transform_type_metrics[ood_transform_type] = evaluate(
                 model=model,
                 loader=loader,
                 loader_name=f"{name}_{ood_transform_type}",
@@ -96,7 +97,6 @@ def evaluate_on_ood_uniform_test_loaders(
                 is_upstream_dataset=False,
                 is_test_dataset=True,
                 is_soft_dataset=is_soft_dataset,
-                only_ood_detection=True,
                 args=args,
             )
 
@@ -107,7 +107,10 @@ def evaluate_on_ood_uniform_test_loaders(
                 f"Finished evaluating {name} - {ood_transform_type}. "
                 f"Took {time_eval:.2f} seconds."
             )
-        add_average_metric_value(metrics[name])
+        metrics[name]["avg"] = get_average_metric_values(per_ood_transform_type_metrics)
+        metrics[name] |= get_per_transform_ood_detection_results(
+            per_ood_transform_type_metrics
+        )
 
     # Summarize results
     flattened_metrics = flatten_ood_uniform_metrics(
@@ -163,7 +166,6 @@ def evaluate_on_ood_varied_test_loaders(
             is_upstream_dataset=False,
             is_test_dataset=True,
             is_soft_dataset=is_soft_dataset,
-            only_ood_detection=False,
             args=args,
         )
 
@@ -186,22 +188,48 @@ def evaluate_on_ood_varied_test_loaders(
     return flattened_metrics
 
 
-def add_average_metric_value(metrics: dict[str, dict[str, Any]]) -> None:
-    """Adds average values to the metrics dictionary.
+def get_average_metric_values(metrics: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Calculates average values from the metrics dictionary.
 
     Args:
-        metrics: Dictionary of metrics to update.
+        metrics: Dictionary of metrics to calculate average values from.
+
+    Returns:
+        Dictionary containing the per-metric average values.
     """
     # Summarize results
-    avg_results = {}
-    first_loader_results = metrics[next(iter(metrics.keys()))]
-    for key in first_loader_results:
-        if isinstance(first_loader_results[key], Number):
-            result_vector = torch.tensor([
+    avg_metrics = {}
+    first_loader_metrics = metrics[next(iter(metrics.keys()))]
+
+    for key in first_loader_metrics:
+        if isinstance(first_loader_metrics[key], Number):
+            metric_vector = torch.tensor([
                 loader_result[key] for _, loader_result in metrics.items()
             ])
-            avg_results[key] = result_vector.mean().item()
-    metrics["avg"] = avg_results
+            avg_metrics[key] = metric_vector.mean().item()
+
+    return avg_metrics
+
+
+def get_per_transform_ood_detection_results(
+    metrics: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Filters per-transform OOD detection results from the metrics dictionary.
+
+    Args:
+        metrics: Dictionary of metrics to filter.
+
+    Returns:
+        Dictionary containing the pfiltered OOD detection results.
+    """
+    filtered_metrics = {}
+
+    for ood_transform_type, ood_transform_type_metrics in metrics.items():
+        filtered_metrics[ood_transform_type] = {}
+
+        for metric_name, metric_value in ood_transform_type_metrics:
+            if metric_name.endswith("auroc_oodness"):
+                filtered_metrics[ood_transform_type][metric_name] = metric_value
 
 
 def flatten_ood_uniform_metrics(
@@ -262,7 +290,6 @@ def evaluate(
     is_upstream_dataset: bool,
     is_test_dataset: bool,
     is_soft_dataset: bool,
-    only_ood_detection: bool,
     args: argparse.Namespace,
 ) -> dict[str, float]:
     """Evaluates the model on a given loader.
@@ -279,16 +306,11 @@ def evaluate(
         is_upstream_dataset: Whether it's an upstream dataset.
         is_test_dataset: Whether it's a test dataset.
         is_soft_dataset: Whether the dataset uses soft labels.
-        only_ood_detection: Whether to only evaluate OOD detection.
         args: Additional arguments.
 
     Returns:
         A dictionary of evaluation metrics.
     """
-    if only_ood_detection and not is_test_dataset:
-        msg = "Option to only evaluate OOD detection requires a test dataset"
-        raise ValueError(msg)
-
     model.eval()
 
     estimates, log_probs, targets, times = get_bundle(
@@ -303,30 +325,28 @@ def evaluate(
 
     metrics = times
 
-    if not only_ood_detection:
-        if is_test_dataset:
-            ood_prefix = "id" if is_upstream_dataset else "ood"
-            save_prefix = f"{ood_prefix}_test_{loader_name}_"
+    if is_test_dataset:
+        ood_prefix = "id" if is_upstream_dataset else "ood"
+        save_prefix = f"{ood_prefix}_test_{loader_name}_"
 
-            metrics = evaluate_on_tasks(
-                model=model,
-                estimates=estimates,
-                log_probs=log_probs,
-                targets=targets,
-                metrics=metrics,
-                is_soft_dataset=is_soft_dataset,
-                save_prefix=save_prefix,
-                output_dir=output_dir,
-                only_ood_detection=only_ood_detection,
-                args=args,
-            )
-        else:
-            metrics = evaluate_on_validation_metrics(
-                estimates=estimates,
-                targets=targets,
-                metrics=metrics,
-                args=args,
-            )
+        metrics = evaluate_on_tasks(
+            model=model,
+            estimates=estimates,
+            log_probs=log_probs,
+            targets=targets,
+            metrics=metrics,
+            is_soft_dataset=is_soft_dataset,
+            save_prefix=save_prefix,
+            output_dir=output_dir,
+            args=args,
+        )
+    else:
+        metrics = evaluate_on_validation_metrics(
+            estimates=estimates,
+            targets=targets,
+            metrics=metrics,
+            args=args,
+        )
 
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
@@ -486,7 +506,6 @@ def evaluate(
             is_soft_dataset=is_soft_dataset,
             save_prefix=save_prefix,
             output_dir=output_dir,
-            only_ood_detection=only_ood_detection,
             args=args,
             is_soft_upstream_dataset=is_soft_upstream_dataset,
         )
@@ -608,7 +627,6 @@ def evaluate_on_tasks(
     is_soft_dataset: bool,
     save_prefix: str,
     output_dir: Path,
-    only_ood_detection: bool,
     args: argparse.Namespace,
     is_soft_upstream_dataset: bool | None = None,
 ) -> dict[str, float]:
@@ -623,7 +641,6 @@ def evaluate_on_tasks(
         is_soft_dataset: Whether the dataset uses soft labels.
         save_prefix: Prefix for saving results.
         output_dir: Directory to save output.
-        only_ood_detection: Whether to only evaluate OOD detection.
         args: Additional arguments.
         is_soft_upstream_dataset: Whether the upstream dataset uses soft labels.
 
@@ -638,9 +655,6 @@ def evaluate_on_tasks(
             targets=targets,
             args=args,
         )
-
-    if only_ood_detection:
-        return metrics
 
     metrics |= evaluate_on_correctness_prediction(
         estimates=estimates,
