@@ -360,18 +360,14 @@ class MahalanobisWrapper(SpecialWrapper):
         Returns:
             Filtered list of layers.
         """
-        if num_hooks is None:
+        if num_hooks is None or num_hooks >= len(layer_candidates):
             return layer_candidates
 
-        num_hooks = min(num_hooks, len(layer_candidates))
-
-        chosen_layers = []
         chosen_indices = torch.linspace(
             start=0, end=len(layer_candidates) - 1, steps=num_hooks
-        )
-        chosen_layers = [
-            module for i, module in enumerate(layer_candidates) if i in chosen_indices
-        ]
+        ).long()
+
+        chosen_layers = [layer_candidates[i] for i in chosen_indices]
 
         return chosen_layers
 
