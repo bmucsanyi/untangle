@@ -239,20 +239,26 @@ group.add_argument(
 group.add_argument(
     "--num-hooks",
     type=int,
-    default=5,
-    help="Number of hooks in deep direct prediction methods",
+    default=None,
+    help="Number of hooks in deep direct prediction methods and Mahalanobis",
 )
 group.add_argument(
     "--module-type",
     type=module,
-    default=nn.ReLU,
-    help="Module type to attach hooks to in direct prediction methods",
+    default=None,
+    help=(
+        "Module type to attach hooks to in deep direct prediction methods and "
+        "Mahalanobis"
+    ),
 )
 group.add_argument(
     "--module-name-regex",
     default="^(act1|layer[1-4])$",
     type=str,
-    help="Module names to attach hooks to in direct prediction methods",
+    help=(
+        "Module names to attach hooks to in deep direct prediction methods and "
+        "Mahalanobis"
+    ),
 )
 group.add_argument(
     "--dropout-probability",
