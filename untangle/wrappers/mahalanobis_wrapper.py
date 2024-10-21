@@ -179,6 +179,7 @@ class MahalanobisWrapper(SpecialWrapper):
         self._logistic_regressor_intercept = torch.from_numpy(
             self._logistic_regressor.intercept_
         )
+        self._is_logistic_regressor_constructed = True
 
     @staticmethod
     def _pool_feature(feature: Tensor) -> Tensor:
@@ -378,15 +379,16 @@ class MahalanobisWrapper(SpecialWrapper):
             ValueError: If logistic regressor weights are not set.
         """
         if (
-            self.logistic_regressor_coef is None
+            self._logistic_regressor_coef is None
             or self._logistic_regressor_intercept is None
         ):
             msg = "Logistic regressor weights are not set, nothing to reconstruct"
             raise ValueError(msg)
 
         self._logistic_regressor = LogisticRegression()
-        self._logistic_regressor.coef_ = self.logistic_regressor_coef.numpy()
+        self._logistic_regressor.coef_ = self._logistic_regressor_coef.numpy()
         self._logistic_regressor.intercept_ = self._logistic_regressor_intercept.numpy()
+        self._is_logistic_regressor_constructed = True
 
     def _calculate_gaussian_parameters(
         self,
