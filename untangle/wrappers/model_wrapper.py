@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import torch
 from torch import Tensor, nn
 
 
@@ -81,6 +82,14 @@ class ModelWrapper(nn.Module):
             else:
                 converted_state_dict[k] = v
         return converted_state_dict
+
+    def _load_model(self) -> None:
+        """Loads the model."""
+        weight_path = self._weight_path
+        checkpoint = torch.load(weight_path, map_location="cpu", weights_only=True)
+        state_dict = checkpoint["state_dict"]
+        state_dict = self._convert_state_dict(state_dict)
+        self.model.load_state_dict(state_dict, strict=True)
 
     def forward(self, input: Tensor) -> Tensor | dict[str, Tensor]:
         """Performs forward pass through the entire model.
