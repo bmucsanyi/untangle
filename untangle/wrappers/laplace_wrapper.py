@@ -200,7 +200,7 @@ class LaplaceWrapper(DistributionalWrapper):
                 accuracy = float("NaN")
             logger.info(
                 f"Took {time.perf_counter() - start_time} seconds, result: {result}, "
-                f"accuracy {accuracy}"
+                f"accuracy: {accuracy}"
             )
             results.append(result)
             prior_precs.append(prior_prec)
