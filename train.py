@@ -289,10 +289,14 @@ def setup_scheduler(
         )
 
         logger.info(f"Scheduled epochs: {num_epochs}.")
-        logger.info(
-            "Learning rate stepped per "
-            f'{"epoch" if lr_scheduler.t_in_epochs else "update"}.'
-        )
+
+        if lr_scheduler is not None:
+            logger.info(
+                "Learning rate stepped per "
+                f'{"epoch" if lr_scheduler.t_in_epochs else "update"}.'
+            )
+        else:
+            logger.info("Using a fixed learning rate.")
 
     return lr_scheduler, num_epochs
 
