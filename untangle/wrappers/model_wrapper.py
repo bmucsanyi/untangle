@@ -1,5 +1,6 @@
 """Contains base wrapper classes."""
 
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -83,9 +84,12 @@ class ModelWrapper(nn.Module):
                 converted_state_dict[k] = v
         return converted_state_dict
 
-    def _load_model(self) -> None:
-        """Loads the model."""
-        weight_path = self._weight_path
+    def _load_model(self, weight_path: Path) -> None:
+        """Loads the model.
+
+        Args:
+            weight_path: Path to weights.
+        """
         checkpoint = torch.load(weight_path, map_location="cpu", weights_only=True)
         state_dict = checkpoint["state_dict"]
         state_dict = self._convert_state_dict(state_dict)
