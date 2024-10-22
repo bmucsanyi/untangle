@@ -367,6 +367,7 @@ def train(
         A tuple containing the best evaluation metric achieved and the epoch
         at which it was achieved.
     """
+    eval_accuracy = "id_eval_hard_bma_accuracy_original"
     best_eval_metric = -float("inf")
     best_eval_metrics = None
     best_epoch = None
@@ -401,7 +402,6 @@ def train(
                 is_soft_dataset="soft" in args.dataset_id,
                 args=args,
             )
-            eval_accuracy = "id_eval_hard_bma_accuracy_original"
             logger.info(f"Eval accuracy: {eval_metrics[eval_accuracy]:.4f}")
             logger.info(f"Eval metric: {eval_metrics[eval_metric]:.4f}")
 
