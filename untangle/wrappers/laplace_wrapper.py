@@ -149,7 +149,7 @@ class LaplaceWrapper(DistributionalWrapper):
         val_loader: DataLoader | PrefetchLoader,
         log_prior_prec_min: float = -1,
         log_prior_prec_max: float = 2,
-        grid_size: int = 100,
+        grid_size: int = 500,
     ) -> None:
         """Optimizes prior precision using cross-validation.
 
@@ -160,7 +160,7 @@ class LaplaceWrapper(DistributionalWrapper):
             grid_size: Number of grid points for optimization.
         """
         interval = torch.logspace(log_prior_prec_min, log_prior_prec_max, grid_size)
-        self._laplace_model.prior_precision = self._gridsearch(
+        self._laplace_model.prior_precision = self._grid_search(
             interval=interval,
             val_loader=val_loader,
         )
@@ -169,7 +169,7 @@ class LaplaceWrapper(DistributionalWrapper):
             f"Optimized prior precision is {self._laplace_model.prior_precision}."
         )
 
-    def _gridsearch(
+    def _grid_search(
         self,
         interval: Tensor,
         val_loader: DataLoader | PrefetchLoader,
