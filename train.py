@@ -614,7 +614,8 @@ def main() -> None:
             raise ValueError(msg)
 
         # Initialize LazyModules in model before switching memory format
-        initialize_lazy_modules(model, amp_autocast, data_config, device, args)
+        if isinstance(model, SNGPWrapper):
+            initialize_lazy_modules(model, amp_autocast, data_config, device, args)
 
         model.to(memory_format=torch.channels_last)
 
