@@ -1318,6 +1318,7 @@ def train_one_epoch(
     return {"loss": losses_m.avg}
 
 
+@torch.no_grad()
 def update_post_hoc_method(
     model: nn.Module,
     train_loader: DataLoader | PrefetchLoader,
