@@ -235,6 +235,9 @@ class DDUWrapper(TemperatureWrapper):
                     self.model.forward_features(input), pre_logits=True
                 )
 
+                if feature.device.type == "cuda":
+                    torch.cuda.synchronize()
+
                 end = current_num_samples + actual_batch_size
 
                 features[current_num_samples:end] = feature.detach().cpu()
