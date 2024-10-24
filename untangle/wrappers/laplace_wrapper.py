@@ -238,6 +238,9 @@ class LaplaceWrapper(DistributionalWrapper):
             )  # [B, S, C]
             out = F.softmax(out, dim=-1).mean(dim=1)  # [B, C]
 
+            if out.device.type == "cuda":
+                torch.cuda.synchronize()
+
             output_means.append(out)
             targets.append(target)
 
