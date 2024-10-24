@@ -44,12 +44,12 @@ class DUQHead(nn.Module):
 
         self._weight = nn.Parameter(
             torch.empty(num_classes, num_hidden_features, num_features)
-        )
+        )  # [C, L, F]
         nn.init.kaiming_normal_(self._weight, nonlinearity="relu")
 
         self.register_buffer(
             "_ema_num_samples_per_class", torch.full((num_classes,), 128 / num_classes)
-        )
+        )  # [C]
         self.register_buffer(
             "_ema_embedding_sums_per_class",
             torch.randn(num_classes, num_hidden_features),
@@ -70,7 +70,7 @@ class DUQHead(nn.Module):
         self._ema_num_samples_per_class = (
             self._ema_momentum * self._ema_num_samples_per_class
             + (1 - self._ema_momentum) * num_samples_per_class
-        )
+        )  # [C]
 
         latent_features = torch.einsum(
             "clf,bf->bcl", self._weight, features
@@ -82,7 +82,7 @@ class DUQHead(nn.Module):
         self._ema_embedding_sums_per_class = (
             self._ema_momentum * self._ema_embedding_sums_per_class
             + (1 - self._ema_momentum) * embedding_sums_per_class
-        )
+        )  # [C, L]
 
         self.train(prev_state)
 
