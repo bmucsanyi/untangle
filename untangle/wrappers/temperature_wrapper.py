@@ -87,6 +87,7 @@ class TemperatureWrapper(SpecialWrapper):
         # First: collect all the logits and labels for the validation set
         logits_list = []
         labels_list = []
+
         with torch.no_grad():
             for input, label in val_loader:
                 if not isinstance(val_loader, PrefetchLoader):
@@ -96,8 +97,13 @@ class TemperatureWrapper(SpecialWrapper):
                     input = input.contiguous(memory_format=torch.channels_last)
 
                 logits = self.model(input)
+
+                if logits.device.type == "cuda":
+                    torch.cuda.synchronize()
+
                 logits_list.append(logits)
                 labels_list.append(label)
+
             logits = torch.cat(logits_list).cpu()
             labels = torch.cat(labels_list).cpu()
 
@@ -121,10 +127,12 @@ class TemperatureWrapper(SpecialWrapper):
         nll_val = float("inf")
         T_opt_nll = 1.0
         T = 0.1
+
         for _ in range(100):
             logger.info(f"Trying {T}...")
             start_time = time.perf_counter()
             after_temperature_nll = F.cross_entropy(logits / T, labels).item()
+
             logger.info(
                 f"Took {time.perf_counter() - start_time} seconds, "
                 f"result: {after_temperature_nll}."
