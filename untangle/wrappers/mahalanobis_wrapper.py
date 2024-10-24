@@ -257,9 +257,11 @@ class MahalanobisWrapper(SpecialWrapper):
                 inputs.requires_grad_(False)
 
             temp_inputs = inputs - self._magnitude * gradients
+
             # Populate feature_list
             self._feature_list.clear()
             self.model(temp_inputs)
+
             noisy_mahalanobis_scores_layer = self._compute_gaussian_scores(
                 features=self._feature_list[layer_idx],
                 num_classes=self.model.num_classes,
