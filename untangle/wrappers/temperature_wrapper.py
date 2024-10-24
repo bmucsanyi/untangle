@@ -1,5 +1,8 @@
 """Temperature scaling wrapper class."""
 
+import logging
+import time
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -7,6 +10,8 @@ from torch.utils.data import DataLoader
 
 from untangle.utils.loader import PrefetchLoader
 from untangle.wrappers.model_wrapper import SpecialWrapper
+
+logger = logging.getLogger(__name__)
 
 
 class TemperatureWrapper(SpecialWrapper):
@@ -76,6 +81,8 @@ class TemperatureWrapper(SpecialWrapper):
         """
         device = next(self.model.parameters()).device
 
+        logger.info("Starting temperature scaling.")
+
         # First: collect all the logits and labels for the validation set
         logits_list = []
         labels_list = []
@@ -95,6 +102,11 @@ class TemperatureWrapper(SpecialWrapper):
 
         self._set_temperature_logits(logits, labels)
 
+        logger.info(
+            "Temperature scaling done. "
+            f"Optimized temperature is {self._temperature}."
+        )
+
     def _set_temperature_logits(self, logits: Tensor, labels: Tensor) -> None:
         """Sets the temperature using pre-computed logits and labels.
 
@@ -109,9 +121,15 @@ class TemperatureWrapper(SpecialWrapper):
         T_opt_nll = 1.0
         T = 0.1
         for _ in range(100):
+            logger.info(f"Trying {T}...")
+            start_time = time.perf_counter()
             after_temperature_nll = F.cross_entropy(logits / T, labels).item()
+            logger.info(
+                f"Took {time.perf_counter() - start_time} seconds, "
+                f"result: {after_temperature_nll}."
+            )
 
-            if nll_val > after_temperature_nll:
+            if after_temperature_nll < nll_val:
                 T_opt_nll = T
                 nll_val = after_temperature_nll
 
