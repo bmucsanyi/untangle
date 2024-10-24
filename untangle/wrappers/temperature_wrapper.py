@@ -59,10 +59,11 @@ class TemperatureWrapper(SpecialWrapper):
             return features
 
         out = self.get_classifier()(features)
-        out /= self._temperature
+        out = out.div(self._temperature)
 
         if self.training:
             return out
+
         return {"logit": out}
 
     def set_temperature_loader(
