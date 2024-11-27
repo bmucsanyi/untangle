@@ -1,0 +1,20 @@
+# Extensions
+*.ipynb
+*.egg-info
+*.pyc
+*.pt
+*.zip
+*.txt
+*.json
+*.npz
+*.pdf
+
+# Files
+.envrc
+.DS_Store
+
+# Folders
+.ruff_cache
+.venv
+CIFAR10H
+cifar-10-batches-py

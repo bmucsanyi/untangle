@@ -1,0 +1,205 @@
+# See https://packaging.python.org/en/latest/specifications/pyproject-toml/
+
+# PEP 621 Project Metadata
+# See https://peps.python.org/pep-0621/
+
+[project]
+authors = [
+    { name = "Bálint Mucsányi", email = "b.h.mucsanyi@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "torch",
+    "timm",
+    "numba",
+    "numpy",
+    "tueplots",
+    "wandb",
+    "torchvision",
+    "scipy",
+    "wand",
+    "scikit-image",
+    "opencv-python",
+    "scikit-learn",
+    "huggingface-hub",
+    "laplace-torch",
+    "pyro-ppl",
+    "pytorch-minimize",
+]
+description = "A benchmark of uncertainty disentanglement."
+dynamic = ["version"]
+keywords = ["uncertainty disentanglement", "uncertainty quantification"]
+name = "untangle"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+[project.optional-dependencies]
+dev = ["ruff", "jupyterlab", "pre-commit", "tox-uv"]
+
+
+# PEP 518 Build System Configuration
+# See https://peps.python.org/pep-0518/
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["untangle"]
+
+[tool.setuptools.dynamic]
+version = {attr = "untangle.__version__"}
+
+# Testing Configuration
+# See https://docs.pytest.org/en/stable/reference/customize.html
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--import-mode=importlib",
+]
+
+# Linting Configuration
+# See https://docs.astral.sh/ruff/rules/#legend
+
+[tool.ruff]
+preview = true
+extend-include = ["*.ipynb"]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "ARG",  # flake8-unused-arguments
+    "ASYNC",  # flake8-async
+    "ANN",  # flake8-annotations
+    "B",  # flake8-bugbear
+    "BLE",  # flake8-blind-except
+    "C4",  # flake8-comprehensions
+    "C90",  # mccabe
+    "COM",  # flake8-commas
+    "D",  # pydocstyle
+    "DTZ",  # flake8-datetimez
+    "E",  # pycodestyle error
+    "EM",  # flake8-errmsg
+    "ERA",  # eradicate
+    "F",  # Pyflakes
+    "FBT",  # flake8-boolean-trap
+    "FLY",  # flynt
+    "FURB",  # refurb
+    "G",  # flake80logging-format
+    "I",  # isort
+    "ICN",  # flake8-import-conventions
+    "INT",  # flake8-gettext
+    "ISC",  # flake8-implicit-str-concat
+    "LOG",  # flake8-logging
+    "N",  # pep8-naming
+    "NPY",  # NumPy
+    "PERF",  # Perflint
+    "PGH",  # pygrep-hooks
+    "PIE",  # flake8-pie
+    "PL",  # Pylint
+    "PT",  # flake8-pytest-style
+    "PTH",  # flake8-use-pathlib
+    "PYI",  # flake8-pyi
+    "Q",  # flake8-quotes
+    "RET",  # flake8-return
+    "RSE",  # flake8-raise
+    "RUF",  # Ruff
+    "S",  # flake8-bandit
+    "SLOT",  # flake8-slots
+    "T10",  # flake8-debugger
+    "TCH",  # flake8-type-checking
+    "TD",  # flake8-todos
+    "TID",  # flake8-tidy-imports
+    "TRY",  # tryceratops
+    "SIM",  # flake8-simplify
+    "SLF",  # flake8-self
+    "UP",  # pyupgrade
+    "W",  # pycodestyle warning
+    "YTT",  # flake8-2020
+]
+ignore = [
+    # Conflicting lint rules with Ruff's formatter
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    "ISC001",
+    "ISC002",
+    "FBT001",
+    "FBT003",
+    "TD003",
+    # It is fine to override loop variables when it is clear that only the value that
+    # overrides the original is needed
+    "PLW2901",
+    # An `Any` type hint is often the best type hint one can give for an argument. That
+    # being said, it is important to only use `Any` when all other possibilities have
+    # been exhausted.
+    "ANN401",
+    # Specifically in this project it is impossible to adhere to a limit on the number
+    # of statements per function/method without abstracting functions to an unnecessary
+    # level
+    "PLR0915",
+    # It is often impossible to enforce a hard limit on the number of arguments
+    "PLR0913",
+    "PLR0917",
+    # The performance of logging is not a concern for us; in return, using f-strings
+    # makes the logged messages much more readable in code
+    "G004",
+    # We do not annotate __init__ methods -- args are specified in the class docstring
+    "D107",
+    # This is research code, attribute names are more flexible with casing
+    "E741",
+    "N802",
+    "N803",
+    "N806",
+    "N812",
+    # Magic values are fine for academic code as longs as they are not overused
+    "PLR2004",
+    "PLR0912",
+    "PLR0912",
+    "PLR0914",
+    "PLR0914",
+    # In-place assigments are not always possible in torch
+    "PLR6104",
+    # Assignments before return can emphasize the code's semantic structure
+    "RET504",
+    "S403",
+    # We don't do cryptography
+    "S311",
+    # The subprocess module is fine as long as one validates the commands
+    "S404",
+]
+
+[tool.ruff.lint.extend-per-file-ignores]
+"test_*.py" = ["S101"]  # Use of assert is allowed in test files
+"untangle/wrappers/swag_wrapper.py" = ["SLF001"]  # Private class accessed in `isinstance`
+"untangle/wrappers/fast_deep_ensemble_wrapper.py" = ["SLF001"]  # Private class accessed in `isinstance`
+
+[tool.ruff.lint.mccabe]
+max-complexity = 18
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
