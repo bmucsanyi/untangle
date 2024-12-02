@@ -147,8 +147,7 @@ available on [Weights & Biases](https://wandb.ai/bmucsanyi/untangle/sweeps). Bel
 - **Temperature Scaling:** [Final Results](https://wandb.ai/bmucsanyi/untangle/sweeps/4f8j92n5)
 - **SWAG:** [Final Results](https://wandb.ai/bmucsanyi/untangle/sweeps/hctd423o)
 
-We also provide access to the exact TODO(bmucsanyi)
-[Singularity container](https://drive.google.com/file/d/1eYClorSZe3FMNFCZiXGLuSQJizMgPNfq/view?usp=sharing)
+We also provide access to the exact [Singularity container](https://drive.google.com/file/d/1ZhVY-3IAfU93F2B9wdYXxsGWsXj4-X8L/view?usp=sharing)
 we used in our experiments. The `Singularity` file was used to create this container by
 running `singularity build --fakeroot untangle.simg Singularity`.
 
