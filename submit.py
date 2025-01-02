@@ -122,7 +122,7 @@ class SlurmJob:
     def __init__(
         self,
         cmd_str: str,
-        job_name: str | None,
+        job_name: str,
         partition: str,
         cpus_per_task: int,
         mem_per_cpu: str | None,
@@ -135,12 +135,12 @@ class SlurmJob:
         mail_type: str | None,
         mail_user: str | None,
     ) -> None:
-        """SlurmJob constructor that stores (and check some of the) parameters.
+        """SlurmJob constructor that stores (and checks some of the) parameters.
 
         Args:
             cmd_str: The command line string for executing the actual program code
                 (and potential setup code), e.g., `"python train.py <ARGS>"`.
-            job_name: Name of the Slurm job. If None, it becomes the sweep ID.
+            job_name: Name of the Slurm job.
             partition: This setting specifies the partition. For a complete
                 list of available partitions, execute the Slurm command
                 `sinfo -s`. Examples:
