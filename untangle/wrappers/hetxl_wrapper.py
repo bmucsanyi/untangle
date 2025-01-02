@@ -18,7 +18,8 @@ class HETXLHead(nn.Module):
     Args:
         matrix_rank: Rank of the low-rank covariance matrix.
         num_mc_samples: Number of Monte Carlo samples.
-        num_features: Number of input features.
+        num_in_features: Number of input features.
+        num_out_features: Number of output features.
         temperature: Temperature for scaling logits.
         classifier: Classifier module.
         use_het: Whether to use heteroscedastic model.
@@ -28,7 +29,8 @@ class HETXLHead(nn.Module):
         self,
         matrix_rank: int,
         num_mc_samples: int,
-        num_features: int,
+        num_in_features: int,
+        num_out_features: int,
         temperature: float,
         classifier: nn.Module,
         use_het: bool,
@@ -36,14 +38,13 @@ class HETXLHead(nn.Module):
         super().__init__()
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
-        self._num_features = num_features
 
         self._low_rank_cov_layer = nn.Linear(
-            in_features=num_features,
-            out_features=num_features * matrix_rank,
+            in_features=num_in_features,
+            out_features=num_out_features * matrix_rank,
         )
         self._diagonal_std_layer = nn.Linear(
-            in_features=num_features, out_features=num_features
+            in_features=num_in_features, out_features=num_out_features
         )
         self._min_scale_monte_carlo = 1e-3
 
@@ -60,9 +61,6 @@ class HETXLHead(nn.Module):
         Returns:
             Temperature-scaled logits.
         """
-        if self._use_het:
-            features = self._classifier(features)  # D = C
-
         # Shape variables
         B, D = features.shape
         R = self._matrix_rank
@@ -71,20 +69,24 @@ class HETXLHead(nn.Module):
         low_rank_cov = self._low_rank_cov_layer(features).reshape(-1, D, R)  # [B, D, R]
         diagonal_std = (
             F.softplus(self._diagonal_std_layer(features)) + self._min_scale_monte_carlo
-        )  # [B, D]
+        )  # [B, C | D]
 
         diagonal_samples = diagonal_std.unsqueeze(1) * torch.randn(
             B, S, D, device=features.device
-        )  # [B, S, D]
+        )  # [B, S, C | D]
         standard_samples = torch.randn(B, S, R, device=features.device)  # [B, S, R]
         einsum_res = torch.einsum(
             "bdr,bsr->bsd", low_rank_cov, standard_samples
-        )  # [B, S, D]
-        samples = einsum_res + diagonal_samples  # [B, S, D]
+        )  # [B, S, C | D]
+        samples = einsum_res + diagonal_samples  # [B, S, C | D]
 
-        pre_logits = features.unsqueeze(1) + samples  # [B, S, D]
+        if self._use_het:
+            logits = self._classifier(features)  # [B, C]
+            logits = logits.unsqueeze(1) + samples  # [B, S, C]
+        else:
+            pre_logits = features.unsqueeze(1) + samples  # [B, S, D]
+            logits = self._classifier(pre_logits)
 
-        logits = self._classifier(pre_logits) if not self._use_het else pre_logits
         logits_temperature = logits / self._temperature
 
         return logits_temperature
@@ -119,7 +121,8 @@ class HETXLWrapper(DistributionalWrapper):
         self._classifier = HETXLHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_features if not self._use_het else self.num_classes,
+            num_in_features=self.num_features,
+            num_out_features=self.num_classes if self._use_het else self.num_features,
             classifier=self.model.get_classifier(),
             temperature=self._temperature,
             use_het=self._use_het,
@@ -168,7 +171,8 @@ class HETXLWrapper(DistributionalWrapper):
         self._classifier = HETXLHead(
             matrix_rank=self._matrix_rank,
             num_mc_samples=self._num_mc_samples,
-            num_features=self.num_features if not self._use_het else self.num_classes,
+            num_in_features=self.num_features,
+            num_out_features=self.num_classes if self._use_het else self.num_features,
             classifier=self.model.get_classifier(),
             temperature=self._temperature,
             use_het=self._use_het,
