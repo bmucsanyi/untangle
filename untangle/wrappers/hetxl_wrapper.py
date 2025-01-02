@@ -38,6 +38,7 @@ class HETXLHead(nn.Module):
         super().__init__()
         self._matrix_rank = matrix_rank
         self._num_mc_samples = num_mc_samples
+        self._num_out_features = num_out_features
 
         self._low_rank_cov_layer = nn.Linear(
             in_features=num_in_features,
@@ -62,17 +63,20 @@ class HETXLHead(nn.Module):
             Temperature-scaled logits.
         """
         # Shape variables
-        B, D = features.shape
+        B = features.shape[0]
+        D_out = self._num_out_features  # Either C or D
         R = self._matrix_rank
         S = self._num_mc_samples
 
-        low_rank_cov = self._low_rank_cov_layer(features).reshape(-1, D, R)  # [B, D, R]
+        low_rank_cov = self._low_rank_cov_layer(features).reshape(
+            -1, D_out, R
+        )  # [B, C | D, R]
         diagonal_std = (
             F.softplus(self._diagonal_std_layer(features)) + self._min_scale_monte_carlo
         )  # [B, C | D]
 
         diagonal_samples = diagonal_std.unsqueeze(1) * torch.randn(
-            B, S, D, device=features.device
+            B, S, D_out, device=features.device
         )  # [B, S, C | D]
         standard_samples = torch.randn(B, S, R, device=features.device)  # [B, S, R]
         einsum_res = torch.einsum(
