@@ -12,24 +12,24 @@ from utils import CONSTRAINED_METRICS, ESTIMATOR_CONVERSION_DICT, ESTIMATORLESS_
 from wandb.wandb_run import Run
 
 METHOD_TO_IDS = {
-    "GP": ("4nr8lsd1", "3h3gyzxj"),
-    "HET-XL": ("t1myokqo", "xaz96x6d"),
     "CE Baseline": ("znhyrrk6", "uo3gu133"),
-    "MC Dropout": ("1pqijue2", "u1ozluxv"),
-    "SNGP": ("74rysdqf", "mhu72izt"),
-    "Shallow Ens.": ("pipwlaae", "lcvixgvo"),
-    "Loss Pred.": ("7flvihja", "y5mljm78"),
     "Corr. Pred.": ("11ueh7cq", "sgvtuzo5"),
-    "Deep Ens.": ("54kpysjy", "bn1hsbqz"),
-    "Laplace": ("42thx27s", "nnle8epz"),
-    "Mahalanobis": ("8a3palks", "h0m0bybl"),
-    "Temperature": ("jfnn98e3", "lh04ospw"),
     "DDU": ("k9myyurz", "8apeaj9a"),
-    "HET": ("t0uem6ob", "k5elnty1"),
+    "Deep Ens.": ("54kpysjy", "bn1hsbqz"),
     "EDL": ("gl6qgpv6", "vuel80q8"),
-    "PostNet": ("zm0o0mo9", "8bqhu92u"),
-    "SWAG": ("o04c996o", "zsiqsl6u"),
+    "GP": ("4nr8lsd1", "3h3gyzxj"),
+    "HET": ("s060twci", "w2gpx8od"),
     "HetClassNN": ("bryrtulr", "wj1sesqf"),
+    "HET-XL": ("t1myokqo", "xaz96x6d"),
+    "Laplace": ("42thx27s", "nnle8epz"),
+    "Loss Pred.": ("7flvihja", "y5mljm78"),
+    "Mahalanobis": ("8a3palks", "h0m0bybl"),
+    "MC Dropout": ("1pqijue2", "u1ozluxv"),
+    "PostNet": ("zm0o0mo9", "8bqhu92u"),
+    "Shallow Ens.": ("pipwlaae", "lcvixgvo"),
+    "SNGP": ("74rysdqf", "mhu72izt"),
+    "SWAG": ("5yknlf4l", "zsiqsl6u"),
+    "Temperature": ("jfnn98e3", "lh04ospw"),
 }
 
 METRIC_DICT = {

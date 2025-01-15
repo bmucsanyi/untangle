@@ -46,25 +46,6 @@ METRIC_DICT = {
     "auroc_oodness": "OOD AUROC",
 }
 
-ID_TO_METHOD_IMAGENET = {
-    "znhyrrk6": "CE Baseline",
-    "11ueh7cq": "Corr. Pred.",
-    "k9myyurz": "DDU",
-    "54kpysjy": "Deep Ens.",
-    "4nr8lsd1": "GP",
-    "t0uem6ob": "HET",
-    "bryrtulr": "HetClassNN",
-    "t1myokqo": "HET-XL",
-    "42thx27s": "Laplace",
-    "7flvihja": "Loss Pred.",
-    "8a3palks": "Mahalanobis",
-    "1pqijue2": "MC Dropout",
-    "pipwlaae": "Shallow Ens.",
-    "74rysdqf": "SNGP",
-    "o04c996o": "SWAG",
-    "jfnn98e3": "Temperature",
-}
-
 ID_PREFIX = "best_id_test"
 MIXTURE_PREFIX_IMAGENET = "best_ood_test_varied_soft_imagenet_s2_mixed_soft_imagenet"
 MIXTURE_PREFIX_CIFAR10 = "best_ood_test_varied_soft_cifar10_s2_mixed_soft_cifar10"

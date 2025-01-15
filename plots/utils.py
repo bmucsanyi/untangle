@@ -51,7 +51,7 @@ ID_TO_METHOD_CIFAR10 = {
     "ii1o54ln": "DUQ",
     "vuel80q8": "EDL",
     "3h3gyzxj": "GP",
-    "k5elnty1": "HET",
+    "w2gpx8od": "HET",
     "wj1sesqf": "HetClassNN",
     "xaz96x6d": "HET-XL",
     "nnle8epz": "Laplace",
@@ -72,7 +72,7 @@ ID_TO_METHOD_IMAGENET = {
     "54kpysjy": "Deep Ens.",
     "gl6qgpv6": "EDL",
     "4nr8lsd1": "GP",
-    "t0uem6ob": "HET",
+    "s060twci": "HET",
     "bryrtulr": "HetClassNN",
     "t1myokqo": "HET-XL",
     "42thx27s": "Laplace",
@@ -82,7 +82,7 @@ ID_TO_METHOD_IMAGENET = {
     "zm0o0mo9": "PostNet",
     "pipwlaae": "Shallow Ens.",
     "74rysdqf": "SNGP",
-    "o04c996o": "SWAG",
+    "5yknlf4l": "SWAG",
     "jfnn98e3": "Temperature",
 }
 
