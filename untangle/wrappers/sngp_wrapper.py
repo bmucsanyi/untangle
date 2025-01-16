@@ -340,7 +340,7 @@ class LaplaceRandomFeatureCovariance(nn.Module):
         self._covariance_matrix.copy_(covariance_matrix_updated)
 
         # Disable covariance update in future inference calls (to avoid the
-        # expensive torch.linalg.inv op) unless there are new update to precision
+        # expensive torch.linalg.inv op) unless there are new updates to precision
         # matrix.
         self._update_covariance = False
 

@@ -998,8 +998,6 @@ def create_datasets(
 
     ood_varied_test_datasets = {}
     for name, location in dataset_locations_ood_test.items():
-        ood_varied_test_datasets[name] = {}
-
         ood_varied_test_datasets[name] = create_dataset(
             name=args.dataset_id,
             root=location,

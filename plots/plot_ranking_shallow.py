@@ -37,7 +37,7 @@ parser.add_argument("ylabel", help="Label of the y axis")
 parser.add_argument(
     "metric",
     help="Metric to be used in the analysis",
-    choices=["auroc_oodess", "rank_correlation_bregman_au"],
+    choices=["auroc_oodness", "rank_correlation_bregman_au"],
 )
 parser.add_argument("--y-min", type=float, default=None, help="Minimum y value")
 parser.add_argument("--y-max", type=float, default=None, help="Maximum y value")
