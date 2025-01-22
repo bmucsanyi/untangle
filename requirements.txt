@@ -1,0 +1,16 @@
+torch
+timm
+numba
+numpy
+tueplots
+wandb
+torchvision
+scipy
+wand
+scikit-image
+opencv-python
+scikit-learn
+huggingface-hub
+laplace-torch
+pyro-ppl
+pytorch-minimize
