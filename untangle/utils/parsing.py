@@ -16,21 +16,33 @@ logger = logging.getLogger(__name__)
 
 def float_tuple(string: str) -> tuple[float, ...]:
     """Converts a comma-separated string of floats to a tuple of floats."""
+    if not string:
+        return ()
+
     return tuple(map(float, string.split(",")))
 
 
 def int_tuple(string: str) -> tuple[int, ...]:
     """Converts a comma-separated string of integers to a tuple of integers."""
+    if not string:
+        return ()
+
     return tuple(map(int, string.split(",")))
 
 
 def string_tuple(string: str) -> tuple[str, ...]:
     """Splits a comma-separated string into a tuple of strings."""
+    if not string:
+        return ()
+
     return tuple(string.split(","))
 
 
 def path_tuple(string: str) -> tuple[Path, ...]:
     """Converts a comma-separated string of paths to a tuple of Path objects."""
+    if not string:
+        return ()
+
     return tuple(map(Path, string.split(",")))
 
 
