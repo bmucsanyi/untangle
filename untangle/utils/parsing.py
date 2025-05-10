@@ -823,6 +823,12 @@ def parse_args() -> argparse.Namespace:
     if str(args.soft_imagenet_label_dir) == "SLURM_TUE":
         args.soft_imagenet_label_dir = SLURM_TUE_PATH
 
+    if args.discard_ood_test_sets:
+        args.severities = ()
+        args.ood_transforms_eval = ()
+        args.ood_transforms_test = ()
+        args.discard_uniform_ood_test_sets = True
+
     return args
 
 
